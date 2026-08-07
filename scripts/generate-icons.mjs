@@ -1,5 +1,18 @@
-// Rasterises the Receipt AI mark (green squircle + receipt glyph) into the PNGs
-// iOS and the web app manifest need. Run with `node scripts/generate-icons.mjs`.
+// Rasterises the Receipt AI mark (green tile + receipt glyph) into the PNGs iOS
+// and the web app manifest need. Run with `node scripts/generate-icons.mjs`.
+//
+// Three shapes, because the platforms want different things:
+//
+//   apple-touch-icon  full-bleed square, no rounding of its own. iOS applies the
+//                     squircle mask itself; an icon that rounds its own corners
+//                     leaves dark wedges outside Apple's slightly different mask.
+//   icon-192/512      rounded tile with *transparent* corners, for browsers that
+//                     place the icon as-is.
+//   icon-maskable     full-bleed again, glyph pulled into the safe area, so
+//                     Android can crop it to whatever shape the launcher uses.
+//
+// All of them carry an alpha channel. The previous versions did not, which left
+// the corners solid black instead of see-through.
 import { deflateSync } from 'node:zlib'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -27,20 +40,32 @@ function roundedRectCoverage(px, py, x, y, w, h, r) {
   return hits / 9
 }
 
+/** Source-over compositing onto a transparent buffer. */
 function blend(buf, i, color, alpha) {
   if (alpha <= 0) return
+  const dstA = buf[i + 3] / 255
+  const outA = alpha + dstA * (1 - alpha)
+  if (outA <= 0) return
   for (let c = 0; c < 3; c++) {
-    buf[i + c] = Math.round(buf[i + c] * (1 - alpha) + color[c] * alpha)
+    const src = color[c] / 255
+    const dst = buf[i + c] / 255
+    buf[i + c] = Math.round(((src * alpha + dst * dstA * (1 - alpha)) / outA) * 255)
   }
+  buf[i + 3] = Math.round(outA * 255)
 }
 
-function renderIcon(size) {
-  const px = new Uint8Array(size * size * 3)
+/**
+ * `tileRadius` is on the 192px grid: 42 for the rounded tile, 0 for the
+ * full-bleed variants. `glyphScale` shrinks the receipt about the centre so a
+ * maskable icon survives being cropped.
+ */
+function renderIcon(size, { tileRadius = 42, glyphScale = 1 } = {}) {
+  const px = new Uint8Array(size * size * 4)
   // Shapes are authored on a 192px grid and scaled to the requested size.
   const k = size / 192
   const shapes = [
     // green app tile
-    { rect: [0, 0, 192, 192], r: 42, color: GREEN },
+    { rect: [0, 0, 192, 192], r: tileRadius, color: GREEN },
     // receipt outline, drawn as four white bars so it stays crisp at 180px
     { rect: [50, 40, 92, 8], r: 4, color: WHITE },
     { rect: [50, 144, 92, 8], r: 4, color: WHITE },
@@ -52,15 +77,19 @@ function renderIcon(size) {
     { rect: [70, 116, 30, 8], r: 4, color: WHITE },
   ]
 
-  for (const { rect, r, color } of shapes) {
-    const [x, y, w, h] = rect.map((v) => v * k)
-    const rr = r * k
+  for (const [index, { rect, r, color }] of shapes.entries()) {
+    // Index 0 is the tile itself and must stay full size; the glyph scales.
+    const s = index === 0 ? 1 : glyphScale
+    const [x, y, w, h] = rect
+      .map((v, axis) => (axis < 2 ? 96 + (v - 96) * s : v * s))
+      .map((v) => v * k)
+    const rr = r * s * k
     const x0 = Math.max(0, Math.floor(x)), x1 = Math.min(size, Math.ceil(x + w))
     const y0 = Math.max(0, Math.floor(y)), y1 = Math.min(size, Math.ceil(y + h))
     for (let py = y0; py < y1; py++) {
       for (let pxx = x0; pxx < x1; pxx++) {
         const a = roundedRectCoverage(pxx, py, x, y, w, h, rr)
-        blend(px, (py * size + pxx) * 3, color, a)
+        blend(px, (py * size + pxx) * 4, color, a)
       }
     }
   }
@@ -85,18 +114,18 @@ function chunk(type, data) {
   return Buffer.concat([len, body, crc])
 }
 
-function encodePng(rgb, size) {
+function encodePng(rgba, size) {
   const ihdr = Buffer.alloc(13)
   ihdr.writeUInt32BE(size, 0)
   ihdr.writeUInt32BE(size, 4)
   ihdr[8] = 8 // bit depth
-  ihdr[9] = 2 // truecolour
+  ihdr[9] = 6 // truecolour with alpha
   // raw scanlines, each prefixed with filter type 0
-  const raw = Buffer.alloc(size * (size * 3 + 1))
+  const raw = Buffer.alloc(size * (size * 4 + 1))
   for (let y = 0; y < size; y++) {
-    const at = y * (size * 3 + 1)
+    const at = y * (size * 4 + 1)
     raw[at] = 0
-    Buffer.from(rgb.buffer, y * size * 3, size * 3).copy(raw, at + 1)
+    Buffer.from(rgba.buffer, y * size * 4, size * 4).copy(raw, at + 1)
   }
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -107,7 +136,17 @@ function encodePng(rgb, size) {
 }
 
 mkdirSync(OUT, { recursive: true })
-for (const [name, size] of [['icon-192.png', 192], ['icon-512.png', 512], ['apple-touch-icon.png', 180]]) {
-  writeFileSync(join(OUT, name), encodePng(renderIcon(size), size))
+
+const VARIANTS = [
+  { name: 'icon-192.png', size: 192 },
+  { name: 'icon-512.png', size: 512 },
+  // Full-bleed, no rounding: iOS masks it itself.
+  { name: 'apple-touch-icon.png', size: 180, tileRadius: 0 },
+  // Full-bleed with the glyph inside the 80% safe area Android crops to.
+  { name: 'icon-maskable-512.png', size: 512, tileRadius: 0, glyphScale: 0.72 },
+]
+
+for (const { name, size, ...options } of VARIANTS) {
+  writeFileSync(join(OUT, name), encodePng(renderIcon(size, options), size))
   console.log(`wrote ${name} (${size}×${size})`)
 }

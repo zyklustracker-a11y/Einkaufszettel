@@ -9,7 +9,9 @@
 
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- iOS reads this one when the app is added to the home screen. 180x180 is the
+         size it wants; the file is a full-bleed square because iOS rounds it itself. -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
 
     <!-- Home-screen install on iOS Safari -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
