@@ -35,26 +35,17 @@ body {
  * Pinned to the screen rather than sized in viewport units — `100dvh` on `.app`
  * is unreliable on the first paint of an installed PWA.
  *
- * The added inset-top is not a decoration. Measured on the device (iPhone,
- * standalone, status-bar-style black-translucent):
- *
- *     screen.height 852 · innerHeight 793 · safe-area-inset-top 59
- *
- * iOS puts the viewport's origin at the very top of the screen — content does
- * paint under the Dynamic Island — but shortens its *height* by the top inset
- * without moving the origin down. The layout viewport therefore ends 59pt above
- * the bottom edge, and that unreachable strip was showing below the tab bar.
- *
- * `100%` on a fixed element resolves against the layout viewport (793), so
- * adding the top inset back lands exactly on the screen height (852). Where the
- * inset is 0 — desktop, Android, a plain browser tab — this is a no-op.
+ * `inset: 0` is enough because the layout viewport now reaches the bottom edge
+ * of the screen. It did not while the status bar style was `black-translucent`:
+ * iOS then anchored the viewport at the top of the screen but cut its height by
+ * the top inset (measured: screen 852, innerHeight 793, inset-top 59), leaving
+ * a 59pt strip below it. Stretching this element over that strip was tried and
+ * fails — iOS paints a background there but renders no content, so the tab bar
+ * labels landed at y 799–811 and vanished. See index.html for the fix.
  */
 #root {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: calc(100% + env(safe-area-inset-top, 0px));
+  inset: 0;
 }
 
 body {

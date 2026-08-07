@@ -15,8 +15,16 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Receipt AI" />
-    <!-- black-translucent lets the app paint under the status bar; the safe-area padding keeps content clear of it -->
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!--
+      NOT black-translucent. That let the app paint under the status bar, but in
+      an installed PWA iOS then reports a layout viewport that is inset-top
+      shorter than the screen while still anchoring it at the very top — so the
+      bottom 59pt of the screen were unreachable: a strip under the tab bar that
+      renders background but no content. `default` insets the web view below the
+      status bar instead, and the viewport reaches the bottom edge again.
+      The status bar area itself is filled from theme-color below.
+    -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="theme-color" content="#F4F5F3" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0E1110" media="(prefers-color-scheme: dark)" />
   </head>
