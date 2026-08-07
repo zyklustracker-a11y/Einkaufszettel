@@ -6,18 +6,20 @@ import { useAppState } from '../state/AppState'
 import styles from './Settings.module.css'
 
 export function SettingsScreen() {
-  const { theme, toggleTheme, settings, setMonthlyBudget, toggleDeleteReceiptPhotos } = useAppState()
+  const { theme, toggleTheme, settings, setMonthlyBudgetCents, toggleDeleteReceiptPhotos } = useAppState()
   const [editingBudget, setEditingBudget] = useState(false)
-  const [draftBudget, setDraftBudget] = useState(String(settings.monthlyBudget))
+  // The budget is entered and shown in whole euros; the domain stores cents.
+  const budgetEuros = settings.monthlyBudgetCents / 100
+  const [draftBudget, setDraftBudget] = useState(String(budgetEuros))
 
   const startEditing = () => {
-    setDraftBudget(String(settings.monthlyBudget))
+    setDraftBudget(String(budgetEuros))
     setEditingBudget(true)
   }
 
   const commitBudget = () => {
     const value = Number(draftBudget.replace(',', '.'))
-    if (Number.isFinite(value) && value > 0) setMonthlyBudget(Math.round(value))
+    if (Number.isFinite(value) && value > 0) setMonthlyBudgetCents(Math.round(value) * 100)
     setEditingBudget(false)
   }
 
@@ -43,7 +45,7 @@ export function SettingsScreen() {
               onKeyDown={(event) => event.key === 'Enter' && commitBudget()}
             />
           ) : (
-            <div className={styles.budgetValue}>{settings.monthlyBudget}</div>
+            <div className={styles.budgetValue}>{budgetEuros}</div>
           )}
           <div className={styles.currency}>€</div>
           <div style={{ flex: 1 }} />

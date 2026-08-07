@@ -3,6 +3,9 @@ import type { Quantity } from '../types'
 /**
  * German display formatting. Every euro amount, date and percentage in the UI
  * goes through here, so the domain data can stay numeric.
+ *
+ * Money arrives as whole cents and is turned into euros here and nowhere else —
+ * that division is the single boundary between the two units.
  */
 
 const euro = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' })
@@ -15,19 +18,19 @@ const decimal = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 })
 const percent = new Intl.NumberFormat('de-DE', { style: 'percent', maximumFractionDigits: 0 })
 
 /** `2,49 €` */
-export function formatEuro(value: number): string {
-  return euro.format(value)
+export function formatEuro(cents: number): string {
+  return euro.format(cents / 100)
 }
 
 /** `277 €` — for hero figures and budget copy where cents are noise. */
-export function formatEuroWhole(value: number): string {
-  return euroWhole.format(value)
+export function formatEuroWhole(cents: number): string {
+  return euroWhole.format(cents / 100)
 }
 
 /** `+25,00 €` / `−3,10 €` */
-export function formatEuroSigned(value: number): string {
-  const sign = value > 0 ? '+' : value < 0 ? '−' : ''
-  return sign + euro.format(Math.abs(value))
+export function formatEuroSigned(cents: number): string {
+  const sign = cents > 0 ? '+' : cents < 0 ? '−' : ''
+  return sign + euro.format(Math.abs(cents) / 100)
 }
 
 /** `1,12 kg` */
@@ -43,9 +46,9 @@ export function formatPercent(fraction: number): string {
 /** `7,96 €/kg`, or the fallback when a product has no pack size. */
 export const NO_QUANTITY = 'ohne Mengenangabe'
 
-export function formatBasePrice(pricePerUnit: number | null, unit: string | null): string {
-  if (pricePerUnit === null || unit === null) return NO_QUANTITY
-  return `${euro.format(pricePerUnit)}/${unit}`
+export function formatBasePrice(pricePerUnitCents: number | null, unit: string | null): string {
+  if (pricePerUnitCents === null || unit === null) return NO_QUANTITY
+  return `${formatEuro(pricePerUnitCents)}/${unit}`
 }
 
 /** `14.08.2026` */
@@ -99,9 +102,9 @@ export function formatAge(iso: string, today: string): string {
 export function formatQuantity(quantity: Quantity): string {
   switch (quantity.kind) {
     case 'count':
-      return `${quantity.count} × ${euro.format(quantity.unitPrice)}`
+      return `${quantity.count} × ${formatEuro(quantity.unitPriceCents)}`
     case 'weight':
-      return `${formatAmount(quantity.amount, quantity.unit)} × ${euro.format(quantity.pricePerUnit)}/${quantity.unit}`
+      return `${formatAmount(quantity.amount, quantity.unit)} × ${formatEuro(quantity.pricePerUnitCents)}/${quantity.unit}`
     case 'unknown':
       return NO_QUANTITY
   }
@@ -142,7 +145,14 @@ export function daysBetween(from: string, to: string): number {
   return Math.round(ms / 86_400_000)
 }
 
-/** Keeps float arithmetic on money honest. */
-export function toCents(value: number): number {
-  return Math.round(value * 100) / 100
+/**
+ * Commercial rounding to whole cents — needed wherever a multiplication turns
+ * numbers back into an amount (weight × €/kg, shares, projections). Rounds half
+ * away from zero, so −0,5 ct becomes −1 ct and not 0; `Math.round` alone would
+ * round it towards +∞.
+ */
+export function roundCents(value: number): number {
+  const rounded = value < 0 ? -Math.round(-value) : Math.round(value)
+  // `-0` would format as "-0,00 €".
+  return rounded === 0 ? 0 : rounded
 }

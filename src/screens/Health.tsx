@@ -10,8 +10,8 @@ export function Health() {
   const previous = scores[scores.length - 2]
   const delta = previous ? current.score - previous.score : 0
 
-  const foodSpend = health.unprocessed + health.processed
-  const unprocessedShare = health.unprocessed / foodSpend
+  const foodSpendCents = health.unprocessedCents + health.processedCents
+  const unprocessedShare = health.unprocessedCents / foodSpendCents
 
   return (
     <div className="screen screen--tabbed">
@@ -52,11 +52,11 @@ export function Health() {
         <div className={styles.splitLegend}>
           <div>
             <span className={styles.splitValue}>{formatPercent(unprocessedShare)}</span>{' '}
-            <span className="muted">unverarbeitet · {formatEuro(health.unprocessed)}</span>
+            <span className="muted">unverarbeitet · {formatEuro(health.unprocessedCents)}</span>
           </div>
           <div>
             <span className={styles.splitValue}>{formatPercent(1 - unprocessedShare)}</span>{' '}
-            <span className="muted">{formatEuro(health.processed)}</span>
+            <span className="muted">{formatEuro(health.processedCents)}</span>
           </div>
         </div>
       </section>
@@ -69,7 +69,7 @@ export function Health() {
               {getHealthFlag(concern.flag).letter}
             </div>
             <div className={styles.concernTitle}>{concern.title}</div>
-            <div className={styles.concernAmount}>{formatEuroWhole(concern.amount)}</div>
+            <div className={styles.concernAmount}>{formatEuroWhole(concern.amountCents)}</div>
           </div>
           <p className={styles.concernDetail}>{concern.detail}</p>
           <div className={styles.tip}>{concern.tip}</div>

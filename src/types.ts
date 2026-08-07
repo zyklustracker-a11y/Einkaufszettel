@@ -3,11 +3,22 @@
  *
  * Everything here is shaped like rows that a database would hand back: numbers
  * stay numbers, dates stay ISO strings (`YYYY-MM-DD`), and no value is
- * pre-formatted for display. Formatting lives in `src/lib/format.ts`, so
- * swapping the mocks in `src/mocks/` for Supabase queries touches no UI code.
+ * pre-formatted for display. Money is always a whole number of cents — never a
+ * float — and every such field carries a `Cents` suffix. Formatting lives in
+ * `src/lib/format.ts`, so swapping the mocks in `src/mocks/` for Supabase
+ * queries touches no UI code.
  */
 
-export type Merchant = 'Rewe' | 'Edeka' | 'Lidl' | 'Aldi'
+/**
+ * Merchants are data, not a fixed union: shops come and go, and in the database
+ * this is its own table. Receipts and price points hold a `MerchantId`.
+ */
+export type MerchantId = string
+
+export interface Merchant {
+  id: MerchantId
+  name: string
+}
 
 /** Stable category keys. `nonfood` is always shown, never folded into "other". */
 export type CategoryId =
@@ -43,8 +54,8 @@ export interface HealthFlag {
  * could not attach an amount to — those are excluded from €/kg comparisons.
  */
 export type Quantity =
-  | { kind: 'count'; count: number; unitPrice: number }
-  | { kind: 'weight'; amount: number; unit: 'kg' | 'l'; pricePerUnit: number }
+  | { kind: 'count'; count: number; unitPriceCents: number }
+  | { kind: 'weight'; amount: number; unit: 'kg' | 'l'; pricePerUnitCents: number }
   | { kind: 'unknown' }
 
 export interface ReceiptItem {
@@ -52,26 +63,26 @@ export interface ReceiptItem {
   name: string
   categoryId: CategoryId
   quantity: Quantity
-  /** Line total in euros. */
-  total: number
+  /** Line total in whole cents. */
+  totalCents: number
   flags: HealthFlagId[]
 }
 
 export interface Receipt {
   id: string
-  merchant: Merchant
+  merchantId: MerchantId
   /** ISO date, e.g. `2026-08-14`. */
   date: string
   /** The sum printed on the paper receipt. May disagree with the line items. */
-  printedTotal: number
+  printedTotalCents: number
   items: ReceiptItem[]
 }
 
 /** One observed price for a product at one merchant on one day. */
 export interface PricePoint {
-  merchant: Merchant
+  merchantId: MerchantId
   date: string
-  price: number
+  priceCents: number
 }
 
 export interface Product {
@@ -92,32 +103,32 @@ export interface MonthSummary {
   month: string
   /** Day the figures are current as of, ISO. */
   asOf: string
-  food: number
-  nonFood: number
-  budget: number
+  foodCents: number
+  nonFoodCents: number
+  budgetCents: number
   /** Projection to month end at the current pace. */
-  forecast: number
+  forecastCents: number
   receiptCount: number
   /** Same month-to-date figure one month earlier, for the comparison line. */
-  previousMonthToDate: number
+  previousMonthToDateCents: number
 }
 
 export interface CategoryTotal {
   categoryId: CategoryId
-  amount: number
+  amountCents: number
 }
 
 export type RangeId = 'week' | 'month' | 'year' | 'custom'
 
 export interface TrendPoint {
   label: string
-  amount: number
+  amountCents: number
 }
 
 export interface TopProduct {
   name: string
   purchaseCount: number
-  amount: number
+  amountCents: number
 }
 
 export interface HealthMonth {
@@ -128,15 +139,15 @@ export interface HealthMonth {
 
 export interface HealthSummary {
   scores: HealthMonth[]
-  /** Euro split of food spending. */
-  unprocessed: number
-  processed: number
+  /** Split of food spending, in whole cents. */
+  unprocessedCents: number
+  processedCents: number
 }
 
 export interface HealthConcern {
   flag: HealthFlagId
   title: string
-  amount: number
+  amountCents: number
   detail: string
   tip: string
 }
@@ -150,6 +161,6 @@ export interface HouseholdMember {
 }
 
 export interface Settings {
-  monthlyBudget: number
+  monthlyBudgetCents: number
   deleteReceiptPhotos: boolean
 }

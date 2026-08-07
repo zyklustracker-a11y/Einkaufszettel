@@ -17,7 +17,7 @@ function Row({ item }: { item: ReceiptItem }) {
         </span>
       </span>
       <span style={{ textAlign: 'right' }}>
-        <span className={styles.total}>{formatEuro(item.total)}</span>
+        <span className={styles.total}>{formatEuro(item.totalCents)}</span>
         <span className={styles.quantity}>{formatQuantity(item.quantity)}</span>
       </span>
     </>

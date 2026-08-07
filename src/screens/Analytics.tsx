@@ -4,6 +4,7 @@ import { SearchField } from '../components/ui'
 import {
   getCategories,
   getCategoryTotals,
+  getMerchantName,
   getMonthRange,
   getMonthSummary,
   getProducts,
@@ -33,16 +34,16 @@ export function Analytics() {
 
   const labels = getRangeLabels()
   const bars = getTrend(range)
-  const budget = settings.monthlyBudget
+  const budgetCents = settings.monthlyBudgetCents
   const slices = categorySlices(getCategoryTotals(), getCategories())
   const monthRange = getMonthRange()
 
   const savings = useMemo(() => savingsRows(getProducts(), monthRange.start, monthRange.end), [monthRange.start, monthRange.end])
-  const excess = totalExcess(savings)
+  const excessCents = totalExcess(savings)
   const search = useMemo(() => searchReceiptItems(getReceipts(), query), [query])
 
   // Only monthly buckets can breach a monthly budget, so the note is year-only.
-  const overBudget = range === 'year' ? bars.filter((bar) => bar.amount > budget) : []
+  const overBudget = range === 'year' ? bars.filter((bar) => bar.amountCents > budgetCents) : []
 
   return (
     <div className="screen screen--tabbed">
@@ -68,10 +69,13 @@ export function Analytics() {
           <div className="cardTitle">Ausgabenverlauf</div>
           <div className={styles.periodLabel}>{labels[range].period}</div>
         </div>
-        <BarChart bars={bars.map((b) => ({ label: b.label, amount: b.amount }))} overThreshold={range === 'year' ? budget : undefined} />
+        <BarChart
+          bars={bars.map((b) => ({ label: b.label, amountCents: b.amountCents }))}
+          overThresholdCents={range === 'year' ? budgetCents : undefined}
+        />
         {overBudget.map((bar) => (
           <div key={bar.label} className={styles.footnote}>
-            {bar.label} lag mit {formatEuro(bar.amount)} über dem Budget von {formatEuroWhole(budget)}.
+            {bar.label} lag mit {formatEuro(bar.amountCents)} über dem Budget von {formatEuroWhole(budgetCents)}.
           </div>
         ))}
       </section>
@@ -87,7 +91,7 @@ export function Analytics() {
         <div className="cardTitle">Sparpotenzial</div>
         <p className={styles.savingsIntro}>
           {savings.length} Produkte gab es laut deiner Historie woanders günstiger –{' '}
-          <span className={styles.savingsTotal}>{formatEuro(excess)} Mehrkosten</span> im{' '}
+          <span className={styles.savingsTotal}>{formatEuro(excessCents)} Mehrkosten</span> im{' '}
           {formatMonth(getMonthSummary().month)}.
         </p>
         {savings.map((row) => (
@@ -95,11 +99,12 @@ export function Analytics() {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className={styles.savingsName}>{row.productName}</div>
               <div className={styles.savingsHint}>
-                {row.cheapest.merchant} {formatEuro(row.cheapest.price)} statt {row.worst.merchant}{' '}
-                {formatEuro(row.worst.price)} · {row.overpaidCount} ×
+                {getMerchantName(row.cheapest.merchantId)} {formatEuro(row.cheapest.priceCents)} statt{' '}
+                {getMerchantName(row.worst.merchantId)} {formatEuro(row.worst.priceCents)} ·{' '}
+                {row.overpaidCount} ×
               </div>
             </div>
-            <div className={styles.savingsDiff}>{formatEuroSigned(row.excess)}</div>
+            <div className={styles.savingsDiff}>{formatEuroSigned(row.excessCents)}</div>
           </div>
         ))}
       </section>
@@ -113,7 +118,7 @@ export function Analytics() {
           <div className={styles.searchCount}>
             {search.purchaseCount} {search.purchaseCount === 1 ? 'Kauf' : 'Käufe'} · {labels.month.period}
           </div>
-          <div className={styles.searchAmount}>{formatEuro(search.amount)}</div>
+          <div className={styles.searchAmount}>{formatEuro(search.amountCents)}</div>
         </div>
       </section>
 
@@ -124,7 +129,7 @@ export function Analytics() {
             <span className={styles.rank}>{index + 1}</span>
             <span className={styles.topName}>{product.name}</span>
             <span className={styles.topCount}>{product.purchaseCount} ×</span>
-            <span className={styles.topAmount}>{formatEuro(product.amount)}</span>
+            <span className={styles.topAmount}>{formatEuro(product.amountCents)}</span>
           </div>
         ))}
       </section>

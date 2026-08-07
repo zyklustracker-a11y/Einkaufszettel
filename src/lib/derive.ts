@@ -2,14 +2,14 @@ import type {
   Category,
   CategoryId,
   CategoryTotal,
-  Merchant,
+  MerchantId,
   MonthSummary,
   PricePoint,
   Product,
   Receipt,
   TopProduct,
 } from '../types'
-import { toCents } from './format'
+import { roundCents } from './format'
 
 /**
  * Everything the screens show that is not a stored fact.
@@ -21,23 +21,23 @@ import { toCents } from './format'
 /* ---------------------------------------------------------------- receipts */
 
 export function receiptItemsTotal(receipt: Receipt): number {
-  return toCents(receipt.items.reduce((sum, item) => sum + item.total, 0))
+  return receipt.items.reduce((sum, item) => sum + item.totalCents, 0)
 }
 
 /** Positive when the paper total is higher than the recognised line items. */
 export function receiptDiscrepancy(receipt: Receipt): number {
-  return toCents(receipt.printedTotal - receiptItemsTotal(receipt))
+  return receipt.printedTotalCents - receiptItemsTotal(receipt)
 }
 
 export interface ItemSearchResult {
   purchaseCount: number
-  amount: number
+  amountCents: number
 }
 
 /** Sums every line item whose name contains `term`, across all receipts. */
 export function searchReceiptItems(receipts: Receipt[], term: string): ItemSearchResult {
   const needle = term.trim().toLowerCase()
-  if (!needle) return { purchaseCount: 0, amount: 0 }
+  if (!needle) return { purchaseCount: 0, amountCents: 0 }
 
   const matches = receipts.flatMap((receipt) =>
     receipt.items.filter((item) => item.name.toLowerCase().includes(needle)),
@@ -45,7 +45,7 @@ export function searchReceiptItems(receipts: Receipt[], term: string): ItemSearc
 
   return {
     purchaseCount: matches.length,
-    amount: toCents(matches.reduce((sum, item) => sum + item.total, 0)),
+    amountCents: matches.reduce((sum, item) => sum + item.totalCents, 0),
   }
 }
 
@@ -66,7 +66,7 @@ const FOOD_RAMP = [
 export interface CategorySlice {
   id: CategoryId
   name: string
-  amount: number
+  amountCents: number
   color: string
   /** Share of the whole, 0–1. */
   share: number
@@ -78,17 +78,17 @@ export interface CategorySlice {
  */
 export function categorySlices(totals: CategoryTotal[], categories: Category[]): CategorySlice[] {
   const byId = new Map(categories.map((c) => [c.id, c]))
-  const sum = totals.reduce((acc, t) => acc + t.amount, 0) || 1
+  const sum = totals.reduce((acc, t) => acc + t.amountCents, 0) || 1
 
   const food = totals
     .filter((t) => byId.get(t.categoryId)?.isFood)
-    .sort((a, b) => b.amount - a.amount)
+    .sort((a, b) => b.amountCents - a.amountCents)
     .map((t, index) => ({
       id: t.categoryId,
       name: byId.get(t.categoryId)?.name ?? t.categoryId,
-      amount: t.amount,
+      amountCents: t.amountCents,
       color: FOOD_RAMP[index % FOOD_RAMP.length],
-      share: t.amount / sum,
+      share: t.amountCents / sum,
     }))
 
   const nonFood = totals
@@ -96,9 +96,9 @@ export function categorySlices(totals: CategoryTotal[], categories: Category[]):
     .map((t) => ({
       id: t.categoryId,
       name: byId.get(t.categoryId)?.name ?? t.categoryId,
-      amount: t.amount,
+      amountCents: t.amountCents,
       color: 'var(--cat-nonfood)',
-      share: t.amount / sum,
+      share: t.amountCents / sum,
     }))
 
   return [...food, ...nonFood]
@@ -107,32 +107,33 @@ export function categorySlices(totals: CategoryTotal[], categories: Category[]):
 /* ------------------------------------------------------------------ budget */
 
 export interface BudgetState {
-  spent: number
-  budget: number
-  forecast: number
+  spentCents: number
+  budgetCents: number
+  forecastCents: number
   /** Spend against budget, 0–1 — the figure quoted as "62 % genutzt". */
   usedFraction: number
   /** Bar fill, scaled so the forecast fits: spend / max(budget, forecast). */
   barFraction: number
   /** Where the budget line sits on that bar, 0–1. */
   budgetMarkFraction: number
-  overBudget: number
+  overBudgetCents: number
   /** Difference to the same day of the previous month. */
-  vsPreviousMonth: number
+  vsPreviousMonthCents: number
 }
 
 export function budgetState(summary: MonthSummary): BudgetState {
-  const spent = toCents(summary.food + summary.nonFood)
-  const scale = Math.max(summary.budget, summary.forecast)
+  // Sums and differences of whole cents stay whole cents — nothing to round.
+  const spentCents = summary.foodCents + summary.nonFoodCents
+  const scale = Math.max(summary.budgetCents, summary.forecastCents)
   return {
-    spent,
-    budget: summary.budget,
-    forecast: summary.forecast,
-    usedFraction: spent / summary.budget,
-    barFraction: Math.min(1, spent / scale),
-    budgetMarkFraction: Math.min(1, summary.budget / scale),
-    overBudget: toCents(summary.forecast - summary.budget),
-    vsPreviousMonth: toCents(spent - summary.previousMonthToDate),
+    spentCents,
+    budgetCents: summary.budgetCents,
+    forecastCents: summary.forecastCents,
+    usedFraction: spentCents / summary.budgetCents,
+    barFraction: Math.min(1, spentCents / scale),
+    budgetMarkFraction: Math.min(1, summary.budgetCents / scale),
+    overBudgetCents: summary.forecastCents - summary.budgetCents,
+    vsPreviousMonthCents: spentCents - summary.previousMonthToDateCents,
   }
 }
 
@@ -143,48 +144,49 @@ export interface PriceComparison {
   best: PricePoint
   /** Latest price at every other merchant, cheapest first. */
   others: PricePoint[]
-  /** €/kg or €/l, or null when the product has no pack size. */
-  basePrice: number | null
+  /** €/kg or €/l in cents, or null when the product has no pack size. */
+  basePriceCents: number | null
   baseUnit: string | null
   latest: PricePoint
-  average: number
-  min: number
-  max: number
+  averageCents: number
+  minCents: number
+  maxCents: number
 }
 
 export function comparePrices(product: Product): PriceComparison {
   const sorted = [...product.purchases].sort((a, b) => a.date.localeCompare(b.date))
-  const prices = sorted.map((p) => p.price)
+  const prices = sorted.map((p) => p.priceCents)
 
   const best = sorted.reduce((cheapest, point) =>
     // Later sightings win ties, so the age badge reflects the current best price.
-    point.price <= cheapest.price ? point : cheapest,
+    point.priceCents <= cheapest.priceCents ? point : cheapest,
   )
 
-  const latestPerMerchant = new Map<Merchant, PricePoint>()
-  for (const point of sorted) latestPerMerchant.set(point.merchant, point)
+  const latestPerMerchant = new Map<MerchantId, PricePoint>()
+  for (const point of sorted) latestPerMerchant.set(point.merchantId, point)
   const others = [...latestPerMerchant.values()]
-    .filter((p) => p.merchant !== best.merchant)
-    .sort((a, b) => a.price - b.price)
+    .filter((p) => p.merchantId !== best.merchantId)
+    .sort((a, b) => a.priceCents - b.priceCents)
 
   return {
     best,
     others,
-    basePrice: product.size ? toCents(best.price / product.size.amount) : null,
+    // Dividing by a pack size leaves fractional cents, so both of these round.
+    basePriceCents: product.size ? roundCents(best.priceCents / product.size.amount) : null,
     baseUnit: product.size?.unit ?? null,
     latest: sorted[sorted.length - 1],
-    average: toCents(prices.reduce((a, b) => a + b, 0) / prices.length),
-    min: Math.min(...prices),
-    max: Math.max(...prices),
+    averageCents: roundCents(prices.reduce((a, b) => a + b, 0) / prices.length),
+    minCents: Math.min(...prices),
+    maxCents: Math.max(...prices),
   }
 }
 
 /** Purchases newest first, with the cheapest ones marked for highlighting. */
 export function purchaseHistory(product: Product): Array<PricePoint & { isBest: boolean }> {
-  const min = Math.min(...product.purchases.map((p) => p.price))
+  const min = Math.min(...product.purchases.map((p) => p.priceCents))
   return [...product.purchases]
     .sort((a, b) => b.date.localeCompare(a.date))
-    .map((p) => ({ ...p, isBest: p.price === min }))
+    .map((p) => ({ ...p, isBest: p.priceCents === min }))
 }
 
 export function firstPurchaseDate(product: Product): string {
@@ -213,7 +215,7 @@ export interface SavingsRow {
   /** How many purchases in the period cost more than the best known price. */
   overpaidCount: number
   /** Total avoidable spend for this product. */
-  excess: number
+  excessCents: number
 }
 
 /**
@@ -228,30 +230,30 @@ export function savingsRows(products: Product[], monthStart: string, monthEnd: s
     if (inPeriod.length === 0) continue
 
     const { best } = comparePrices(product)
-    const overpaid = inPeriod.filter((p) => p.price > best.price)
+    const overpaid = inPeriod.filter((p) => p.priceCents > best.priceCents)
     if (overpaid.length === 0) continue
 
     rows.push({
       productId: product.id,
       productName: product.name,
       cheapest: best,
-      worst: overpaid.reduce((a, b) => (b.price > a.price ? b : a)),
+      worst: overpaid.reduce((a, b) => (b.priceCents > a.priceCents ? b : a)),
       overpaidCount: overpaid.length,
-      excess: toCents(overpaid.reduce((sum, p) => sum + (p.price - best.price), 0)),
+      excessCents: overpaid.reduce((sum, p) => sum + (p.priceCents - best.priceCents), 0),
     })
   }
 
-  return rows.sort((a, b) => b.excess - a.excess)
+  return rows.sort((a, b) => b.excessCents - a.excessCents)
 }
 
 export function totalExcess(rows: SavingsRow[]): number {
-  return toCents(rows.reduce((sum, row) => sum + row.excess, 0))
+  return rows.reduce((sum, row) => sum + row.excessCents, 0)
 }
 
 /* ------------------------------------------------------------ top products */
 
 export function rankedTopProducts(products: TopProduct[], limit = 10): TopProduct[] {
-  return [...products].sort((a, b) => b.amount - a.amount).slice(0, limit)
+  return [...products].sort((a, b) => b.amountCents - a.amountCents).slice(0, limit)
 }
 
 /* ------------------------------------------------------------------ charts */

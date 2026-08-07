@@ -6,12 +6,12 @@ import styles from './charts.module.css'
 
 /* ------------------------------------------------------------------- donut */
 
-export function CategoryDonut({ slices, total }: { slices: CategorySlice[]; total: number }) {
+export function CategoryDonut({ slices, totalCents }: { slices: CategorySlice[]; totalCents: number }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
       <div className={styles.donut} style={{ background: donutGradient(slices) }} role="img" aria-label="Ausgaben pro Kategorie">
         <div className={styles.donutHole}>
-          <div className={styles.donutValue}>{formatEuroWhole(total)}</div>
+          <div className={styles.donutValue}>{formatEuroWhole(totalCents)}</div>
           <div className={styles.donutCaption}>{slices.length} Kategorien</div>
         </div>
       </div>
@@ -20,7 +20,7 @@ export function CategoryDonut({ slices, total }: { slices: CategorySlice[]; tota
           <li key={slice.id} className={styles.legendRow}>
             <span className={styles.swatch} style={{ background: slice.color }} />
             <span className={styles.legendName}>{slice.name}</span>
-            <span className={styles.legendValue}>{formatEuro(slice.amount)}</span>
+            <span className={styles.legendValue}>{formatEuro(slice.amountCents)}</span>
           </li>
         ))}
       </ul>
@@ -100,24 +100,24 @@ export function SparkAxis({ children }: { children: ReactNode }) {
 
 export interface Bar {
   label: string
-  amount: number
+  amountCents: number
 }
 
-/** Vertical bars. Anything above `overThreshold` turns red — the budget breach. */
-export function BarChart({ bars, overThreshold }: { bars: Bar[]; overThreshold?: number }) {
-  const max = Math.max(...bars.map((b) => b.amount)) || 1
+/** Vertical bars. Anything above `overThresholdCents` turns red — the budget breach. */
+export function BarChart({ bars, overThresholdCents }: { bars: Bar[]; overThresholdCents?: number }) {
+  const max = Math.max(...bars.map((b) => b.amountCents)) || 1
 
   return (
     <div className={styles.bars}>
       {bars.map((bar) => {
-        const isEmpty = bar.amount === 0
-        const isOver = overThreshold !== undefined && bar.amount > overThreshold
+        const isEmpty = bar.amountCents === 0
+        const isOver = overThresholdCents !== undefined && bar.amountCents > overThresholdCents
         const modifier = isEmpty ? styles['bar--empty'] : isOver ? styles['bar--over'] : ''
         return (
           <div key={bar.label} className={styles.barColumn}>
-            <div className={styles.barValue}>{isEmpty ? '–' : formatEuroWhole(bar.amount)}</div>
+            <div className={styles.barValue}>{isEmpty ? '–' : formatEuroWhole(bar.amountCents)}</div>
             {/* 4px keeps empty periods visible as a hairline rather than nothing. */}
-            <div className={`${styles.bar} ${modifier}`} style={{ height: Math.max(4, Math.round((bar.amount / max) * 96)) }} />
+            <div className={`${styles.bar} ${modifier}`} style={{ height: Math.max(4, Math.round((bar.amountCents / max) * 96)) }} />
             <div className={styles.barLabel}>{bar.label}</div>
           </div>
         )
@@ -129,7 +129,7 @@ export function BarChart({ bars, overThreshold }: { bars: Bar[]; overThreshold?:
 /* -------------------------------------------------------- horizontal bars */
 
 export function CategoryBars({ slices }: { slices: CategorySlice[] }) {
-  const max = Math.max(...slices.map((s) => s.amount)) || 1
+  const max = Math.max(...slices.map((s) => s.amountCents)) || 1
 
   return (
     <div className={styles.rows}>
@@ -139,10 +139,10 @@ export function CategoryBars({ slices }: { slices: CategorySlice[] }) {
           <div className={styles.rowTrack}>
             <div
               className={styles.rowFill}
-              style={{ width: `${((slice.amount / max) * 100).toFixed(1)}%`, background: slice.color }}
+              style={{ width: `${((slice.amountCents / max) * 100).toFixed(1)}%`, background: slice.color }}
             />
           </div>
-          <div className={styles.rowValue}>{formatEuro(slice.amount)}</div>
+          <div className={styles.rowValue}>{formatEuro(slice.amountCents)}</div>
         </div>
       ))}
     </div>

@@ -6,6 +6,7 @@ import {
   getCategories,
   getCategoryTotals,
   getHealthSummary,
+  getMerchantName,
   getMonthSummary,
   getRecentReceipts,
 } from '../data'
@@ -27,15 +28,15 @@ import styles from './Dashboard.module.css'
 
 export function Dashboard() {
   const { settings } = useAppState()
-  const summary = { ...getMonthSummary(), budget: settings.monthlyBudget }
+  const summary = { ...getMonthSummary(), budgetCents: settings.monthlyBudgetCents }
   const budget = budgetState(summary)
   const slices = categorySlices(getCategoryTotals(), getCategories())
   const health = getHealthSummary()
   const recent = getRecentReceipts()
 
   const score = health.scores[health.scores.length - 1].score
-  const foodSpend = health.unprocessed + health.processed
-  const unprocessedShare = health.unprocessed / foodSpend
+  const foodSpendCents = health.unprocessedCents + health.processedCents
+  const unprocessedShare = health.unprocessedCents / foodSpendCents
   const previousMonthName = formatMonthName(shiftMonth(summary.month, -1))
 
   return (
@@ -54,15 +55,15 @@ export function Dashboard() {
         <div className={styles.totals}>
           <div style={{ flex: 1 }}>
             <div className={styles.totalLabel}>Lebensmittel</div>
-            <div className={styles.totalValue}>{formatEuro(summary.food)}</div>
+            <div className={styles.totalValue}>{formatEuro(summary.foodCents)}</div>
           </div>
           <div style={{ flex: 1 }}>
             <div className={styles.totalLabel}>Non-Food</div>
-            <div className={styles.totalValue}>{formatEuro(summary.nonFood)}</div>
+            <div className={styles.totalValue}>{formatEuro(summary.nonFoodCents)}</div>
           </div>
           <div className={styles.grandTotal}>
             <div className={styles.totalLabel}>Gesamt</div>
-            <div className={styles.grandTotalValue}>{formatEuro(budget.spent)}</div>
+            <div className={styles.grandTotalValue}>{formatEuro(budget.spentCents)}</div>
           </div>
         </div>
         <div className={styles.asOf}>
@@ -74,42 +75,42 @@ export function Dashboard() {
         <div className={styles.cardHead}>
           <div className="cardTitle">Monatsbudget</div>
           <div className={styles.budgetSpent}>
-            {formatEuro(budget.spent)} von {formatEuro(budget.budget)}
+            {formatEuro(budget.spentCents)} von {formatEuro(budget.budgetCents)}
           </div>
         </div>
         <ProgressBar
           fraction={budget.barFraction}
           markerFraction={budget.budgetMarkFraction}
-          over={budget.spent > budget.budget}
+          over={budget.spentCents > budget.budgetCents}
           label="Monatsbudget"
         />
         <div className={styles.scaleRow}>
           <div>{formatPercent(budget.usedFraction)} genutzt</div>
-          <div>Budget {formatEuroWhole(budget.budget)}</div>
+          <div>Budget {formatEuroWhole(budget.budgetCents)}</div>
         </div>
 
-        {budget.overBudget > 0 ? (
+        {budget.overBudgetCents > 0 ? (
           <div className={styles.forecast}>
-            <div className={styles.forecastTitle}>Bei diesem Tempo: ca. {formatEuroWhole(budget.forecast)}</div>
+            <div className={styles.forecastTitle}>Bei diesem Tempo: ca. {formatEuroWhole(budget.forecastCents)}</div>
             <div className={styles.forecastDetail}>
-              {formatEuroWhole(budget.overBudget)} über Budget zum Monatsende
+              {formatEuroWhole(budget.overBudgetCents)} über Budget zum Monatsende
             </div>
           </div>
         ) : (
           <div className={`${styles.forecast} ${styles['forecast--ok']}`}>
-            <div className={styles.forecastTitle}>Bei diesem Tempo: ca. {formatEuroWhole(budget.forecast)}</div>
+            <div className={styles.forecastTitle}>Bei diesem Tempo: ca. {formatEuroWhole(budget.forecastCents)}</div>
             <div className={styles.forecastDetail}>
-              {formatEuroWhole(Math.abs(budget.overBudget))} unter Budget zum Monatsende
+              {formatEuroWhole(Math.abs(budget.overBudgetCents))} unter Budget zum Monatsende
             </div>
           </div>
         )}
 
         <div className={styles.comparison}>
-          <span className={budget.vsPreviousMonth > 0 ? styles.delta : `${styles.delta} ${styles['delta--down']}`}>
-            {formatEuroSigned(budget.vsPreviousMonth)}
+          <span className={budget.vsPreviousMonthCents > 0 ? styles.delta : `${styles.delta} ${styles['delta--down']}`}>
+            {formatEuroSigned(budget.vsPreviousMonthCents)}
           </span>
           gegenüber {previousMonthName} am {dayOfMonth(summary.asOf)}. (
-          {formatEuro(summary.previousMonthToDate)})
+          {formatEuro(summary.previousMonthToDateCents)})
         </div>
       </section>
 
@@ -117,7 +118,7 @@ export function Dashboard() {
         <div className="cardTitle" style={{ marginBottom: 16 }}>
           Ausgaben pro Kategorie
         </div>
-        <CategoryDonut slices={slices} total={budget.spent} />
+        <CategoryDonut slices={slices} totalCents={budget.spentCents} />
       </section>
 
       <Link to="/gesundheit" className={`card ${styles.healthCard}`}>
@@ -140,14 +141,14 @@ export function Dashboard() {
         <div className={styles.listTitle}>Letzte Einkäufe</div>
         {recent.map((receipt) => (
           <Link key={receipt.id} to={`/einkauf/${receipt.id}`} className={styles.receiptRow}>
-            <Avatar name={receipt.merchant} />
+            <Avatar name={getMerchantName(receipt.merchantId)} />
             <span style={{ flex: 1 }}>
-              <span className={styles.merchant}>{receipt.merchant}</span>
+              <span className={styles.merchant}>{getMerchantName(receipt.merchantId)}</span>
               <span className={styles.receiptMeta}>
                 {formatDate(receipt.date)} · {receipt.items.length} Positionen
               </span>
             </span>
-            <span className={styles.receiptTotal}>{formatEuro(receipt.printedTotal)}</span>
+            <span className={styles.receiptTotal}>{formatEuro(receipt.printedTotalCents)}</span>
           </Link>
         ))}
       </section>

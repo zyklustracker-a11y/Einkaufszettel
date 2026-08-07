@@ -1,7 +1,7 @@
 import { Navigate, useParams } from 'react-router-dom'
 import { Sparkline, SparkAxis } from '../components/charts'
 import { BackLink } from '../components/ui'
-import { getProduct } from '../data'
+import { getMerchantName, getProduct } from '../data'
 import { comparePrices, firstPurchaseDate, purchaseHistory } from '../lib/derive'
 import {
   formatBasePrice,
@@ -32,17 +32,17 @@ export function ProductDetail() {
   const product = productId ? getProduct(productId) : undefined
   if (!product) return <Navigate to="/bestpreise" replace />
 
-  const { basePrice, baseUnit, average, min, max } = comparePrices(product)
+  const { basePriceCents, baseUnit, averageCents, minCents, maxCents } = comparePrices(product)
   const history = purchaseHistory(product)
   // Oldest first, so the line reads left to right in time.
-  const series = [...product.purchases].sort((a, b) => a.date.localeCompare(b.date)).map((p) => p.price)
+  const series = [...product.purchases].sort((a, b) => a.date.localeCompare(b.date)).map((p) => p.priceCents)
 
   return (
     <div className="screen screen--tabbed">
       <BackLink to="/bestpreise">Bestpreise</BackLink>
       <h1 className="pageTitle">{product.name}</h1>
       <p className={styles.subtitle}>
-        {formatBasePrice(basePrice, baseUnit)} · {product.purchases.length} Käufe seit{' '}
+        {formatBasePrice(basePriceCents, baseUnit)} · {product.purchases.length} Käufe seit{' '}
         {formatMonthNumeric(firstPurchaseDate(product))}
       </p>
 
@@ -53,20 +53,20 @@ export function ProductDetail() {
         </div>
         <Sparkline values={series} height={110} midline label={`Preisverlauf ${product.name}`} />
         <SparkAxis>
-          <span>{formatEuro(min)}</span>
-          <span>Ø {formatEuro(average)}</span>
-          <span>{formatEuro(max)}</span>
+          <span>{formatEuro(minCents)}</span>
+          <span>Ø {formatEuro(averageCents)}</span>
+          <span>{formatEuro(maxCents)}</span>
         </SparkAxis>
       </section>
 
       <section className={styles.historyCard}>
         <div className={styles.historyTitle}>Alle Käufe</div>
         {history.map((purchase) => (
-          <div key={`${purchase.merchant}-${purchase.date}`} className={styles.row}>
-            <span className={styles.merchant}>{purchase.merchant}</span>
+          <div key={`${purchase.merchantId}-${purchase.date}`} className={styles.row}>
+            <span className={styles.merchant}>{getMerchantName(purchase.merchantId)}</span>
             <span className={styles.date}>{formatDate(purchase.date)}</span>
             <span className={purchase.isBest ? `${styles.price} ${styles['price--best']}` : styles.price}>
-              {formatEuro(purchase.price)}
+              {formatEuro(purchase.priceCents)}
             </span>
           </div>
         ))}

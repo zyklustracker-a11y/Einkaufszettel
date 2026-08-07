@@ -23,55 +23,55 @@ export const today = '2026-08-14'
 export const monthSummary: MonthSummary = {
   month: '2026-08-01',
   asOf: today,
-  food: 236,
-  nonFood: 41,
-  budget: 450,
-  forecast: 490,
+  foodCents: 23600,
+  nonFoodCents: 4100,
+  budgetCents: 45000,
+  forecastCents: 49000,
   receiptCount: 9,
-  previousMonthToDate: 252,
+  previousMonthToDateCents: 25200,
 }
 
 /** Sums to the month total: 236 € food + 41 € non-food = 277 €. */
 export const categoryTotals: CategoryTotal[] = [
-  { categoryId: 'produce', amount: 58.4 },
-  { categoryId: 'meat', amount: 47.1 },
-  { categoryId: 'dairy', amount: 32.8 },
-  { categoryId: 'sweets', amount: 24.3 },
-  { categoryId: 'bakery', amount: 21.5 },
-  { categoryId: 'drinks', amount: 18.9 },
-  { categoryId: 'readymeals', amount: 16.6 },
-  { categoryId: 'staples', amount: 16.4 },
-  { categoryId: 'nonfood', amount: 41.0 },
+  { categoryId: 'produce', amountCents: 5840 },
+  { categoryId: 'meat', amountCents: 4710 },
+  { categoryId: 'dairy', amountCents: 3280 },
+  { categoryId: 'sweets', amountCents: 2430 },
+  { categoryId: 'bakery', amountCents: 2150 },
+  { categoryId: 'drinks', amountCents: 1890 },
+  { categoryId: 'readymeals', amountCents: 1660 },
+  { categoryId: 'staples', amountCents: 1640 },
+  { categoryId: 'nonfood', amountCents: 4100 },
 ]
 
 export const trends: Record<RangeId, TrendPoint[]> = {
   week: [
-    { label: 'Mo', amount: 0 },
-    { label: 'Di', amount: 23.49 },
-    { label: 'Mi', amount: 0 },
-    { label: 'Do', amount: 42.17 },
-    { label: 'Fr', amount: 11.8 },
-    { label: 'Sa', amount: 61.3 },
-    { label: 'So', amount: 0 },
+    { label: 'Mo', amountCents: 0 },
+    { label: 'Di', amountCents: 2349 },
+    { label: 'Mi', amountCents: 0 },
+    { label: 'Do', amountCents: 4217 },
+    { label: 'Fr', amountCents: 1180 },
+    { label: 'Sa', amountCents: 6130 },
+    { label: 'So', amountCents: 0 },
   ],
   month: [
-    { label: 'KW31', amount: 68.4 },
-    { label: 'KW32', amount: 96.2 },
-    { label: 'KW33', amount: 112.4 },
-    { label: 'KW34', amount: 0 },
-    { label: 'KW35', amount: 0 },
+    { label: 'KW31', amountCents: 6840 },
+    { label: 'KW32', amountCents: 9620 },
+    { label: 'KW33', amountCents: 11240 },
+    { label: 'KW34', amountCents: 0 },
+    { label: 'KW35', amountCents: 0 },
   ],
   year: [
-    { label: 'Mär', amount: 402.1 },
-    { label: 'Apr', amount: 438.9 },
-    { label: 'Mai', amount: 415.6 },
-    { label: 'Jun', amount: 449.3 },
-    { label: 'Jul', amount: 471.2 },
-    { label: 'Aug', amount: 277 },
+    { label: 'Mär', amountCents: 40210 },
+    { label: 'Apr', amountCents: 43890 },
+    { label: 'Mai', amountCents: 41560 },
+    { label: 'Jun', amountCents: 44930 },
+    { label: 'Jul', amountCents: 47120 },
+    { label: 'Aug', amountCents: 27700 },
   ],
   custom: [
-    { label: '1.–7.', amount: 68.4 },
-    { label: '8.–14.', amount: 208.6 },
+    { label: '1.–7.', amountCents: 6840 },
+    { label: '8.–14.', amountCents: 20860 },
   ],
 }
 
@@ -84,16 +84,16 @@ export const rangeLabels: Record<RangeId, { tab: string; period: string }> = {
 
 /** Top spend per product this month, sorted in `derive.ts`. */
 export const topProducts: TopProduct[] = [
-  { name: 'Hähnchenbrust', purchaseCount: 4, amount: 26.96 },
-  { name: 'Lachsfilet', purchaseCount: 1, amount: 12.49 },
-  { name: 'Rinderhack', purchaseCount: 2, amount: 9.98 },
-  { name: 'Olivenöl', purchaseCount: 1, amount: 8.49 },
-  { name: 'Gouda am Stück', purchaseCount: 3, amount: 8.37 },
-  { name: 'Kaffeebohnen', purchaseCount: 1, amount: 7.99 },
-  { name: 'Eier (10er)', purchaseCount: 2, amount: 6.68 },
-  { name: 'Sauerteigbrot', purchaseCount: 2, amount: 5.68 },
-  { name: 'Tiefkühl-Pizza', purchaseCount: 2, amount: 5.58 },
-  { name: 'Butter', purchaseCount: 2, amount: 5.18 },
+  { name: 'Hähnchenbrust', purchaseCount: 4, amountCents: 2696 },
+  { name: 'Lachsfilet', purchaseCount: 1, amountCents: 1249 },
+  { name: 'Rinderhack', purchaseCount: 2, amountCents: 998 },
+  { name: 'Olivenöl', purchaseCount: 1, amountCents: 849 },
+  { name: 'Gouda am Stück', purchaseCount: 3, amountCents: 837 },
+  { name: 'Kaffeebohnen', purchaseCount: 1, amountCents: 799 },
+  { name: 'Eier (10er)', purchaseCount: 2, amountCents: 668 },
+  { name: 'Sauerteigbrot', purchaseCount: 2, amountCents: 568 },
+  { name: 'Tiefkühl-Pizza', purchaseCount: 2, amountCents: 558 },
+  { name: 'Butter', purchaseCount: 2, amountCents: 518 },
 ]
 
 export const healthSummary: HealthSummary = {
@@ -106,29 +106,29 @@ export const healthSummary: HealthSummary = {
     { month: '2026-08-01', score: 72 },
   ],
   // 64 % / 36 % of the 236 € food spend.
-  unprocessed: 151.04,
-  processed: 84.96,
+  unprocessedCents: 15104,
+  processedCents: 8496,
 }
 
 export const healthConcerns: HealthConcern[] = [
   {
     flag: 'seedOil',
     title: 'Samenöle',
-    amount: 19,
+    amountCents: 1900,
     detail: 'Sonnenblumenöl, Rapsöl und Fertigprodukte mit Samenölen – 7 Positionen im August.',
     tip: 'Statt Sonnenblumenöl: Butter, Ghee oder Olivenöl.',
   },
   {
     flag: 'gluten',
     title: 'Gluten',
-    amount: 34,
+    amountCents: 3400,
     detail: '34 € für glutenhaltige Backwaren – vor allem Toast und Brötchen.',
     tip: 'Statt Weizentoast: Sauerteigbrot mit langer Führung oder Buchweizenbrot.',
   },
   {
     flag: 'cheapDairy',
     title: 'Billigmilch',
-    amount: 12,
+    amountCents: 1200,
     detail: 'Eigenmarken-Frischkäse und H-Milch aus konventioneller Haltung.',
     tip: 'Statt Eigenmarke: Weidemilch oder Bio-Frischkäse – ca. 0,40 € mehr pro Packung.',
   },
@@ -141,6 +141,6 @@ export const household: HouseholdMember[] = [
 ]
 
 export const defaultSettings: Settings = {
-  monthlyBudget: 450,
+  monthlyBudgetCents: 45000,
   deleteReceiptPhotos: true,
 }

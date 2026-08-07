@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { getScannedReceipt } from '../data'
+import { getMerchantName, getScannedReceipt } from '../data'
 import { formatDate } from '../lib/format'
 import styles from './ScanProcessing.module.css'
 
@@ -25,7 +25,7 @@ export function ScanProcessing() {
   }, [navigate])
 
   const steps = [
-    `Händler erkannt: ${receipt.merchant}`,
+    `Händler erkannt: ${getMerchantName(receipt.merchantId)}`,
     `Datum: ${formatDate(receipt.date)}`,
     `${receipt.items.length} Positionen normalisieren…`,
   ]

@@ -6,6 +6,7 @@
  * await them) — no component needs to change shape.
  */
 import { categories, healthFlagOrder, healthFlags } from '../mocks/categories'
+import { merchants } from '../mocks/merchants'
 import { receipts, scannedReceiptId } from '../mocks/receipts'
 import { products } from '../mocks/products'
 import {
@@ -20,7 +21,16 @@ import {
   topProducts,
   trends,
 } from '../mocks/summary'
-import type { Category, HealthFlag, HealthFlagId, Product, RangeId, Receipt } from '../types'
+import type {
+  Category,
+  HealthFlag,
+  HealthFlagId,
+  Merchant,
+  MerchantId,
+  Product,
+  RangeId,
+  Receipt,
+} from '../types'
 
 export const getToday = () => today
 
@@ -28,6 +38,11 @@ export const getCategories = (): Category[] => categories
 export const getCategory = (id: string): Category | undefined => categories.find((c) => c.id === id)
 export const getHealthFlag = (id: HealthFlagId): HealthFlag => healthFlags[id]
 export const getHealthFlagLegend = (): HealthFlag[] => healthFlagOrder.map((id) => healthFlags[id])
+
+export const getMerchants = (): Merchant[] => merchants
+export const getMerchant = (id: MerchantId): Merchant | undefined => merchants.find((m) => m.id === id)
+/** Display name for a merchant id; falls back to the raw id if it is unknown. */
+export const getMerchantName = (id: MerchantId): string => getMerchant(id)?.name ?? id
 
 export const getMonthSummary = () => monthSummary
 export const getCategoryTotals = () => categoryTotals

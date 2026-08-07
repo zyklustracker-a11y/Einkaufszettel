@@ -9,7 +9,7 @@ interface AppState {
   theme: Theme
   toggleTheme: () => void
   settings: Settings
-  setMonthlyBudget: (value: number) => void
+  setMonthlyBudgetCents: (value: number) => void
   toggleDeleteReceiptPhotos: () => void
 }
 
@@ -54,8 +54,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const toggleTheme = useCallback(() => setTheme((t) => (t === 'dark' ? 'light' : 'dark')), [])
 
-  const setMonthlyBudget = useCallback(
-    (monthlyBudget: number) => setSettings((s) => ({ ...s, monthlyBudget })),
+  const setMonthlyBudgetCents = useCallback(
+    (monthlyBudgetCents: number) => setSettings((s) => ({ ...s, monthlyBudgetCents })),
     [],
   )
 
@@ -65,8 +65,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   )
 
   const value = useMemo(
-    () => ({ theme, toggleTheme, settings, setMonthlyBudget, toggleDeleteReceiptPhotos }),
-    [theme, toggleTheme, settings, setMonthlyBudget, toggleDeleteReceiptPhotos],
+    () => ({ theme, toggleTheme, settings, setMonthlyBudgetCents, toggleDeleteReceiptPhotos }),
+    [theme, toggleTheme, settings, setMonthlyBudgetCents, toggleDeleteReceiptPhotos],
   )
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>
