@@ -34,14 +34,6 @@ body {
 /*
  * Pinned to the screen rather than sized in viewport units — `100dvh` on `.app`
  * is unreliable on the first paint of an installed PWA.
- *
- * `inset: 0` is enough because the layout viewport now reaches the bottom edge
- * of the screen. It did not while the status bar style was `black-translucent`:
- * iOS then anchored the viewport at the top of the screen but cut its height by
- * the top inset (measured: screen 852, innerHeight 793, inset-top 59), leaving
- * a 59pt strip below it. Stretching this element over that strip was tried and
- * fails — iOS paints a background there but renders no content, so the tab bar
- * labels landed at y 799–811 and vanished. See index.html for the fix.
  */
 #root {
   position: fixed;
@@ -78,7 +70,22 @@ button {
   flex-direction: column;
   width: 100%;
   max-width: 430px;
-  height: 100%;
+  /*
+   * Taller than the layout viewport by the top inset — the one place where this
+   * app compensates for an iOS quirk, measured on the device:
+   *
+   *     screen.height 852 · innerHeight 793 · safe-area-inset-top 59
+   *
+   * An installed PWA gets a viewport anchored at the top of the screen but cut
+   * short by the status bar's height, so the bottom 59pt are out of reach. That
+   * strip still *paints* — a background put there shows up — but it renders no
+   * content: tab labels placed in it simply disappeared. The shell therefore
+   * stretches over the strip so nothing foreign shows through, while every bit
+   * of content stays inside the viewport (see `.screen--tabbed` and `.bar`).
+   *
+   * Where the inset is 0 — desktop, Android, a browser tab — this is `100%`.
+   */
+  height: calc(100% + env(safe-area-inset-top, 0px));
   margin: 0 auto;
   background: var(--bg);
   overflow: hidden;
@@ -97,8 +104,10 @@ button {
 }
 
 .screen--tabbed {
-  /* Same inline env() as `.bar`, so the two stay in step. */
-  padding-bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom, 0px) + 28px);
+  /* Mirrors `.bar`'s full height, so scrolled content clears it. */
+  padding-bottom: calc(
+    var(--tabbar-height) + env(safe-area-inset-bottom, 0px) + env(safe-area-inset-top, 0px) + 28px
+  );
 }
 
 /* Full-bleed screens (camera, processing) manage their own insets. */

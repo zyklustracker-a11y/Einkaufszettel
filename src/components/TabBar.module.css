@@ -6,11 +6,20 @@
   z-index: 20;
   display: flex;
   align-items: flex-start;
-  /* env() applied here, not via a variable — see the note in tokens.css. The
-     bottom padding reserves the home-indicator strip so the bar's own
-     background, not the page, sits behind it. */
-  height: calc(var(--tabbar-height) + env(safe-area-inset-bottom, 0px));
-  padding: 8px 6px env(safe-area-inset-bottom, 0px);
+  /*
+   * Two things are reserved below the tabs, and the bar grows by both:
+   * the home indicator (`inset-bottom`), and the strip of screen the layout
+   * viewport cannot reach on an installed iOS PWA (`inset-top` — see the note
+   * on `.app` in global.css). Growing downwards lets the bar's own background
+   * cover that strip while the tabs themselves stay inside the viewport, where
+   * iOS still renders them.
+   *
+   * env() is used directly here, never through a custom property.
+   */
+  height: calc(
+    var(--tabbar-height) + env(safe-area-inset-bottom, 0px) + env(safe-area-inset-top, 0px)
+  );
+  padding: 8px 6px calc(env(safe-area-inset-bottom, 0px) + env(safe-area-inset-top, 0px));
   background: var(--card);
   border-top: 1px solid var(--line);
 }
