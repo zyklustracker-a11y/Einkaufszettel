@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { CategoryDonut } from '../components/charts'
 import { GearIcon } from '../components/icons'
 import { Avatar, ProgressBar } from '../components/ui'
+import { ViewportProbe } from '../components/ViewportProbe'
 import {
   getCategories,
   getCategoryTotals,
@@ -41,6 +42,9 @@ export function Dashboard() {
 
   return (
     <div className="screen screen--tabbed">
+      {/* TEMPORARY: measuring the strip below the tab bar. Remove afterwards. */}
+      <ViewportProbe />
+
       <header className={styles.header}>
         <div>
           <div className={styles.eyebrow}>Übersicht</div>
