@@ -20,5 +20,8 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Tests run on Node, not in the browser: they are checked by running them
+  // (`npm test`), not by the app build, which has no Node type definitions.
+  "exclude": ["src/**/*.test.ts"]
 }

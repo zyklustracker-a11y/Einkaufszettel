@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { BottomSheet } from '../components/BottomSheet'
-import { FlagLegend, ReceiptItemList } from '../components/ReceiptItemList'
+import { ReceiptItemList, TraitLegend } from '../components/ReceiptItemList'
 import { getCategories, getMerchantName, getScannedReceipt } from '../data'
 import { receiptItemsTotal } from '../lib/derive'
 import { formatDate, formatEuro, roundCents } from '../lib/format'
@@ -101,7 +101,7 @@ export function ScanReview() {
 
         <div className={styles.hint}>Zeile antippen zum Bearbeiten</div>
         <ReceiptItemList items={items} onEdit={setEditing} />
-        <FlagLegend />
+        <TraitLegend items={items} />
       </div>
 
       <div className={styles.footer}>

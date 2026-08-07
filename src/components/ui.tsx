@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { getHealthFlag } from '../data'
 import { initials } from '../lib/format'
-import type { HealthFlagId } from '../types'
+import type { Trait } from '../types'
 import { ChevronLeftIcon, SearchIcon } from './icons'
 import styles from './ui.module.css'
 
@@ -15,12 +14,37 @@ export function BackLink({ to, children }: { to: string; children: ReactNode }) 
   )
 }
 
-/** Single-letter health warning, e.g. `G` for gluten. */
-export function FlagBadge({ flag }: { flag: HealthFlagId }) {
-  const { letter, label } = getHealthFlag(flag)
+/**
+ * The trait's 1–2 character badge, e.g. `G` for gluten. The tone follows the
+ * weight: negative warns, 0 is merely observed, positive is a credit — a
+ * Rohmilch (+2) must not look like a warning.
+ */
+export function TraitBadge({ trait }: { trait: Trait }) {
   return (
-    <span className={styles.flag} title={label} aria-label={label}>
-      {letter}
+    <span
+      className={`${styles.trait} ${styles[`trait--${toneOf(trait)}`]}`}
+      title={trait.label}
+      aria-label={trait.label}
+    >
+      {trait.short}
+    </span>
+  )
+}
+
+export type TraitTone = 'critical' | 'neutral' | 'positive'
+
+export function toneOf(trait: Trait): TraitTone {
+  if (trait.weight < 0) return 'critical'
+  if (trait.weight > 0) return 'positive'
+  return 'neutral'
+}
+
+/** `+2` — stands in for the traits that did not fit on the row. */
+export function TraitOverflow({ hidden }: { hidden: Trait[] }) {
+  const names = hidden.map((trait) => trait.label).join(', ')
+  return (
+    <span className={`${styles.trait} ${styles['trait--neutral']}`} title={names} aria-label={names}>
+      +{hidden.length}
     </span>
   )
 }

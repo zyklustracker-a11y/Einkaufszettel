@@ -1,9 +1,16 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Avatar, BackLink, Toggle } from '../components/ui'
-import { getHousehold } from '../data'
+import { Avatar, BackLink, Toggle, toneOf } from '../components/ui'
+import { getHousehold, getTraits } from '../data'
 import { useAppState } from '../state/AppState'
 import styles from './Settings.module.css'
+
+/** `−3` · `0` · `+2` — the sign carries the meaning, so it is always shown. */
+function formatWeight(weight: number): string {
+  if (weight > 0) return `+${weight}`
+  if (weight < 0) return `−${Math.abs(weight)}`
+  return '0'
+}
 
 export function SettingsScreen() {
   const { theme, toggleTheme, settings, setMonthlyBudgetCents, toggleDeleteReceiptPhotos } = useAppState()
@@ -92,6 +99,38 @@ export function SettingsScreen() {
             </span>
             <span className={member.isCurrentUser ? `${styles.badge} ${styles['badge--current']}` : styles.badge}>
               {member.isCurrentUser ? 'Angemeldet' : 'Mitglied'}
+            </span>
+          </div>
+        ))}
+      </section>
+
+      <section className={styles.householdCard}>
+        <div className={styles.householdTitle}>Merkmale</div>
+        <p className={styles.traitIntro}>
+          Worauf die Auswertung achtet. Bearbeiten kommt, sobald die Datenbank steht.
+        </p>
+        {getTraits().map((trait) => (
+          <div key={trait.id} className={styles.traitRow}>
+            <span
+              className={`${styles.traitShort} ${styles[`traitShort--${toneOf(trait)}`]}`}
+              aria-hidden="true"
+            >
+              {trait.short}
+            </span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span className={styles.traitLabel}>{trait.label}</span>
+              <span className={styles.traitMeta}>
+                {trait.group ? `Gruppe ${trait.group}` : 'ohne Gruppe'}
+                {trait.isDefault ? '' : ' · selbst angelegt'}
+              </span>
+            </span>
+            <span className={styles.traitWeight}>{formatWeight(trait.weight)}</span>
+            <span
+              className={
+                trait.active ? `${styles.badge} ${styles['badge--current']}` : styles.badge
+              }
+            >
+              {trait.active ? 'Aktiv' : 'Aus'}
             </span>
           </div>
         ))}

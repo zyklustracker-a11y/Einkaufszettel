@@ -1,19 +1,31 @@
-import { getCategory, getHealthFlagLegend } from '../data'
+import { getActiveTraits, getCategory } from '../data'
 import { formatEuro, formatQuantity } from '../lib/format'
-import type { ReceiptItem } from '../types'
-import { CategoryChip, FlagBadge } from './ui'
+import { itemTraits } from '../lib/score'
+import type { ReceiptItem, Trait } from '../types'
+import { CategoryChip, TraitBadge, TraitOverflow } from './ui'
 import styles from './ReceiptItemList.module.css'
 
-function Row({ item }: { item: ReceiptItem }) {
+/**
+ * At most this many badges per row; the rest collapse into `+N`. Without the
+ * cap a heavily tagged item (the ready lasagne carries six) tears the row.
+ */
+const MAX_BADGES = 3
+
+function Row({ item, traits }: { item: ReceiptItem; traits: Trait[] }) {
+  const applied = itemTraits(item, traits)
+  const shown = applied.slice(0, MAX_BADGES)
+  const hidden = applied.slice(MAX_BADGES)
+
   return (
     <>
       <span style={{ flex: 1, minWidth: 0 }}>
         <span className={styles.name}>{item.name}</span>
         <span className={styles.meta}>
           <CategoryChip>{getCategory(item.categoryId)?.name ?? item.categoryId}</CategoryChip>
-          {item.flags.map((flag) => (
-            <FlagBadge key={flag} flag={flag} />
+          {shown.map((trait) => (
+            <TraitBadge key={trait.id} trait={trait} />
           ))}
+          {hidden.length > 0 && <TraitOverflow hidden={hidden} />}
         </span>
       </span>
       <span style={{ textAlign: 'right' }}>
@@ -35,6 +47,8 @@ export function ReceiptItemList({
   items: ReceiptItem[]
   onEdit?: (item: ReceiptItem) => void
 }) {
+  const traits = getActiveTraits()
+
   return (
     <div className={styles.list}>
       {items.map((item) =>
@@ -45,11 +59,11 @@ export function ReceiptItemList({
             className={`${styles.row} ${styles['row--tappable']}`}
             onClick={() => onEdit(item)}
           >
-            <Row item={item} />
+            <Row item={item} traits={traits} />
           </button>
         ) : (
           <div key={item.id} className={styles.row}>
-            <Row item={item} />
+            <Row item={item} traits={traits} />
           </div>
         ),
       )}
@@ -57,13 +71,23 @@ export function ReceiptItemList({
   )
 }
 
-/** Key for the single-letter health badges. */
-export function FlagLegend() {
+/**
+ * Key for the badges, built from the traits that actually occur in `items`.
+ * Not hard-wired: a new trait shows up here on its own, and a trait hidden
+ * behind `+2` is still explained.
+ */
+export function TraitLegend({ items }: { items: ReceiptItem[] }) {
+  const traits = getActiveTraits()
+  const seen = new Set(items.flatMap((item) => itemTraits(item, traits)).map((trait) => trait.id))
+  const legend = traits.filter((trait) => seen.has(trait.id))
+
+  if (legend.length === 0) return null
+
   return (
     <div className={styles.legend}>
-      {getHealthFlagLegend().map((flag) => (
-        <span key={flag.id}>
-          {flag.letter} {flag.label}
+      {legend.map((trait) => (
+        <span key={trait.id}>
+          <span className={styles.legendShort}>{trait.short}</span> {trait.label}
         </span>
       ))}
     </div>

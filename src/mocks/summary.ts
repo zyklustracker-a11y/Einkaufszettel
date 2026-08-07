@@ -1,6 +1,5 @@
 import type {
   CategoryTotal,
-  HealthConcern,
   HealthSummary,
   HouseholdMember,
   MonthSummary,
@@ -10,7 +9,11 @@ import type {
   TrendPoint,
 } from '../types'
 import { formatDate, formatMonth, formatMonthShort, parseISO } from '../lib/format'
+import { foodItems, healthScore } from '../lib/score'
+import { categories } from './categories'
 import { daysAgo, isoWeek, monthDay, monthsAgo, today } from './dates'
+import { receipts } from './receipts'
+import { traits } from './traits'
 
 /**
  * Rollups over the current month. Only three of its nine receipts are detailed
@@ -102,8 +105,15 @@ export const topProducts: TopProduct[] = [
   { name: 'Butter', purchaseCount: 2, amountCents: 518 },
 ]
 
+/**
+ * The current month's score is computed from the receipts we actually have;
+ * the five months before it are sample values, because no receipts exist for
+ * them yet. Once Supabase holds the history, all six come out of the formula.
+ */
+export const currentHealthScore = healthScore(foodItems(receipts, categories), traits)
+
 export const healthSummary: HealthSummary = {
-  scores: [58, 61, 64, 63, 67, 72].map((score, index) => ({
+  scores: [58, 61, 64, 63, 67, currentHealthScore].map((score, index) => ({
     month: monthsAgo(5 - index),
     score,
   })),
@@ -111,30 +121,6 @@ export const healthSummary: HealthSummary = {
   unprocessedCents: 15104,
   processedCents: 8496,
 }
-
-export const healthConcerns: HealthConcern[] = [
-  {
-    flag: 'seedOil',
-    title: 'Samenöle',
-    amountCents: 1900,
-    detail: 'Sonnenblumenöl, Rapsöl und Fertigprodukte mit Samenölen – 7 Positionen im August.',
-    tip: 'Statt Sonnenblumenöl: Butter, Ghee oder Olivenöl.',
-  },
-  {
-    flag: 'gluten',
-    title: 'Gluten',
-    amountCents: 3400,
-    detail: '34 € für glutenhaltige Backwaren – vor allem Toast und Brötchen.',
-    tip: 'Statt Weizentoast: Sauerteigbrot mit langer Führung oder Buchweizenbrot.',
-  },
-  {
-    flag: 'cheapDairy',
-    title: 'Billigmilch',
-    amountCents: 1200,
-    detail: 'Eigenmarken-Frischkäse und H-Milch aus konventioneller Haltung.',
-    tip: 'Statt Eigenmarke: Weidemilch oder Bio-Frischkäse – ca. 0,40 € mehr pro Packung.',
-  },
-]
 
 export const household: HouseholdMember[] = [
   { id: 'u1', name: 'Jonas', email: 'jonas@gmail.com', isCurrentUser: true },

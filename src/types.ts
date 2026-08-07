@@ -39,15 +39,45 @@ export interface Category {
   isFood: boolean
 }
 
-/** Health warnings the AI attaches to a line item. */
-export type HealthFlagId = 'processed' | 'seedOil' | 'gluten' | 'cheapDairy'
+/**
+ * Traits are data, not code: no union type and no enum, because the household
+ * decides what it wants to watch (PROJEKT.md). New traits are rows, not commits.
+ */
+export type TraitId = string
 
-export interface HealthFlag {
-  id: HealthFlagId
-  /** Single-letter badge shown on the line item. */
-  letter: string
+export interface Trait {
+  id: TraitId
   label: string
+  /** 1–2 characters for the badge in item lists. */
+  short: string
+  /** Short explanation. Goes to the model as a classification instruction later. */
+  description: string
+  /** Score weight, −10…+10. Negative is worse, 0 is merely observed. */
+  weight: number
+  /**
+   * Optional group for overlapping traits (`weizen` implies `gluten`). Within a
+   * group only one trait counts towards the score — see `src/lib/score.ts`.
+   * As a *label* every applicable trait still sticks to the item, because the
+   * spending breakdown has to count all of them.
+   */
+  group?: string
+  /** Alternative suggestion shown on the health screen. */
+  tip: string
+  /** Off without losing the data already tagged with it. */
+  active: boolean
+  /** Shipped with a new household, as opposed to user-created. */
+  isDefault: boolean
 }
+
+/**
+ * Dairy attributes. Deliberately two independent fields and not one list: milk
+ * can be pasteurised and homogenised at the same time.
+ *
+ * `unbekannt` produces no trait and therefore counts neutral, never negative —
+ * a wrongly guessed attribute is worse than an empty one (PROJEKT.md).
+ */
+export type MilkHeat = 'roh' | 'pasteurisiert' | 'esl' | 'uht' | 'unbekannt'
+export type MilkHomogenized = 'ja' | 'nein' | 'unbekannt'
 
 /**
  * How a line item was priced on the receipt. `unknown` covers items the scanner
@@ -65,7 +95,17 @@ export interface ReceiptItem {
   quantity: Quantity
   /** Line total in whole cents. */
   totalCents: number
-  flags: HealthFlagId[]
+  /**
+   * Every trait that applies. Ids not present in the household's trait list are
+   * dropped when scoring, so a stale id is harmless.
+   *
+   * These sit on the line item for now. From Schritt 2 on they belong to the
+   * canonical product, where they apply retroactively to every purchase.
+   */
+  traitIds: TraitId[]
+  /** Dairy items only. */
+  milkHeat?: MilkHeat
+  milkHomogenized?: MilkHomogenized
 }
 
 export interface Receipt {
@@ -138,18 +178,11 @@ export interface HealthMonth {
 }
 
 export interface HealthSummary {
+  /** Newest last; the current month is computed, the earlier ones are samples. */
   scores: HealthMonth[]
   /** Split of food spending, in whole cents. */
   unprocessedCents: number
   processedCents: number
-}
-
-export interface HealthConcern {
-  flag: HealthFlagId
-  title: string
-  amountCents: number
-  detail: string
-  tip: string
 }
 
 export interface HouseholdMember {

@@ -173,3 +173,71 @@
   color: var(--muted);
   padding: 18px 0 0;
 }
+
+/* ------------------------------------------------------------ trait list */
+
+.traitIntro {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.traitRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 0;
+}
+
+.traitRow + .traitRow {
+  border-top: 1px solid var(--line);
+}
+
+.traitShort {
+  min-width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  padding: 0 4px;
+  border-radius: 8px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.traitShort--critical {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.traitShort--neutral {
+  background: var(--chip);
+  color: var(--muted);
+}
+
+.traitShort--positive {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.traitLabel {
+  display: block;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.traitMeta {
+  display: block;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.traitWeight {
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

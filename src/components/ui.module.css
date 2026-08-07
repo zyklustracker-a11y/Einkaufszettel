@@ -16,19 +16,37 @@
 
 /* ------------------------------------------------------------------ badges */
 
-.flag {
-  width: 19px;
+.trait {
+  /* Sized by content so two-character shorts like `Pa` and the `+2` overflow
+     badge fit, with 19px keeping single letters square. */
+  min-width: 19px;
   height: 19px;
-  flex: 0 0 19px;
+  flex: 0 0 auto;
+  padding: 0 3px;
   border-radius: 6px;
-  background: var(--red-soft);
-  color: var(--red);
   font-size: 10px;
   font-weight: 700;
   font-family: ui-monospace, Menlo, monospace;
   display: flex;
   align-items: center;
   justify-content: center;
+  white-space: nowrap;
+}
+
+.trait--critical {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+/* Weight 0 — watched, not criticised. Also carries the `+N` overflow badge. */
+.trait--neutral {
+  background: var(--chip);
+  color: var(--muted);
+}
+
+.trait--positive {
+  background: var(--green-soft);
+  color: var(--green);
 }
 
 .chip {

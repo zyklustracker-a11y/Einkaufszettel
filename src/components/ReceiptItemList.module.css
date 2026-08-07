@@ -60,10 +60,21 @@
 
 .legend {
   display: flex;
-  gap: 14px;
+  gap: 6px 14px;
   margin-top: 16px;
   font-size: 13px;
   color: var(--muted);
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+/* Each entry stays on one line, the row wraps between entries. */
+.legend > span {
+  white-space: nowrap;
+}
+
+.legendShort {
+  font-family: ui-monospace, Menlo, monospace;
+  font-weight: 700;
+  color: var(--text);
 }
