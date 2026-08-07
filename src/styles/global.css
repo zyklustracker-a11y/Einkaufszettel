@@ -32,15 +32,29 @@ body {
 }
 
 /*
- * Pinned to the screen instead of sized in viewport units. `100dvh` on `.app`
- * looked right but Safari reports it wrong on the first paint of an installed
- * PWA, so the shell came up short and left a strip below the tab bar until the
- * first scroll forced a reflow. A fixed element takes its height straight from
- * the viewport and is correct from the first frame.
+ * Pinned to the screen rather than sized in viewport units — `100dvh` on `.app`
+ * is unreliable on the first paint of an installed PWA.
+ *
+ * The added inset-top is not a decoration. Measured on the device (iPhone,
+ * standalone, status-bar-style black-translucent):
+ *
+ *     screen.height 852 · innerHeight 793 · safe-area-inset-top 59
+ *
+ * iOS puts the viewport's origin at the very top of the screen — content does
+ * paint under the Dynamic Island — but shortens its *height* by the top inset
+ * without moving the origin down. The layout viewport therefore ends 59pt above
+ * the bottom edge, and that unreachable strip was showing below the tab bar.
+ *
+ * `100%` on a fixed element resolves against the layout viewport (793), so
+ * adding the top inset back lands exactly on the screen height (852). Where the
+ * inset is 0 — desktop, Android, a plain browser tab — this is a no-op.
  */
 #root {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(100% + env(safe-area-inset-top, 0px));
 }
 
 body {
