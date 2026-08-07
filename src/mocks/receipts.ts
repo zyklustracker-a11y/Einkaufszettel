@@ -1,17 +1,19 @@
 import type { Receipt } from '../types'
+import { daysAgo } from './dates'
 
 /**
- * Scanned receipts, newest first.
+ * Scanned receipts, newest first, dated relative to today.
  *
- * The Rewe receipt is the deliberate edge case: its line items add up to
- * 41,98 € while the paper total reads 42,17 €, so the correction screen shows
- * the amber "weicht ab" warning. The other two reconcile exactly.
+ * The Rewe receipt is the deliberate edge case: it is always the newest one,
+ * and its line items add up to 41,98 € while the paper total reads 42,17 €, so
+ * the correction screen shows the amber "weicht ab" warning. The other two
+ * reconcile exactly.
  */
 export const receipts: Receipt[] = [
   {
-    id: 'rec-2026-08-14-rewe',
+    id: 'rec-rewe',
     merchantId: 'rewe',
-    date: '2026-08-14',
+    date: daysAgo(0),
     printedTotalCents: 4217,
     items: [
       { id: 'i1', name: 'H-Milch 3,5 %', categoryId: 'dairy', quantity: { kind: 'count', count: 3, unitPriceCents: 129 }, totalCents: 387, flags: [] },
@@ -32,9 +34,9 @@ export const receipts: Receipt[] = [
     ],
   },
   {
-    id: 'rec-2026-08-12-lidl',
+    id: 'rec-lidl',
     merchantId: 'lidl',
-    date: '2026-08-12',
+    date: daysAgo(2),
     printedTotalCents: 2349,
     items: [
       { id: 'i1', name: 'H-Milch 3,5 %', categoryId: 'dairy', quantity: { kind: 'count', count: 4, unitPriceCents: 115 }, totalCents: 460, flags: [] },
@@ -48,9 +50,9 @@ export const receipts: Receipt[] = [
     ],
   },
   {
-    id: 'rec-2026-08-09-edeka',
+    id: 'rec-edeka',
     merchantId: 'edeka',
-    date: '2026-08-09',
+    date: daysAgo(5),
     printedTotalCents: 6130,
     items: [
       { id: 'i1', name: 'Hähnchenbrust', categoryId: 'meat', quantity: { kind: 'unknown' }, totalCents: 729, flags: [] },
@@ -76,4 +78,4 @@ export const receipts: Receipt[] = [
 ]
 
 /** The receipt the scan flow pretends to have just read. */
-export const scannedReceiptId = 'rec-2026-08-14-rewe'
+export const scannedReceiptId = 'rec-rewe'

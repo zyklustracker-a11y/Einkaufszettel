@@ -7,9 +7,22 @@
 }
 
 html,
-body,
-#root {
+body {
   height: 100%;
+  /* Nothing scrolls at page level — `.screen` owns the scrolling. */
+  overflow: hidden;
+}
+
+/*
+ * Pinned to the screen instead of sized in viewport units. `100dvh` on `.app`
+ * looked right but Safari reports it wrong on the first paint of an installed
+ * PWA, so the shell came up short and left a strip below the tab bar until the
+ * first scroll forced a reflow. A fixed element takes its height straight from
+ * the viewport and is correct from the first frame.
+ */
+#root {
+  position: fixed;
+  inset: 0;
 }
 
 body {
@@ -35,7 +48,7 @@ button {
 /*
  * On an iPhone the app fills the viewport. On a desktop browser it stays at
  * phone width and centres itself, so the layout is always the one that was
- * designed. `100dvh` keeps the tab bar put while Safari's chrome collapses.
+ * designed. The height comes from the pinned `#root` above.
  */
 .app {
   position: relative;
@@ -43,7 +56,7 @@ button {
   flex-direction: column;
   width: 100%;
   max-width: 430px;
-  height: 100dvh;
+  height: 100%;
   margin: 0 auto;
   background: var(--bg);
   overflow: hidden;

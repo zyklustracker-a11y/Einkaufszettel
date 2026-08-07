@@ -9,19 +9,21 @@ import type {
   TopProduct,
   TrendPoint,
 } from '../types'
+import { formatDate, formatMonth, formatMonthShort, parseISO } from '../lib/format'
+import { daysAgo, isoWeek, monthDay, monthsAgo, today } from './dates'
 
 /**
- * The date the app treats as "today". Only three of August's nine receipts are
- * detailed in `receipts.ts`, so the rollups below stand in for the aggregate
- * queries a backend would run over the full set.
+ * Rollups over the current month. Only three of its nine receipts are detailed
+ * in `receipts.ts`, so the figures below stand in for the aggregate queries a
+ * backend would run over the full set.
  *
- * With Supabase these become views: `monthly_summary`, `category_totals`,
- * `spending_trend`, `top_products`, `health_summary`.
+ * The amounts are fixed sample values; only the dates and labels move with the
+ * calendar. With Supabase these become views: `monthly_summary`,
+ * `category_totals`, `spending_trend`, `top_products`, `health_summary`.
  */
-export const today = '2026-08-14'
 
 export const monthSummary: MonthSummary = {
-  month: '2026-08-01',
+  month: monthsAgo(0),
   asOf: today,
   foodCents: 23600,
   nonFoodCents: 4100,
@@ -54,32 +56,36 @@ export const trends: Record<RangeId, TrendPoint[]> = {
     { label: 'Sa', amountCents: 6130 },
     { label: 'So', amountCents: 0 },
   ],
-  month: [
-    { label: 'KW31', amountCents: 6840 },
-    { label: 'KW32', amountCents: 9620 },
-    { label: 'KW33', amountCents: 11240 },
-    { label: 'KW34', amountCents: 0 },
-    { label: 'KW35', amountCents: 0 },
-  ],
-  year: [
-    { label: 'Mär', amountCents: 40210 },
-    { label: 'Apr', amountCents: 43890 },
-    { label: 'Mai', amountCents: 41560 },
-    { label: 'Jun', amountCents: 44930 },
-    { label: 'Jul', amountCents: 47120 },
-    { label: 'Aug', amountCents: 27700 },
-  ],
+  // The weeks the current month runs through, by their ISO calendar number.
+  month: [6840, 9620, 11240, 0, 0].map((amountCents, index) => ({
+    label: `KW${isoWeek(monthDay(1 + index * 7))}`,
+    amountCents,
+  })),
+  // Six months back to this one; the last bar is the current month to date and
+  // therefore matches `monthSummary`. Exactly one month is over the 450 € budget.
+  year: [40210, 43890, 41560, 44930, 47120, 27700].map((amountCents, index) => ({
+    label: formatMonthShort(monthsAgo(5 - index)),
+    amountCents,
+  })),
+  // The last fortnight, split into two weeks.
   custom: [
-    { label: '1.–7.', amountCents: 6840 },
-    { label: '8.–14.', amountCents: 20860 },
+    { label: dayRange(13, 7), amountCents: 6840 },
+    { label: dayRange(6, 0), amountCents: 20860 },
   ],
+}
+
+/** `1.–7.` — bucket label, day numbers only, as in the design. */
+function dayRange(fromDaysAgo: number, toDaysAgo: number): string {
+  const day = (iso: string) => parseISO(iso).getDate()
+  return `${day(daysAgo(fromDaysAgo))}.–${day(daysAgo(toDaysAgo))}.`
 }
 
 export const rangeLabels: Record<RangeId, { tab: string; period: string }> = {
   week: { tab: 'Woche', period: 'diese Woche' },
-  month: { tab: 'Monat', period: 'August 2026' },
+  month: { tab: 'Monat', period: formatMonth(monthsAgo(0)) },
   year: { tab: 'Jahr', period: 'letzte 6 Monate' },
-  custom: { tab: 'Eigen', period: '01.–14.08.2026' },
+  // `01.08.–14.08.2026` — the year is only spelled out once, at the end.
+  custom: { tab: 'Eigen', period: `${formatDate(daysAgo(13)).slice(0, 6)}–${formatDate(daysAgo(0))}` },
 }
 
 /** Top spend per product this month, sorted in `derive.ts`. */
@@ -97,14 +103,10 @@ export const topProducts: TopProduct[] = [
 ]
 
 export const healthSummary: HealthSummary = {
-  scores: [
-    { month: '2026-03-01', score: 58 },
-    { month: '2026-04-01', score: 61 },
-    { month: '2026-05-01', score: 64 },
-    { month: '2026-06-01', score: 63 },
-    { month: '2026-07-01', score: 67 },
-    { month: '2026-08-01', score: 72 },
-  ],
+  scores: [58, 61, 64, 63, 67, 72].map((score, index) => ({
+    month: monthsAgo(5 - index),
+    score,
+  })),
   // 64 % / 36 % of the 236 € food spend.
   unprocessedCents: 15104,
   processedCents: 8496,

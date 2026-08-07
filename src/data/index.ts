@@ -6,6 +6,7 @@
  * await them) — no component needs to change shape.
  */
 import { categories, healthFlagOrder, healthFlags } from '../mocks/categories'
+import { today } from '../mocks/dates'
 import { merchants } from '../mocks/merchants'
 import { receipts, scannedReceiptId } from '../mocks/receipts'
 import { products } from '../mocks/products'
@@ -17,7 +18,6 @@ import {
   household,
   monthSummary,
   rangeLabels,
-  today,
   topProducts,
   trends,
 } from '../mocks/summary'
