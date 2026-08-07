@@ -11,6 +11,24 @@ body {
   height: 100%;
   /* Nothing scrolls at page level — `.screen` owns the scrolling. */
   overflow: hidden;
+  /*
+   * The page carries the app's own background by default. On a phone the app
+   * covers the whole screen, so none of this shows — and should a strip ever
+   * slip through, it is at least the right colour instead of a foreign one.
+   */
+  background: var(--bg);
+}
+
+/*
+ * Only wider than the app itself (max-width 430px) is there anything beside it
+ * to paint: that is where the surround, and with it the centred frame on a
+ * desktop, becomes visible.
+ */
+@media (min-width: 431px) {
+  html,
+  body {
+    background: var(--surround);
+  }
 }
 
 /*
@@ -27,7 +45,6 @@ body {
 
 body {
   margin: 0;
-  background: var(--surround);
   color: var(--text);
   font-family: -apple-system, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', Helvetica, system-ui,
     sans-serif;
@@ -75,7 +92,8 @@ button {
 }
 
 .screen--tabbed {
-  padding-bottom: calc(var(--tabbar-height) + 28px);
+  /* Same inline env() as `.bar`, so the two stay in step. */
+  padding-bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom, 0px) + 28px);
 }
 
 /* Full-bleed screens (camera, processing) manage their own insets. */

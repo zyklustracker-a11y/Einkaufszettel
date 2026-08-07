@@ -6,8 +6,11 @@
   z-index: 20;
   display: flex;
   align-items: flex-start;
-  height: var(--tabbar-height);
-  padding: 8px 6px 0;
+  /* env() applied here, not via a variable — see the note in tokens.css. The
+     bottom padding reserves the home-indicator strip so the bar's own
+     background, not the page, sits behind it. */
+  height: calc(var(--tabbar-height) + env(safe-area-inset-bottom, 0px));
+  padding: 8px 6px env(safe-area-inset-bottom, 0px);
   background: var(--card);
   border-top: 1px solid var(--line);
 }

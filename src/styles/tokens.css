@@ -32,10 +32,13 @@
   --surround: #dfe0dc;
 
   /*
-   * Tab bar: 62px of controls plus the home-indicator inset. Screens behind it
-   * pad their scroll area by the same amount, so nothing hides under it.
+   * Height of the tab bar's controls — the home-indicator inset is deliberately
+   * NOT folded in here. WebKit evaluates env() inside a custom property as 0 in
+   * some cases, which left the bar 62px tall on an installed PWA with the page
+   * showing through underneath. env(safe-area-inset-bottom) is therefore applied
+   * directly in `.bar` and in `.screen--tabbed`, never through a variable.
    */
-  --tabbar-height: calc(62px + env(safe-area-inset-bottom, 0px));
+  --tabbar-height: 62px;
 }
 
 [data-theme='dark'] {
