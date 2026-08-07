@@ -1,0 +1,175 @@
+.budgetCard {
+  background: var(--card);
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+  margin-bottom: 14px;
+}
+
+.label {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.budgetRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.budgetValue {
+  font-size: 34px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+
+.budgetInput {
+  width: 120px;
+  font-size: 34px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid var(--green);
+  color: var(--text);
+  padding: 0;
+  outline: none;
+}
+
+.currency {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.smallButton {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--card2);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.smallButton--primary {
+  border-color: var(--green);
+  background: var(--green);
+  color: #fff;
+}
+
+/* --------------------------------------------------------------- switches */
+
+.group {
+  background: var(--card);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.settingRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 16px;
+}
+
+.settingRow + .settingRow {
+  border-top: 1px solid var(--line);
+}
+
+.settingTitle {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.settingHint {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+/* -------------------------------------------------------------- household */
+
+.householdCard {
+  background: var(--card);
+  border-radius: 18px;
+  padding: 6px 16px 10px;
+  box-shadow: var(--shadow);
+  margin-bottom: 14px;
+}
+
+.householdTitle {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 12px 0 8px;
+}
+
+.member {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding: 13px 0;
+}
+
+.memberName {
+  display: block;
+  font-size: 15.5px;
+  font-weight: 600;
+}
+
+.memberMail {
+  display: block;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 99px;
+  background: var(--chip);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.badge--current {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+/* ------------------------------------------------------------------ signOut */
+
+.signOut {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 50px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--red);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.version {
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 18px 0 0;
+}

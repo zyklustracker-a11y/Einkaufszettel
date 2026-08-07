@@ -1,0 +1,69 @@
+.list {
+  background: var(--card);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.row {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 13px 16px;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.row + .row {
+  border-top: 1px solid var(--line);
+}
+
+.row--tappable {
+  cursor: pointer;
+}
+
+.row--tappable:active {
+  background: var(--card2);
+}
+
+.name {
+  display: block;
+  font-size: 15.5px;
+  font-weight: 600;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.total {
+  display: block;
+  font-size: 15.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.quantity {
+  display: block;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.legend {
+  display: flex;
+  gap: 14px;
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--muted);
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}

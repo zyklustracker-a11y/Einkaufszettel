@@ -1,0 +1,119 @@
+.card {
+  width: 100%;
+  text-align: left;
+  background: var(--card);
+  border: none;
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+  margin-bottom: 12px;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  display: block;
+}
+
+.cardHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.name {
+  display: block;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.basePrice {
+  display: block;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+.age {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 9px;
+  border-radius: 99px;
+  background: var(--chip);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.best {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 11px 13px;
+  border-radius: 13px;
+  background: var(--green-soft);
+}
+
+.bestLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--green);
+}
+
+.bestMerchant {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--green);
+}
+
+.bestPrice {
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--green);
+}
+
+.others {
+  display: block;
+  margin-top: 4px;
+}
+
+.other {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 13px;
+}
+
+.other:not(:last-child) {
+  border-bottom: 1px solid var(--line);
+}
+
+.otherMerchant {
+  flex: 1;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.otherDate {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.otherPrice {
+  font-size: 14.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  width: 62px;
+  text-align: right;
+}
+
+.empty {
+  text-align: center;
+  color: var(--muted);
+  font-size: 14.5px;
+  padding: 40px 20px;
+  line-height: 1.5;
+}

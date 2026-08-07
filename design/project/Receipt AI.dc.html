@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{
+  --bg:#F4F5F3; --card:#FFFFFF; --card2:#FAFAF8; --text:#12150F; --muted:#77807A;
+  --line:#E7E9E4; --green:#16915C; --greenSoft:#E7F3EC; --red:#C8483F; --redSoft:#FBECEA;
+  --amber:#B07A12; --amberSoft:#FBF2E0; --chip:#F0F2EE; --shadow:0 1px 2px rgba(16,24,20,.05),0 12px 28px -16px rgba(16,24,20,.18);
+}
+[data-theme="dark"]{
+  --bg:#0E1110; --card:#181C1A; --card2:#141816; --text:#F2F4F0; --muted:#8E978F;
+  --line:#262B28; --green:#3FBF83; --greenSoft:#16291F; --red:#E4756B; --redSoft:#2A1918;
+  --amber:#D9A544; --amberSoft:#2A2113; --chip:#222724; --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 28px -16px rgba(0,0,0,.7);
+}
+body{margin:0;background:#DFE0DC;font-family:-apple-system,"SF Pro Text","SF Pro Display","Helvetica Neue",Helvetica,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#16915C;text-decoration:none}
+a:hover{color:#0F6E45}
+*{box-sizing:border-box}
+@keyframes rai-spin{to{transform:rotate(360deg)}}
+@keyframes rai-pulse{0%,100%{opacity:.35}50%{opacity:1}}
+</style>
+</helmet>
+
+<div style="min-height:100vh;display:flex;gap:32px;align-items:flex-start;justify-content:center;padding:32px">
+
+  <div style="width:196px;position:sticky;top:32px;display:flex;flex-direction:column;gap:6px;padding-top:8px">
+    <div style="font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8A8F88;margin-bottom:8px">Receipt AI · Screens</div>
+    <sc-for list="{{ screenIndex }}" as="s" hint-placeholder-count="9">
+      <button onClick="{{ s.go }}" style="appearance:none;text-align:left;border:1px solid #D4D6D1;background:{{ s.bg }};color:#12150F;font:inherit;font-size:13px;padding:9px 12px;border-radius:10px;cursor:pointer" style-hover="border-color:#16915C">{{ s.label }}</button>
+    </sc-for>
+    <button onClick="{{ toggleTheme }}" style="appearance:none;margin-top:14px;text-align:left;border:1px dashed #C3C6C0;background:transparent;color:#5C625C;font:inherit;font-size:13px;padding:9px 12px;border-radius:10px;cursor:pointer">Dark / Light umschalten</button>
+  </div>
+
+  <div data-theme="{{ theme }}" style="width:390px;height:844px;border-radius:46px;background:var(--bg);color:var(--text);box-shadow:0 0 0 11px #1B1E1C,0 0 0 13px #343834,0 40px 80px -30px rgba(0,0,0,.55);overflow:hidden;position:relative;display:flex;flex-direction:column">
+
+    <!-- Status bar -->
+    <div style="height:54px;flex:0 0 54px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 28px 8px;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums">
+      <div>9:41</div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <svg width="18" height="11" viewBox="0 0 18 11"><rect x="0" y="7" width="3" height="4" rx="1" fill="currentColor"/><rect x="5" y="5" width="3" height="6" rx="1" fill="currentColor"/><rect x="10" y="2.5" width="3" height="8.5" rx="1" fill="currentColor"/><rect x="15" y="0" width="3" height="11" rx="1" fill="currentColor"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3.5" fill="none" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="15" height="8" rx="2" fill="currentColor"/><rect x="23" y="4" width="2" height="4" rx="1" fill="currentColor" opacity=".4"/></svg>
+      </div>
+    </div>
+
+    <!-- LOGIN -->
+    <sc-if value="{{ isLogin }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;display:flex;flex-direction:column;justify-content:space-between;padding:0 28px 44px">
+        <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:22px">
+          <div style="width:76px;height:76px;border-radius:22px;background:var(--green);display:flex;align-items:center;justify-content:center">
+            <svg width="34" height="40" viewBox="0 0 34 40"><rect x="1.5" y="1.5" width="31" height="33" rx="4" fill="none" stroke="#fff" stroke-width="3"/><rect x="8" y="10" width="18" height="3" rx="1.5" fill="#fff"/><rect x="8" y="18" width="18" height="3" rx="1.5" fill="#fff"/><rect x="8" y="26" width="11" height="3" rx="1.5" fill="#fff"/></svg>
+          </div>
+          <div>
+            <div style="font-size:40px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Receipt AI</div>
+            <div style="font-size:18px;color:var(--muted);margin-top:12px;line-height:1.45;text-wrap:pretty">Scanne deine Kassenzettel, verstehe deine Ausgaben.</div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <button onClick="{{ nav.dashboard }}" style="appearance:none;height:54px;border-radius:16px;border:1px solid var(--line);background:var(--card);color:var(--text);font:inherit;font-size:17px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:12px;cursor:pointer;box-shadow:var(--shadow)">
+            <svg width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="none" stroke="currentColor" stroke-width="2" opacity=".25"/><circle cx="10" cy="10" r="4" fill="currentColor"/></svg>
+            Mit Google anmelden
+          </button>
+          <div style="font-size:13px;color:var(--muted);text-align:center;line-height:1.5">Privater Haushalts-Zugang · Daten bleiben in deinem Konto</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- DASHBOARD -->
+    <sc-if value="{{ isDashboard }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;overflow-y:auto;padding:4px 20px 120px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+          <div>
+            <div style="font-size:13px;color:var(--muted);font-weight:600;letter-spacing:.02em">Übersicht</div>
+            <div style="font-size:28px;font-weight:700;letter-spacing:-.03em">August 2026</div>
+          </div>
+          <button onClick="{{ nav.settings }}" style="appearance:none;width:44px;height:44px;border-radius:14px;border:1px solid var(--line);background:var(--card);color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer">
+            <svg width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="3.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="10" r="7.4" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3.6 3.4"/></svg>
+          </button>
+        </div>
+
+        <div style="background:var(--card);border-radius:20px;padding:18px;box-shadow:var(--shadow);margin-bottom:14px">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:8px">
+            <div style="flex:1">
+              <div style="font-size:12px;color:var(--muted);font-weight:600;margin-bottom:4px">Lebensmittel</div>
+              <div style="font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.02em">236,00 €</div>
+            </div>
+            <div style="flex:1">
+              <div style="font-size:12px;color:var(--muted);font-weight:600;margin-bottom:4px">Non-Food</div>
+              <div style="font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.02em">41,00 €</div>
+            </div>
+            <div style="flex:0 0 auto;text-align:right">
+              <div style="font-size:12px;color:var(--muted);font-weight:600;margin-bottom:4px">Gesamt</div>
+              <div style="font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.035em;line-height:1;white-space:nowrap">277,00 €</div>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">Stand: 14. August 2026 · 9 Einkäufe</div>
+        </div>
+
+        <div style="background:var(--card);border-radius:20px;padding:18px;box-shadow:var(--shadow);margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
+            <div style="font-size:15px;font-weight:600">Monatsbudget</div>
+            <div style="font-size:15px;font-variant-numeric:tabular-nums;color:var(--muted)">277,00 € von 450,00 €</div>
+          </div>
+          <div style="position:relative;height:12px;border-radius:99px;background:var(--chip);overflow:hidden">
+            <div style="position:absolute;inset:0 auto 0 0;border-radius:99px;background:var(--green);width:{{ budget.usedPct }}"></div>
+            <div style="position:absolute;top:0;bottom:0;width:2px;background:var(--text);opacity:.55;left:{{ budget.markPct }}"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px;font-variant-numeric:tabular-nums">
+            <div>62 % genutzt</div>
+            <div>Budget 450 €</div>
+          </div>
+          <div style="margin-top:14px;background:var(--redSoft);border-radius:14px;padding:12px 14px">
+            <div style="font-size:14px;font-weight:600;color:var(--red)">Bei diesem Tempo: ca. 490 €</div>
+            <div style="font-size:13px;color:var(--red);opacity:.85;margin-top:2px">40 € über Budget zum Monatsende</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:var(--muted)">
+            <span style="color:var(--red);font-weight:600">+25,00 €</span> gegenüber Juli am 14. (252,00 €)
+          </div>
+        </div>
+
+        <div style="background:var(--card);border-radius:20px;padding:18px;box-shadow:var(--shadow);margin-bottom:14px">
+          <div style="font-size:15px;font-weight:600;margin-bottom:16px">Ausgaben pro Kategorie</div>
+          <div style="display:flex;align-items:center;gap:18px">
+            <div style="position:relative;width:124px;height:124px;flex:0 0 124px;border-radius:50%;background:{{ donutGradient }}">
+              <div style="position:absolute;inset:21px;border-radius:50%;background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center">
+                <div style="font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em">277 €</div>
+                <div style="font-size:10px;color:var(--muted);font-weight:600">9 Kategorien</div>
+              </div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+              <sc-for list="{{ categories }}" as="c" hint-placeholder-count="9">
+                <div style="display:flex;align-items:center;gap:7px;font-size:11.5px">
+                  <span style="width:8px;height:8px;border-radius:3px;flex:0 0 8px;background:{{ c.color }}"></span>
+                  <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)">{{ c.name }}</span>
+                  <span style="font-variant-numeric:tabular-nums;font-weight:600">{{ c.amount }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <button onClick="{{ nav.health }}" style="appearance:none;width:100%;text-align:left;background:var(--card);border:none;border-radius:20px;padding:18px;box-shadow:var(--shadow);margin-bottom:14px;color:var(--text);font:inherit;cursor:pointer;display:flex;align-items:center;gap:16px">
+          <div style="flex:1">
+            <div style="font-size:15px;font-weight:600">Gesundheits-Score</div>
+            <div style="font-size:13px;color:var(--muted);margin-top:3px">Unverarbeitet 64 % · verarbeitet 36 %</div>
+            <div style="height:8px;border-radius:99px;background:var(--chip);margin-top:12px;overflow:hidden">
+              <div style="height:8px;border-radius:99px;background:var(--green);width:72%"></div>
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:32px;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1">72</div>
+            <div style="font-size:11px;color:var(--muted);font-weight:600">von 100</div>
+          </div>
+        </button>
+
+        <div style="background:var(--card);border-radius:20px;padding:6px 18px 8px;box-shadow:var(--shadow)">
+          <div style="font-size:15px;font-weight:600;padding:12px 0 4px">Letzte Einkäufe</div>
+          <sc-for list="{{ recent }}" as="p" hint-placeholder-count="3">
+            <button onClick="{{ p.open }}" style="appearance:none;width:100%;background:transparent;border:none;border-top:1px solid var(--line);padding:14px 0;display:flex;align-items:center;gap:12px;color:var(--text);font:inherit;cursor:pointer;text-align:left">
+              <span style="width:36px;height:36px;border-radius:11px;background:var(--chip);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--muted)">{{ p.initials }}</span>
+              <span style="flex:1">
+                <span style="display:block;font-size:15px;font-weight:600">{{ p.merchant }}</span>
+                <span style="display:block;font-size:12.5px;color:var(--muted);margin-top:2px">{{ p.meta }}</span>
+              </span>
+              <span style="font-size:16px;font-weight:600;font-variant-numeric:tabular-nums">{{ p.total }}</span>
+            </button>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- BESTPREISE -->
+    <sc-if value="{{ isPrices }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow-y:auto;padding:4px 20px 120px">
+        <div style="font-size:28px;font-weight:700;letter-spacing:-.03em;margin-bottom:14px">Bestpreise</div>
+        <div style="display:flex;align-items:center;gap:9px;height:44px;border-radius:14px;background:var(--chip);padding:0 14px;margin-bottom:16px">
+          <svg width="16" height="16" viewBox="0 0 16 16" style="opacity:.5"><circle cx="6.5" cy="6.5" r="5.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="10" y="11" width="6" height="2" rx="1" transform="rotate(45 10 11)" fill="currentColor"/></svg>
+          <span style="font-size:16px;color:var(--muted)">Produkt suchen</span>
+        </div>
+        <sc-for list="{{ products }}" as="pr" hint-placeholder-count="5">
+          <button onClick="{{ pr.open }}" style="appearance:none;width:100%;text-align:left;background:var(--card);border:none;border-radius:18px;padding:16px;box-shadow:var(--shadow);margin-bottom:12px;color:var(--text);font:inherit;cursor:pointer">
+            <span style="display:flex;align-items:flex-start;gap:10px">
+              <span style="flex:1">
+                <span style="display:block;font-size:17px;font-weight:600">{{ pr.name }}</span>
+                <span style="display:block;font-size:12.5px;color:var(--muted);margin-top:3px">{{ pr.unitPrice }}</span>
+              </span>
+              <span style="font-size:11px;font-weight:600;padding:5px 9px;border-radius:99px;background:var(--chip);color:var(--muted);white-space:nowrap">{{ pr.age }}</span>
+            </span>
+            <span style="display:flex;align-items:center;gap:10px;margin-top:12px;padding:11px 13px;border-radius:13px;background:var(--greenSoft)">
+              <span style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--green)">Bestpreis</span>
+              <span style="flex:1;font-size:15px;font-weight:600;color:var(--green)">{{ pr.bestMerchant }}</span>
+              <span style="font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--green)">{{ pr.bestPrice }}</span>
+            </span>
+            <span style="display:block;margin-top:4px">
+              <sc-for list="{{ pr.others }}" as="o" hint-placeholder-count="2">
+                <span style="display:flex;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid var(--line)">
+                  <span style="flex:1;font-size:14px;color:var(--muted)">{{ o.merchant }}</span>
+                  <span style="font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums">{{ o.date }}</span>
+                  <span style="font-size:14.5px;font-weight:600;font-variant-numeric:tabular-nums;width:62px;text-align:right">{{ o.price }}</span>
+                </span>
+              </sc-for>
+            </span>
+          </button>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <!-- PRODUKT-DETAIL -->
+    <sc-if value="{{ isProduct }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow-y:auto;padding:4px 20px 120px">
+        <button onClick="{{ nav.prices }}" style="appearance:none;background:transparent;border:none;color:var(--green);font:inherit;font-size:16px;font-weight:600;padding:6px 0;cursor:pointer;display:flex;align-items:center;gap:6px">
+          <svg width="9" height="15" viewBox="0 0 9 15"><path d="M8 1L2 7.5L8 14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg> Bestpreise
+        </button>
+        <div style="font-size:30px;font-weight:700;letter-spacing:-.03em;margin:10px 0 2px">{{ product.name }}</div>
+        <div style="font-size:14px;color:var(--muted);margin-bottom:16px">{{ product.unitPrice }} · {{ product.buyCount }} Käufe seit 03.2026</div>
+
+        <div style="background:var(--card);border-radius:20px;padding:18px;box-shadow:var(--shadow);margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
+            <div style="font-size:15px;font-weight:600">Preisverlauf</div>
+            <div style="font-size:12px;color:var(--muted)">März – August 2026</div>
+          </div>
+          <svg viewBox="0 0 300 110" style="width:100%;height:110px;overflow:visible">
+            <line x1="0" y1="100" x2="300" y2="100" stroke="var(--line)" stroke-width="1.5"/>
+            <line x1="0" y1="50" x2="300" y2="50" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 5"/>
+            <polyline points="{{ product.spark }}" fill="none" stroke="var(--green)" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
+            <sc-for list="{{ product.points }}" as="pt" hint-placeholder-count="6">
+              <circle cx="{{ pt.x }}" cy="{{ pt.y }}" r="3.4" fill="var(--card)" stroke="var(--green)" stroke-width="2.2"></circle>
+            </sc-for>
+          </svg>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:8px;font-variant-numeric:tabular-nums">
+            <span>1,79 €</span><span>Ø 2,24 €</span><span>2,69 €</span>
+          </div>
+        </div>
+
+        <div style="background:var(--card);border-radius:20px;padding:6px 18px 10px;box-shadow:var(--shadow)">
+          <div style="font-size:15px;font-weight:600;padding:12px 0 4px">Alle Käufe</div>
+          <sc-for list="{{ product.history }}" as="h" hint-placeholder-count="6">
+            <div style="display:flex;align-items:center;gap:10px;border-top:1px solid var(--line);padding:13px 0">
+              <span style="flex:1;font-size:15px;font-weight:600">{{ h.merchant }}</span>
+              <span style="font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums">{{ h.date }}</span>
+              <span style="font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;width:64px;text-align:right;color:{{ h.color }}">{{ h.price }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ANALYSEN -->
+    <sc-if value="{{ isAnalytics }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow-y:auto;padding:4px 20px 120px">
+        <div style="font-size:28px;font-weight:700;letter-spacing:-.03em;margin-bottom:14px">Analysen</div>
+        <div style="display:flex;gap:4px;padding:4px;background:var(--chip);border-radius:13px;margin-bottom:16px">
+          <sc-for list="{{ ranges }}" as="r" hint-placeholder-count="4">
+            <button onClick="{{ r.select }}" style="appearance:none;flex:1;height:34px;border:none;border-radius:10px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;background:{{ r.bg }};color:{{ r.fg }};box-shadow:{{ r.shadow }}">{{ r.label }}</button>
+          </sc-for>
+        </div>
+
+        <div style="background:var(--card);border-radius:20px;padding:18px;box-shadow:var(--shadow);margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <div style="font-size:15px;font-weight:600">Ausgabenverlauf</div>
+            <div style="font-size:12px;color:var(--muted)">{{ rangeLabel }}</div>
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:8px;height:132px;margin-top:18px">
+            <sc-for list="{{ trend }}" as="t" hint-placeholder-count="6">
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px">
+                <div style="font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums">{{ t.value }}</div>
+                <div style="width:100%;border-radius:7px 7px 3px 3px;background:{{ t.color }};height:{{ t.h }}"></div>
+                <div style="font-size:11px;color:var(--muted);font-weight:600">{{ t.label }}</div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">Juli lag mit 471,20 € über dem Budget von 450 €.</div>
+        </div>
+
+        <div style="background:var(--card);border-radius:20px;padding:18px;box-shadow:var(--shadow);margin-bottom:14px">
+          <div style="font-size:15px;font-weight:600;margin-bottom:16px">Kategorien</div>
+          <sc-for list="{{ categories }}" as="c" hint-placeholder-count="9">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:11px">
+              <div style="width:112px;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.name }}</div>
+              <div style="flex:1;height:9px;border-radius:99px;background:var(--chip);overflow:hidden">
+                <div style="height:9px;border-radius:99px;background:{{ c.color }};width:{{ c.pct }}"></div>
+              </div>
+              <div style="width:60px;text-align:right;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums">{{ c.amount }}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="background:var(--card);border-radius:20px;padding:18px;box-shadow:var(--shadow);margin-bottom:14px">
+          <div style="font-size:15px;font-weight:600;margin-bottom:6px">Sparpotenzial</div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:14px">4 Produkte gab es laut deiner Historie woanders günstiger – <span style="color:var(--red);font-weight:600">6,40 € Mehrkosten</span> diesen Monat.</div>
+          <sc-for list="{{ savings }}" as="s" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--line)">
+              <div style="flex:1">
+                <div style="font-size:14.5px;font-weight:600">{{ s.name }}</div>
+                <div style="font-size:12px;color:var(--muted);margin-top:2px">{{ s.hint }}</div>
+              </div>
+              <div style="font-size:14.5px;font-weight:700;color:var(--red);font-variant-numeric:tabular-nums">{{ s.diff }}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="background:var(--card);border-radius:20px;padding:18px;box-shadow:var(--shadow);margin-bottom:14px">
+          <div style="font-size:15px;font-weight:600;margin-bottom:12px">Produktsuche im Zeitraum</div>
+          <div style="display:flex;align-items:center;gap:9px;height:42px;border-radius:13px;background:var(--chip);padding:0 13px">
+            <svg width="15" height="15" viewBox="0 0 16 16" style="opacity:.5"><circle cx="6.5" cy="6.5" r="5.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="10" y="11" width="6" height="2" rx="1" transform="rotate(45 10 11)" fill="currentColor"/></svg>
+            <span style="font-size:15.5px;font-weight:600">Käse</span>
+          </div>
+          <div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:14px">
+            <div style="font-size:13px;color:var(--muted)">7 Käufe · Aug 2026</div>
+            <div style="font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.03em">18,94 €</div>
+          </div>
+        </div>
+
+        <div style="background:var(--card);border-radius:20px;padding:6px 18px 10px;box-shadow:var(--shadow)">
+          <div style="font-size:15px;font-weight:600;padding:12px 0 4px">Top 10 teuerste Produkte</div>
+          <sc-for list="{{ topProducts }}" as="tp" hint-placeholder-count="10">
+            <div style="display:flex;align-items:center;gap:11px;border-top:1px solid var(--line);padding:11px 0">
+              <span style="width:20px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums">{{ tp.rank }}</span>
+              <span style="flex:1;font-size:14.5px;font-weight:600">{{ tp.name }}</span>
+              <span style="font-size:12px;color:var(--muted)">{{ tp.count }}</span>
+              <span style="font-size:14.5px;font-weight:600;font-variant-numeric:tabular-nums;width:58px;text-align:right">{{ tp.amount }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- GESUNDHEIT -->
+    <sc-if value="{{ isHealth }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow-y:auto;padding:4px 20px 120px">
+        <div style="font-size:28px;font-weight:700;letter-spacing:-.03em;margin-bottom:14px">Gesundheit</div>
+        <div style="background:var(--card);border-radius:20px;padding:20px 18px;box-shadow:var(--shadow);margin-bottom:14px">
+          <div style="display:flex;align-items:flex-end;gap:14px">
+            <div style="font-size:60px;font-weight:700;letter-spacing:-.05em;line-height:.9;font-variant-numeric:tabular-nums">72</div>
+            <div style="padding-bottom:8px">
+              <div style="font-size:14px;color:var(--muted);font-weight:600">von 100 · August</div>
+              <div style="font-size:13px;color:var(--green);font-weight:600;margin-top:2px">+5 gegenüber Juli</div>
+            </div>
+          </div>
+          <svg viewBox="0 0 300 90" style="width:100%;height:90px;margin-top:18px;overflow:visible">
+            <line x1="0" y1="84" x2="300" y2="84" stroke="var(--line)" stroke-width="1.5"/>
+            <polyline points="{{ healthSpark }}" fill="none" stroke="var(--green)" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
+            <sc-for list="{{ healthPoints }}" as="hp" hint-placeholder-count="6">
+              <circle cx="{{ hp.x }}" cy="{{ hp.y }}" r="3.4" fill="var(--card)" stroke="var(--green)" stroke-width="2.2"></circle>
+            </sc-for>
+          </svg>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px">
+            <span>Mär</span><span>Apr</span><span>Mai</span><span>Jun</span><span>Jul</span><span>Aug</span>
+          </div>
+        </div>
+
+        <div style="background:var(--card);border-radius:20px;padding:18px;box-shadow:var(--shadow);margin-bottom:14px">
+          <div style="font-size:15px;font-weight:600;margin-bottom:16px">Unverarbeitet vs. verarbeitet</div>
+          <div style="display:flex;height:16px;border-radius:99px;overflow:hidden">
+            <div style="width:64%;background:var(--green)"></div>
+            <div style="width:36%;background:var(--chip)"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:12px;margin-top:12px;font-size:13px;white-space:nowrap">
+            <div><span style="font-weight:700;font-variant-numeric:tabular-nums">64 %</span> <span style="color:var(--muted)">unverarbeitet · 151,04 €</span></div>
+            <div><span style="font-weight:700;font-variant-numeric:tabular-nums">36 %</span> <span style="color:var(--muted)">84,96 €</span></div>
+          </div>
+        </div>
+
+        <div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:20px 0 10px">Kritische Ausgaben</div>
+        <sc-for list="{{ healthCards }}" as="hc" hint-placeholder-count="3">
+          <div style="background:var(--card);border-radius:18px;padding:16px;box-shadow:var(--shadow);margin-bottom:12px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="width:30px;height:30px;border-radius:10px;background:var(--redSoft);color:var(--red);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;font-family:ui-monospace,Menlo,monospace">{{ hc.icon }}</div>
+              <div style="flex:1;font-size:16px;font-weight:600">{{ hc.title }}</div>
+              <div style="font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--red)">{{ hc.amount }}</div>
+            </div>
+            <div style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.45;text-wrap:pretty">{{ hc.detail }}</div>
+            <div style="margin-top:12px;padding:12px 13px;border-radius:13px;background:var(--greenSoft);font-size:13.5px;color:var(--green);font-weight:600;line-height:1.4;text-wrap:pretty">{{ hc.tip }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <!-- SCAN a) Kamera -->
+    <sc-if value="{{ isScanCamera }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;background:#0B0D0C;display:flex;flex-direction:column">
+        <div style="height:54px;flex:0 0 54px"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 20px 10px;color:#fff">
+          <button onClick="{{ nav.dashboard }}" style="appearance:none;background:transparent;border:none;color:#fff;font:inherit;font-size:16px;font-weight:600;cursor:pointer">Abbrechen</button>
+          <div style="font-size:16px;font-weight:600">Bon scannen</div>
+          <div style="width:70px"></div>
+        </div>
+        <div style="flex:1;position:relative;display:flex;align-items:center;justify-content:center;padding:14px 34px">
+          <div style="width:100%;aspect-ratio:3/4.2;border-radius:14px;background:repeating-linear-gradient(115deg,#1C201E 0 14px,#171B19 14px 28px);position:relative">
+            <div style="position:absolute;top:-3px;left:-3px;width:34px;height:34px;border-top:4px solid #3FBF83;border-left:4px solid #3FBF83;border-radius:12px 0 0 0"></div>
+            <div style="position:absolute;top:-3px;right:-3px;width:34px;height:34px;border-top:4px solid #3FBF83;border-right:4px solid #3FBF83;border-radius:0 12px 0 0"></div>
+            <div style="position:absolute;bottom:-3px;left:-3px;width:34px;height:34px;border-bottom:4px solid #3FBF83;border-left:4px solid #3FBF83;border-radius:0 0 0 12px"></div>
+            <div style="position:absolute;bottom:-3px;right:-3px;width:34px;height:34px;border-bottom:4px solid #3FBF83;border-right:4px solid #3FBF83;border-radius:0 0 12px 0"></div>
+            <div style="position:absolute;inset:auto 0 50% 0;height:2px;background:#3FBF83;opacity:.55"></div>
+            <div style="position:absolute;left:0;right:0;bottom:16px;text-align:center;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#6C736E">Kamera-Vorschau</div>
+          </div>
+        </div>
+        <div style="color:#D9DED9;font-size:14.5px;text-align:center;padding:0 44px 22px;line-height:1.45;text-wrap:pretty">Bon flach und gut beleuchtet fotografieren – gesamte Länge im Rahmen.</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:0 34px 46px">
+          <button onClick="{{ nav.scanProcessing }}" style="appearance:none;width:56px;height:56px;border-radius:16px;border:1px solid #333835;background:#191D1B;color:#fff;font:inherit;font-size:11px;font-weight:600;cursor:pointer">Upload</button>
+          <button onClick="{{ nav.scanProcessing }}" style="appearance:none;width:78px;height:78px;border-radius:50%;border:5px solid #fff;background:#3FBF83;cursor:pointer"></button>
+          <div style="width:56px;height:56px;border-radius:16px;border:1px solid #232725;display:flex;align-items:center;justify-content:center;color:#5E655F;font-size:11px;font-family:ui-monospace,Menlo,monospace">Blitz</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- SCAN b) Verarbeitung -->
+    <sc-if value="{{ isScanProcessing }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;padding:0 44px">
+        <div style="width:74px;height:74px;border-radius:50%;border:5px solid var(--chip);border-top-color:var(--green);animation:rai-spin 1s linear infinite"></div>
+        <div style="text-align:center">
+          <div style="font-size:22px;font-weight:700;letter-spacing:-.02em">KI liest deinen Bon…</div>
+          <div style="font-size:14.5px;color:var(--muted);margin-top:8px;line-height:1.5">Positionen werden erkannt und Kategorien zugeordnet.</div>
+        </div>
+        <div style="width:100%;display:flex;flex-direction:column;gap:9px;margin-top:6px">
+          <div style="display:flex;gap:10px;font-size:13.5px;color:var(--muted);align-items:center"><span style="width:18px;height:18px;border-radius:50%;background:var(--green);color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center">✓</span> Händler erkannt: Rewe</div>
+          <div style="display:flex;gap:10px;font-size:13.5px;color:var(--muted);align-items:center"><span style="width:18px;height:18px;border-radius:50%;background:var(--green);color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center">✓</span> Datum: 14.08.2026</div>
+          <div style="display:flex;gap:10px;font-size:13.5px;color:var(--muted);align-items:center;animation:rai-pulse 1.4s ease-in-out infinite"><span style="width:18px;height:18px;border-radius:50%;background:var(--chip)"></span> 12 Positionen normalisieren…</div>
+        </div>
+        <button onClick="{{ nav.scanReview }}" style="appearance:none;margin-top:14px;background:transparent;border:none;color:var(--green);font:inherit;font-size:14px;font-weight:600;cursor:pointer">Ergebnis anzeigen</button>
+      </div>
+    </sc-if>
+
+    <!-- SCAN c) Korrektur -->
+    <sc-if value="{{ isScanReview }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow-y:auto;padding:4px 20px 24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <button onClick="{{ nav.scanCamera }}" style="appearance:none;background:transparent;border:none;color:var(--green);font:inherit;font-size:16px;font-weight:600;padding:6px 0;cursor:pointer">Erneut scannen</button>
+          <div style="font-size:15px;font-weight:600">Prüfen &amp; korrigieren</div>
+        </div>
+        <div style="background:var(--card);border-radius:18px;padding:16px;box-shadow:var(--shadow);margin-bottom:8px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="flex:1">
+              <div style="font-size:19px;font-weight:700">Rewe</div>
+              <div style="font-size:13px;color:var(--muted);margin-top:2px">14.08.2026 · 12 Positionen</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:11px;color:var(--muted);font-weight:600">Bon-Summe</div>
+              <div style="font-size:21px;font-weight:700;font-variant-numeric:tabular-nums">42,17 €</div>
+            </div>
+          </div>
+          <div style="margin-top:14px;display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:13px;background:var(--amberSoft)">
+            <div style="width:22px;height:22px;border-radius:50%;background:var(--amber);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700">!</div>
+            <div style="flex:1;font-size:13px;color:var(--amber);font-weight:600;line-height:1.4">Positionssumme 41,98 € weicht um 0,19 € ab – bitte prüfen.</div>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--muted);padding:12px 4px 8px">Zeile antippen zum Bearbeiten</div>
+        <div style="background:var(--card);border-radius:18px;box-shadow:var(--shadow);overflow:hidden">
+          <sc-for list="{{ scanItems }}" as="it" hint-placeholder-count="8">
+            <button onClick="{{ it.edit }}" style="appearance:none;width:100%;text-align:left;background:transparent;border:none;border-bottom:1px solid var(--line);padding:13px 16px;color:var(--text);font:inherit;cursor:pointer;display:flex;align-items:center;gap:10px">
+              <span style="flex:1">
+                <span style="display:block;font-size:15.5px;font-weight:600">{{ it.name }}</span>
+                <span style="display:flex;align-items:center;gap:6px;margin-top:6px">
+                  <span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px;background:var(--chip);color:var(--muted)">{{ it.category }}</span>
+                  <sc-for list="{{ it.flags }}" as="f" hint-placeholder-count="1">
+                    <span style="width:19px;height:19px;border-radius:6px;background:var(--redSoft);color:var(--red);font-size:10px;font-weight:700;font-family:ui-monospace,Menlo,monospace;display:flex;align-items:center;justify-content:center" title="{{ f.title }}">{{ f.k }}</span>
+                  </sc-for>
+                </span>
+              </span>
+              <span style="text-align:right">
+                <span style="display:block;font-size:15.5px;font-weight:600;font-variant-numeric:tabular-nums">{{ it.total }}</span>
+                <span style="display:block;font-size:11.5px;color:var(--muted);margin-top:4px;font-variant-numeric:tabular-nums">{{ it.qty }}</span>
+              </span>
+            </button>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:14px;margin-top:16px;font-size:13px;color:var(--muted);justify-content:flex-end;flex-wrap:wrap">
+          <span>V verarbeitet</span><span>Ö Samenöl</span><span>G Gluten</span><span>M Billigmilch</span>
+        </div>
+      </div>
+      <div style="flex:0 0 auto;padding:12px 20px 34px;background:var(--card);border-top:1px solid var(--line)">
+        <button onClick="{{ nav.dashboard }}" style="appearance:none;width:100%;height:52px;border:none;border-radius:16px;background:var(--green);color:#fff;font:inherit;font-size:17px;font-weight:700;cursor:pointer">Speichern · 42,17 €</button>
+      </div>
+    </sc-if>
+
+    <!-- EINKAUFS-DETAIL -->
+    <sc-if value="{{ isPurchase }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow-y:auto;padding:4px 20px 120px">
+        <button onClick="{{ nav.dashboard }}" style="appearance:none;background:transparent;border:none;color:var(--green);font:inherit;font-size:16px;font-weight:600;padding:6px 0;cursor:pointer;display:flex;align-items:center;gap:6px">
+          <svg width="9" height="15" viewBox="0 0 9 15"><path d="M8 1L2 7.5L8 14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg> Übersicht
+        </button>
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin:12px 0 4px">
+          <div>
+            <div style="font-size:30px;font-weight:700;letter-spacing:-.03em">Rewe</div>
+            <div style="font-size:14px;color:var(--muted);margin-top:3px">14.08.2026 · 12 Positionen</div>
+          </div>
+          <div style="font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.03em">42,17 €</div>
+        </div>
+        <div style="display:flex;gap:10px;margin:18px 0 14px">
+          <button onClick="{{ nav.scanReview }}" style="appearance:none;flex:1;height:44px;border-radius:14px;border:1px solid var(--line);background:var(--card);color:var(--text);font:inherit;font-size:15px;font-weight:600;cursor:pointer">Korrigieren</button>
+          <button style="appearance:none;flex:1;height:44px;border-radius:14px;border:1px solid var(--line);background:var(--card);color:var(--red);font:inherit;font-size:15px;font-weight:600;cursor:pointer">Löschen</button>
+        </div>
+        <div style="background:var(--card);border-radius:18px;box-shadow:var(--shadow);overflow:hidden">
+          <sc-for list="{{ scanItems }}" as="it" hint-placeholder-count="8">
+            <div style="border-bottom:1px solid var(--line);padding:13px 16px;display:flex;align-items:center;gap:10px">
+              <span style="flex:1">
+                <span style="display:block;font-size:15.5px;font-weight:600">{{ it.name }}</span>
+                <span style="display:flex;align-items:center;gap:6px;margin-top:6px">
+                  <span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px;background:var(--chip);color:var(--muted)">{{ it.category }}</span>
+                  <sc-for list="{{ it.flags }}" as="f" hint-placeholder-count="1">
+                    <span style="width:19px;height:19px;border-radius:6px;background:var(--redSoft);color:var(--red);font-size:10px;font-weight:700;font-family:ui-monospace,Menlo,monospace;display:flex;align-items:center;justify-content:center">{{ f.k }}</span>
+                  </sc-for>
+                </span>
+              </span>
+              <span style="text-align:right">
+                <span style="display:block;font-size:15.5px;font-weight:600;font-variant-numeric:tabular-nums">{{ it.total }}</span>
+                <span style="display:block;font-size:11.5px;color:var(--muted);margin-top:4px">{{ it.qty }}</span>
+              </span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="font-size:12.5px;color:var(--muted);padding:14px 4px">Positionssumme 41,98 € · Abweichung 0,19 € zum Bon-Total.</div>
+      </div>
+    </sc-if>
+
+    <!-- EINSTELLUNGEN -->
+    <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow-y:auto;padding:4px 20px 40px">
+        <button onClick="{{ nav.dashboard }}" style="appearance:none;background:transparent;border:none;color:var(--green);font:inherit;font-size:16px;font-weight:600;padding:6px 0;cursor:pointer;display:flex;align-items:center;gap:6px">
+          <svg width="9" height="15" viewBox="0 0 9 15"><path d="M8 1L2 7.5L8 14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg> Übersicht
+        </button>
+        <div style="font-size:30px;font-weight:700;letter-spacing:-.03em;margin:10px 0 18px">Einstellungen</div>
+
+        <div style="background:var(--card);border-radius:18px;padding:16px;box-shadow:var(--shadow);margin-bottom:14px">
+          <div style="font-size:13px;color:var(--muted);font-weight:600;margin-bottom:10px">Monatsbudget</div>
+          <div style="display:flex;align-items:baseline;gap:8px">
+            <div style="font-size:34px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.03em">450</div>
+            <div style="font-size:20px;font-weight:600;color:var(--muted)">€</div>
+            <div style="flex:1"></div>
+            <button style="appearance:none;height:36px;padding:0 16px;border-radius:12px;border:1px solid var(--line);background:var(--card2);color:var(--text);font:inherit;font-size:14px;font-weight:600;cursor:pointer">Ändern</button>
+          </div>
+        </div>
+
+        <div style="background:var(--card);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;margin-bottom:14px">
+          <div style="display:flex;align-items:center;gap:12px;padding:15px 16px;border-bottom:1px solid var(--line)">
+            <div style="flex:1;font-size:16px;font-weight:600">Dark Mode</div>
+            <button onClick="{{ toggleTheme }}" style="appearance:none;width:51px;height:31px;border-radius:99px;border:none;padding:2px;cursor:pointer;display:flex;background:{{ switchBg }};justify-content:{{ switchJustify }}">
+              <span style="width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span>
+            </button>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:15px 16px">
+            <div style="flex:1">
+              <div style="font-size:16px;font-weight:600">Bon-Fotos nach Erkennung löschen</div>
+              <div style="font-size:12.5px;color:var(--muted);margin-top:3px">Spart Speicher, Positionen bleiben erhalten</div>
+            </div>
+            <div style="width:51px;height:31px;border-radius:99px;background:var(--green);padding:2px;display:flex;justify-content:flex-end;flex:0 0 51px">
+              <span style="width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span>
+            </div>
+          </div>
+        </div>
+
+        <div style="background:var(--card);border-radius:18px;padding:6px 16px 10px;box-shadow:var(--shadow);margin-bottom:14px">
+          <div style="font-size:13px;color:var(--muted);font-weight:600;padding:12px 0 8px">Haushalt</div>
+          <sc-for list="{{ household }}" as="m" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:12px;border-top:1px solid var(--line);padding:13px 0">
+              <span style="width:34px;height:34px;border-radius:50%;background:var(--chip);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--muted)">{{ m.initials }}</span>
+              <span style="flex:1">
+                <span style="display:block;font-size:15.5px;font-weight:600">{{ m.name }}</span>
+                <span style="display:block;font-size:12.5px;color:var(--muted);margin-top:2px">{{ m.mail }}</span>
+              </span>
+              <span style="font-size:11px;font-weight:700;padding:4px 9px;border-radius:99px;background:{{ m.badgeBg }};color:{{ m.badgeFg }}">{{ m.badge }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <button onClick="{{ nav.login }}" style="appearance:none;width:100%;height:50px;border-radius:16px;border:1px solid var(--line);background:var(--card);color:var(--red);font:inherit;font-size:16px;font-weight:600;cursor:pointer">Konto abmelden</button>
+        <div style="text-align:center;font-size:12px;color:var(--muted);padding:18px 0 0">Receipt AI 1.0 · Privater Haushalt</div>
+      </div>
+    </sc-if>
+
+    <!-- BOTTOM SHEET (Position bearbeiten) -->
+    <sc-if value="{{ sheetOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;background:rgba(8,10,9,.45);z-index:40" onClick="{{ closeSheet }}"></div>
+      <div style="position:absolute;left:0;right:0;bottom:0;z-index:41;background:var(--card);border-radius:24px 24px 0 0;padding:10px 20px 34px;box-shadow:0 -20px 50px -20px rgba(0,0,0,.4)">
+        <div style="width:38px;height:5px;border-radius:99px;background:var(--line);margin:0 auto 14px"></div>
+        <div style="font-size:19px;font-weight:700;margin-bottom:16px">Position bearbeiten</div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div>
+            <div style="font-size:12px;color:var(--muted);font-weight:600;margin-bottom:6px">Name</div>
+            <div style="height:46px;border-radius:13px;background:var(--card2);border:1px solid var(--line);display:flex;align-items:center;padding:0 14px;font-size:16px;font-weight:600">{{ sheetItem.name }}</div>
+          </div>
+          <div style="display:flex;gap:12px">
+            <div style="flex:1">
+              <div style="font-size:12px;color:var(--muted);font-weight:600;margin-bottom:6px">Menge</div>
+              <div style="height:46px;border-radius:13px;background:var(--card2);border:1px solid var(--line);display:flex;align-items:center;padding:0 14px;font-size:16px;font-variant-numeric:tabular-nums">{{ sheetItem.qty }}</div>
+            </div>
+            <div style="flex:1">
+              <div style="font-size:12px;color:var(--muted);font-weight:600;margin-bottom:6px">Preis</div>
+              <div style="height:46px;border-radius:13px;background:var(--card2);border:1px solid var(--line);display:flex;align-items:center;padding:0 14px;font-size:16px;font-variant-numeric:tabular-nums">{{ sheetItem.total }}</div>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:12px;color:var(--muted);font-weight:600;margin-bottom:8px">Kategorie</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px">
+              <sc-for list="{{ sheetCategories }}" as="sc" hint-placeholder-count="9">
+                <span style="font-size:13px;font-weight:600;padding:8px 12px;border-radius:99px;background:{{ sc.bg }};color:{{ sc.fg }}">{{ sc.name }}</span>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        <button onClick="{{ closeSheet }}" style="appearance:none;width:100%;height:50px;border:none;border-radius:16px;background:var(--green);color:#fff;font:inherit;font-size:17px;font-weight:700;cursor:pointer;margin-top:20px">Übernehmen</button>
+      </div>
+    </sc-if>
+
+    <!-- TAB BAR -->
+    <sc-if value="{{ showTabs }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute;left:0;right:0;bottom:0;height:88px;background:var(--card);border-top:1px solid var(--line);display:flex;align-items:flex-start;padding:8px 6px 0;z-index:20">
+        <button onClick="{{ nav.dashboard }}" style="appearance:none;flex:1;background:transparent;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;padding:6px 0;color:{{ tabColor.dashboard }};font:inherit">
+          <svg width="23" height="23" viewBox="0 0 23 23"><rect x="1.5" y="1.5" width="8.5" height="8.5" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13" y="1.5" width="8.5" height="8.5" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="1.5" y="13" width="8.5" height="8.5" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13" y="13" width="8.5" height="8.5" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+          <span style="font-size:10.5px;font-weight:600">Übersicht</span>
+        </button>
+        <button onClick="{{ nav.prices }}" style="appearance:none;flex:1;background:transparent;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;padding:6px 0;color:{{ tabColor.prices }};font:inherit">
+          <svg width="23" height="23" viewBox="0 0 23 23"><rect x="3" y="3" width="17" height="17" rx="4" transform="rotate(45 11.5 11.5)" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="11.5" cy="11.5" r="2.6" fill="currentColor"/></svg>
+          <span style="font-size:10.5px;font-weight:600">Bestpreise</span>
+        </button>
+        <div style="flex:1.05;display:flex;justify-content:center">
+          <button onClick="{{ nav.scanCamera }}" style="appearance:none;width:60px;height:60px;margin-top:-18px;border-radius:20px;border:4px solid var(--card);background:var(--green);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 22px -8px rgba(22,145,92,.75)">
+            <svg width="26" height="26" viewBox="0 0 26 26"><path d="M2 8V4.5A2.5 2.5 0 014.5 2H8M18 2h3.5A2.5 2.5 0 0124 4.5V8M24 18v3.5a2.5 2.5 0 01-2.5 2.5H18M8 24H4.5A2.5 2.5 0 012 21.5V18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><rect x="2" y="12" width="22" height="2.4" rx="1.2" fill="currentColor"/></svg>
+          </button>
+        </div>
+        <button onClick="{{ nav.analytics }}" style="appearance:none;flex:1;background:transparent;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;padding:6px 0;color:{{ tabColor.analytics }};font:inherit">
+          <svg width="23" height="23" viewBox="0 0 23 23"><rect x="1.5" y="12" width="5" height="9.5" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="9" y="6" width="5" height="15.5" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="16.5" y="1.5" width="5" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+          <span style="font-size:10.5px;font-weight:600">Analysen</span>
+        </button>
+        <button onClick="{{ nav.health }}" style="appearance:none;flex:1;background:transparent;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;padding:6px 0;color:{{ tabColor.health }};font:inherit">
+          <svg width="23" height="23" viewBox="0 0 23 23"><circle cx="11.5" cy="11.5" r="9.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="10.2" y="6" width="2.6" height="11" rx="1.3" fill="currentColor"/><rect x="6" y="10.2" width="11" height="2.6" rx="1.3" fill="currentColor"/></svg>
+          <span style="font-size:10.5px;font-weight:600">Gesundheit</span>
+        </button>
+      </div>
+    </sc-if>
+
+    <div style="position:absolute;left:50%;transform:translateX(-50%);bottom:8px;width:138px;height:5px;border-radius:99px;background:var(--text);opacity:.22;z-index:30"></div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;'light'|'dark'&quot;},&quot;startScreen&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;login&quot;,&quot;dashboard&quot;,&quot;scanCamera&quot;,&quot;scanProcessing&quot;,&quot;scanReview&quot;,&quot;prices&quot;,&quot;product&quot;,&quot;analytics&quot;,&quot;health&quot;,&quot;purchase&quot;,&quot;settings&quot;],&quot;default&quot;:&quot;dashboard&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  // ---- MOCK DATA (später 1:1 nach src/mocks/*.ts übertragbar) ----
+  mock = {
+    month: { label: "August 2026", food: "236,00 €", nonfood: "41,00 €", total: 277, budget: 450, forecast: 490 },
+    categories: [
+      { name: "Obst & Gemüse", value: 58.4, amount: "58,40 €", color: "#16915C" },
+      { name: "Fleisch & Fisch", value: 47.1, amount: "47,10 €", color: "#1FA86C" },
+      { name: "Milchprodukte", value: 32.8, amount: "32,80 €", color: "#43BC85" },
+      { name: "Süßes & Snacks", value: 24.3, amount: "24,30 €", color: "#6ACB9E" },
+      { name: "Backwaren", value: 21.5, amount: "21,50 €", color: "#8FD8B6" },
+      { name: "Getränke", value: 18.9, amount: "18,90 €", color: "#AFE3CB" },
+      { name: "Fertiggerichte", value: 16.6, amount: "16,60 €", color: "#C6ECDB" },
+      { name: "Grundnahrungsmittel", value: 16.4, amount: "16,40 €", color: "#DCF2E8" },
+      { name: "Non-Food", value: 41.0, amount: "41,00 €", color: "#7C8A99" }
+    ],
+    recent: [
+      { id: "r1", merchant: "Rewe", meta: "14.08.2026 · 12 Positionen", total: "42,17 €", initials: "RE" },
+      { id: "r2", merchant: "Lidl", meta: "12.08.2026 · 7 Positionen", total: "23,49 €", initials: "LI" },
+      { id: "r3", merchant: "Edeka", meta: "09.08.2026 · 18 Positionen", total: "61,30 €", initials: "ED" }
+    ],
+    products: [
+      { id: "butter", name: "Butter (250 g)", unitPrice: "7,96 €/kg", age: "vor 33 Tagen", bestMerchant: "Lidl", bestPrice: "1,99 €",
+        others: [{ merchant: "Rewe", date: "08.08.2026", price: "2,49 €" }, { merchant: "Edeka", date: "02.08.2026", price: "2,69 €" }] },
+      { id: "milch", name: "H-Milch 3,5 % (1 l)", unitPrice: "1,09 €/l", age: "vor 5 Tagen", bestMerchant: "Aldi", bestPrice: "1,09 €",
+        others: [{ merchant: "Lidl", date: "12.08.2026", price: "1,15 €" }, { merchant: "Rewe", date: "14.08.2026", price: "1,29 €" }] },
+      { id: "eier", name: "Eier, Freiland (10er)", unitPrice: "0,32 €/Stück", age: "vor 12 Tagen", bestMerchant: "Edeka", bestPrice: "3,19 €",
+        others: [{ merchant: "Rewe", date: "14.08.2026", price: "3,49 €" }, { merchant: "Aldi", date: "27.07.2026", price: "3,29 €" }] },
+      { id: "haehnchen", name: "Hähnchenbrust", unitPrice: "ohne Mengenangabe", age: "vor 3 Tagen", bestMerchant: "Aldi", bestPrice: "5,49 €",
+        others: [{ merchant: "Rewe", date: "14.08.2026", price: "6,99 €" }, { merchant: "Edeka", date: "09.08.2026", price: "7,29 €" }] },
+      { id: "brot", name: "Sauerteigbrot (750 g)", unitPrice: "3,32 €/kg", age: "vor 2 Tagen", bestMerchant: "Rewe", bestPrice: "2,49 €",
+        others: [{ merchant: "Edeka", date: "09.08.2026", price: "3,19 €" }, { merchant: "Lidl", date: "01.08.2026", price: "2,79 €" }] },
+      { id: "olivenoel", name: "Olivenöl extra vergine (500 ml)", unitPrice: "13,98 €/l", age: "vor 21 Tagen", bestMerchant: "Lidl", bestPrice: "6,99 €",
+        others: [{ merchant: "Rewe", date: "02.08.2026", price: "8,49 €" }, { merchant: "Edeka", date: "18.07.2026", price: "9,29 €" }] },
+      { id: "spuelmittel", name: "Spülmittel (500 ml) · Non-Food", unitPrice: "2,38 €/l", age: "vor 8 Tagen", bestMerchant: "Aldi", bestPrice: "1,19 €",
+        others: [{ merchant: "Lidl", date: "12.08.2026", price: "1,29 €" }, { merchant: "Rewe", date: "06.08.2026", price: "1,79 €" }] }
+    ],
+    productDetail: {
+      butter: { buyCount: 11, prices: [2.39, 2.69, 2.19, 1.99, 2.49, 2.29],
+        history: [
+          { merchant: "Rewe", date: "08.08.2026", price: "2,49 €", best: false },
+          { merchant: "Lidl", date: "12.07.2026", price: "1,99 €", best: true },
+          { merchant: "Edeka", date: "02.07.2026", price: "2,69 €", best: false },
+          { merchant: "Rewe", date: "19.06.2026", price: "2,19 €", best: false },
+          { merchant: "Aldi", date: "04.06.2026", price: "2,09 €", best: false },
+          { merchant: "Rewe", date: "21.05.2026", price: "2,39 €", best: false }
+        ] }
+    },
+    scanItems: [
+      { name: "H-Milch 3,5 %", qty: "2 × 1,29 €", total: "2,58 €", category: "Milchprodukte", flags: [] },
+      { name: "Butter", qty: "1 × 2,49 €", total: "2,49 €", category: "Milchprodukte", flags: [] },
+      { name: "Eier, Freiland (10er)", qty: "1 × 3,49 €", total: "3,49 €", category: "Grundnahrungsmittel", flags: [] },
+      { name: "Bananen", qty: "1,12 kg × 1,79 €", total: "2,00 €", category: "Obst & Gemüse", flags: [] },
+      { name: "Hähnchenbrust", qty: "ohne Mengenangabe", total: "6,99 €", category: "Fleisch & Fisch", flags: [] },
+      { name: "Sauerteigbrot", qty: "1 × 2,49 €", total: "2,49 €", category: "Backwaren", flags: [{ k: "G", title: "Gluten" }] },
+      { name: "Toastbrötchen", qty: "1 × 1,49 €", total: "1,49 €", category: "Backwaren", flags: [{ k: "V", title: "verarbeitet" }, { k: "G", title: "Gluten" }] },
+      { name: "Sonnenblumenöl", qty: "1 × 2,19 €", total: "2,19 €", category: "Grundnahrungsmittel", flags: [{ k: "Ö", title: "Samenöl" }] },
+      { name: "Frischkäse (Eigenmarke)", qty: "1 × 0,99 €", total: "0,99 €", category: "Milchprodukte", flags: [{ k: "M", title: "Billigmilch" }] },
+      { name: "Tiefkühl-Pizza Salami", qty: "2 × 2,79 €", total: "5,58 €", category: "Fertiggerichte", flags: [{ k: "V", title: "verarbeitet" }, { k: "Ö", title: "Samenöl" }] },
+      { name: "Mineralwasser (6 × 1,5 l)", qty: "1 × 3,49 €", total: "3,49 €", category: "Getränke", flags: [] },
+      { name: "Spülmittel", qty: "1 × 1,79 €", total: "1,79 €", category: "Non-Food", flags: [] }
+    ],
+    trend: { Woche: [{ label: "Mo", v: 0 }, { label: "Di", v: 23.49 }, { label: "Mi", v: 0 }, { label: "Do", v: 42.17 }, { label: "Fr", v: 11.8 }, { label: "Sa", v: 61.3 }, { label: "So", v: 0 }],
+      Monat: [{ label: "KW31", v: 68.4 }, { label: "KW32", v: 96.2 }, { label: "KW33", v: 112.4 }, { label: "KW34", v: 0 }, { label: "KW35", v: 0 }],
+      Jahr: [{ label: "Mär", v: 402.1 }, { label: "Apr", v: 438.9 }, { label: "Mai", v: 415.6 }, { label: "Jun", v: 449.3 }, { label: "Jul", v: 471.2 }, { label: "Aug", v: 277 }],
+      Benutzerd: [{ label: "1.–7.", v: 68.4 }, { label: "8.–14.", v: 208.6 }] },
+    savings: [
+      { name: "Butter", hint: "Lidl 1,99 € statt Rewe 2,49 € · 3 ×", diff: "+1,50 €" },
+      { name: "Hähnchenbrust", hint: "Aldi 5,49 € statt Rewe 6,99 €", diff: "+1,50 €" },
+      { name: "Olivenöl", hint: "Lidl 6,99 € statt Rewe 8,49 €", diff: "+1,50 €" },
+      { name: "Eier (10er)", hint: "Edeka 3,19 € statt Rewe 3,49 € · 6 ×", diff: "+1,90 €" }
+    ],
+    topProducts: [
+      { name: "Hähnchenbrust", count: "4 ×", amount: "26,96 €" },
+      { name: "Rinderhack", count: "2 ×", amount: "17,98 €" },
+      { name: "Lachsfilet", count: "1 ×", amount: "12,49 €" },
+      { name: "Olivenöl", count: "1 ×", amount: "8,49 €" },
+      { name: "Gouda am Stück", count: "3 ×", amount: "8,37 €" },
+      { name: "Kaffeebohnen", count: "1 ×", amount: "7,99 €" },
+      { name: "Eier (10er)", count: "2 ×", amount: "6,98 €" },
+      { name: "Butter", count: "3 ×", amount: "6,97 €" },
+      { name: "Tiefkühl-Pizza", count: "4 ×", amount: "5,58 €" },
+      { name: "Sauerteigbrot", count: "2 ×", amount: "4,98 €" }
+    ],
+    healthScores: [58, 61, 64, 63, 67, 72],
+    healthCards: [
+      { icon: "Ö", title: "Samenöle", amount: "19 €", detail: "Sonnenblumenöl, Rapsöl und Fertigprodukte mit Samenölen – 7 Positionen im August.", tip: "Statt Sonnenblumenöl: Butter, Ghee oder Olivenöl." },
+      { icon: "G", title: "Gluten", amount: "34 €", detail: "34 € für glutenhaltige Backwaren – vor allem Toast und Brötchen.", tip: "Statt Weizentoast: Sauerteigbrot mit langer Führung oder Buchweizenbrot." },
+      { icon: "M", title: "Billigmilch", amount: "12 €", detail: "Eigenmarken-Frischkäse und H-Milch aus konventioneller Haltung.", tip: "Statt Eigenmarke: Weidemilch oder Bio-Frischkäse – ca. 0,40 € mehr pro Packung." }
+    ],
+    household: [
+      { name: "Jonas", mail: "jonas@gmail.com", initials: "JO", badge: "Angemeldet", best: true },
+      { name: "Marie", mail: "marie@gmail.com", initials: "MA", badge: "Mitglied", best: false },
+      { name: "Opa Klaus", mail: "klaus@gmail.com", initials: "KL", badge: "Mitglied", best: false }
+    ]
+  };
+
+  state = { screen: "dashboard", theme: "light", range: "Jahr", sheetIndex: null, productId: "butter" };
+
+  componentDidMount() {
+    if (this.props.startScreen) this.setState({ screen: this.props.startScreen });
+    if (this.props.theme) this.setState({ theme: this.props.theme });
+  }
+
+  go = (s) => () => this.setState({ screen: s, sheetIndex: null });
+
+  spark(values, w, h, top) {
+    const min = Math.min.apply(null, values), max = Math.max.apply(null, values);
+    const span = (max - min) || 1;
+    return values.map((v, i) => {
+      const x = values.length === 1 ? w / 2 : (i * w) / (values.length - 1);
+      const y = top + (h - top) * (1 - (v - min) / span);
+      return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
+    });
+  }
+
+  renderVals() {
+    const st = this.state, m = this.mock;
+    const theme = st.theme;
+    const dark = theme === "dark";
+    const green = dark ? "#3FBF83" : "#16915C";
+    const muted = dark ? "#8E978F" : "#77807A";
+    const cardBg = dark ? "#181C1A" : "#FFFFFF";
+
+    // Donut
+    let acc = 0;
+    const stops = m.categories.map((c) => {
+      const start = (acc / m.month.total) * 100;
+      acc += c.value;
+      const end = (acc / m.month.total) * 100;
+      return c.color + " " + start.toFixed(2) + "% " + end.toFixed(2) + "%";
+    });
+    const donutGradient = "conic-gradient(from -90deg," + stops.join(",") + ")";
+    const catMax = Math.max.apply(null, m.categories.map((c) => c.value));
+    const categories = m.categories.map((c) => Object.assign({}, c, { pct: ((c.value / catMax) * 100).toFixed(1) + "%" }));
+
+    // Trend bars
+    const rows = m.trend[st.range] || m.trend.Jahr;
+    const tMax = Math.max.apply(null, rows.map((r) => r.v)) || 1;
+    const trend = rows.map((r) => ({
+      label: r.label,
+      value: r.v ? r.v.toFixed(0).replace(".", ",") + " €" : "–",
+      h: Math.max(4, Math.round((r.v / tMax) * 96)) + "px",
+      color: r.v > 450 ? (dark ? "#E4756B" : "#C8483F") : r.v === 0 ? (dark ? "#222724" : "#EDEFEB") : green
+    }));
+    const ranges = ["Woche", "Monat", "Jahr", "Benutzerd"].map((r) => ({
+      label: r === "Benutzerd" ? "Eigen" : r,
+      select: () => this.setState({ range: r }),
+      bg: st.range === r ? cardBg : "transparent",
+      fg: st.range === r ? (dark ? "#F2F4F0" : "#12150F") : muted,
+      shadow: st.range === r ? "0 1px 3px rgba(0,0,0,.14)" : "none"
+    }));
+
+    // Produkt-Detail
+    const pd = m.productDetail[st.productId] || m.productDetail.butter;
+    const base = m.products.find((p) => p.id === st.productId) || m.products[0];
+    const pts = this.spark(pd.prices, 300, 100, 10);
+    const product = {
+      name: base.name, unitPrice: base.unitPrice, buyCount: pd.buyCount,
+      points: pts, spark: pts.map((p) => p.x + "," + p.y).join(" "),
+      history: pd.history.map((h) => Object.assign({}, h, { color: h.best ? green : (dark ? "#F2F4F0" : "#12150F") }))
+    };
+
+    const hpts = this.spark(m.healthScores, 300, 84, 8);
+
+    const scanItems = m.scanItems.map((it, i) => Object.assign({}, it, { edit: () => this.setState({ sheetIndex: i }) }));
+    const sheetItem = st.sheetIndex === null ? null : m.scanItems[st.sheetIndex];
+    const sheetCategories = sheetItem
+      ? m.categories.map((c) => ({
+          name: c.name,
+          bg: c.name === sheetItem.category ? green : (dark ? "#222724" : "#F0F2EE"),
+          fg: c.name === sheetItem.category ? "#fff" : muted
+        }))
+      : [];
+
+    const screens = [
+      ["login", "1 · Login"], ["dashboard", "2 · Dashboard"], ["scanCamera", "3a · Kamera"],
+      ["scanProcessing", "3b · KI liest…"], ["scanReview", "3c · Korrektur"], ["prices", "4 · Bestpreise"],
+      ["product", "4b · Produkt-Detail"], ["analytics", "5 · Analysen"], ["health", "6 · Gesundheit"],
+      ["purchase", "7 · Einkaufs-Detail"], ["settings", "8 · Einstellungen"]
+    ];
+
+    const activeTab = st.screen === "product" ? "prices" : st.screen === "purchase" ? "dashboard" : st.screen;
+    const tabColor = { dashboard: muted, prices: muted, analytics: muted, health: muted };
+    if (tabColor[activeTab] !== undefined) tabColor[activeTab] = green;
+
+    return {
+      theme,
+      toggleTheme: () => this.setState({ theme: dark ? "light" : "dark" }),
+      switchBg: dark ? green : (dark ? "#222724" : "#E7E9E4"),
+      switchJustify: dark ? "flex-end" : "flex-start",
+      screenIndex: screens.map(([k, label]) => ({
+        label, go: this.go(k), bg: st.screen === k ? "#FFFFFF" : "rgba(255,255,255,.45)"
+      })),
+      nav: {
+        login: this.go("login"), dashboard: this.go("dashboard"), prices: this.go("prices"),
+        analytics: this.go("analytics"), health: this.go("health"), settings: this.go("settings"),
+        scanCamera: this.go("scanCamera"), scanProcessing: this.go("scanProcessing"),
+        scanReview: this.go("scanReview"), purchase: this.go("purchase")
+      },
+      isLogin: st.screen === "login", isDashboard: st.screen === "dashboard", isPrices: st.screen === "prices",
+      isProduct: st.screen === "product", isAnalytics: st.screen === "analytics", isHealth: st.screen === "health",
+      isScanCamera: st.screen === "scanCamera", isScanProcessing: st.screen === "scanProcessing",
+      isScanReview: st.screen === "scanReview", isPurchase: st.screen === "purchase", isSettings: st.screen === "settings",
+      showTabs: ["dashboard", "prices", "product", "analytics", "health", "purchase"].indexOf(st.screen) >= 0,
+      tabColor,
+      budget: { usedPct: ((m.month.total / m.month.forecast) * 100).toFixed(1) + "%", markPct: ((m.month.budget / m.month.forecast) * 100).toFixed(1) + "%" },
+      categories, donutGradient,
+      recent: m.recent.map((r) => Object.assign({}, r, { open: this.go("purchase") })),
+      products: m.products.map((p) => Object.assign({}, p, { open: () => this.setState({ screen: "product", productId: p.id }) })),
+      product, trend, ranges,
+      rangeLabel: st.range === "Benutzerd" ? "01.–14.08.2026" : st.range === "Jahr" ? "letzte 6 Monate" : st.range === "Monat" ? "August 2026" : "diese Woche",
+      savings: m.savings, topProducts: m.topProducts.map((t, i) => Object.assign({}, t, { rank: i + 1 })),
+      healthPoints: hpts, healthSpark: hpts.map((p) => p.x + "," + p.y).join(" "), healthCards: m.healthCards,
+      household: m.household.map((h) => ({
+        name: h.name, mail: h.mail, initials: h.initials, badge: h.badge,
+        badgeBg: h.best ? (dark ? "#16291F" : "#E7F3EC") : (dark ? "#222724" : "#F0F2EE"),
+        badgeFg: h.best ? green : muted
+      })),
+      scanItems, sheetOpen: sheetItem !== null && sheetItem !== undefined,
+      sheetItem: sheetItem || { name: "", qty: "", total: "" }, sheetCategories,
+      closeSheet: () => this.setState({ sheetIndex: null })
+    };
+  }
+}
+</script>
+</body>
+</html>

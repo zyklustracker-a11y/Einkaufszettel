@@ -1,0 +1,158 @@
+@import './tokens.css';
+
+/* ------------------------------------------------------------------ reset */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--surround);
+  color: var(--text);
+  font-family: -apple-system, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', Helvetica, system-ui,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  /* No rubber-band scroll behind the app shell on iOS. */
+  overscroll-behavior: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* -------------------------------------------------------------- app shell */
+
+/*
+ * On an iPhone the app fills the viewport. On a desktop browser it stays at
+ * phone width and centres itself, so the layout is always the one that was
+ * designed. `100dvh` keeps the tab bar put while Safari's chrome collapses.
+ */
+.app {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 430px;
+  height: 100dvh;
+  margin: 0 auto;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+/*
+ * Scrolling region of a screen. The safe-area top inset clears the iOS status
+ * bar in standalone mode; the bottom padding clears the tab bar.
+ */
+.screen {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) 20px 28px;
+}
+
+.screen--tabbed {
+  padding-bottom: calc(var(--tabbar-height) + 28px);
+}
+
+/* Full-bleed screens (camera, processing) manage their own insets. */
+.screen--bleed {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ------------------------------------------------------------- primitives */
+
+.card {
+  background: var(--card);
+  border-radius: 20px;
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+
+.card + .card {
+  margin-top: 14px;
+}
+
+.cardTitle {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.screenTitle {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin: 0 0 14px;
+}
+
+.pageTitle {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin: 10px 0 2px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.sectionLabel {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 20px 0 10px;
+}
+
+.divider {
+  border-top: 1px solid var(--line);
+}
+
+/* Rows inside a card list: a hairline between siblings, none above the first. */
+.rowList > * + * {
+  border-top: 1px solid var(--line);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

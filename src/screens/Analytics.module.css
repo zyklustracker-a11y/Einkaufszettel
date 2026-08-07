@@ -1,0 +1,165 @@
+/* --------------------------------------------------------- range switcher */
+
+.ranges {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--chip);
+  border-radius: 13px;
+  margin-bottom: 16px;
+}
+
+.range {
+  flex: 1;
+  height: 34px;
+  border: none;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: var(--muted);
+}
+
+.range--active {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14);
+}
+
+/* ------------------------------------------------------------------ shared */
+
+.cardHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.periodLabel {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.footnote {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+/* ------------------------------------------------------------- Sparpotenzial */
+
+.savingsIntro {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 6px 0 14px;
+  line-height: 1.45;
+}
+
+.savingsTotal {
+  color: var(--red);
+  font-weight: 600;
+}
+
+.savingsRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 0;
+  border-top: 1px solid var(--line);
+}
+
+.savingsName {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.savingsHint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.savingsDiff {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--red);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------ Produktsuche */
+
+.searchResult {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.searchCount {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.searchAmount {
+  font-size: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+
+/* ---------------------------------------------------------------- Top 10 */
+
+.listCard {
+  background: var(--card);
+  border-radius: 20px;
+  padding: 6px 18px 10px;
+  box-shadow: var(--shadow);
+  margin-top: 14px;
+}
+
+.listTitle {
+  font-size: 15px;
+  font-weight: 600;
+  padding: 12px 0 4px;
+}
+
+.topRow {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  border-top: 1px solid var(--line);
+  padding: 11px 0;
+}
+
+.rank {
+  width: 20px;
+  flex: 0 0 20px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.topName {
+  flex: 1;
+  min-width: 0;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.topCount {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.topAmount {
+  font-size: 14.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  width: 58px;
+  flex: 0 0 58px;
+  text-align: right;
+}

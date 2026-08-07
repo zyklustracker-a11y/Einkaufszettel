@@ -1,0 +1,59 @@
+/* Design tokens — values taken verbatim from the Claude Design prototype
+   (design/project/Receipt AI.dc.html). Light is the default, dark is the variant. */
+:root {
+  --bg: #f4f5f3;
+  --card: #ffffff;
+  --card2: #fafaf8;
+  --text: #12150f;
+  --muted: #77807a;
+  --line: #e7e9e4;
+  --green: #16915c;
+  --green-soft: #e7f3ec;
+  --red: #c8483f;
+  --red-soft: #fbecea;
+  --amber: #b07a12;
+  --amber-soft: #fbf2e0;
+  --chip: #f0f2ee;
+  --shadow: 0 1px 2px rgba(16, 24, 20, 0.05), 0 12px 28px -16px rgba(16, 24, 20, 0.18);
+
+  /* Chart-only tones: the donut/category ramp and the neutral Non-Food swatch. */
+  --cat-1: #16915c;
+  --cat-2: #1fa86c;
+  --cat-3: #43bc85;
+  --cat-4: #6acb9e;
+  --cat-5: #8fd8b6;
+  --cat-6: #afe3cb;
+  --cat-7: #c6ecdb;
+  --cat-8: #dcf2e8;
+  --cat-nonfood: #7c8a99;
+  --bar-empty: #edefeb;
+
+  /* Surround shown around the app on wide screens. */
+  --surround: #dfe0dc;
+
+  /*
+   * Tab bar: 62px of controls plus the home-indicator inset. Screens behind it
+   * pad their scroll area by the same amount, so nothing hides under it.
+   */
+  --tabbar-height: calc(62px + env(safe-area-inset-bottom, 0px));
+}
+
+[data-theme='dark'] {
+  --bg: #0e1110;
+  --card: #181c1a;
+  --card2: #141816;
+  --text: #f2f4f0;
+  --muted: #8e978f;
+  --line: #262b28;
+  --green: #3fbf83;
+  --green-soft: #16291f;
+  --red: #e4756b;
+  --red-soft: #2a1918;
+  --amber: #d9a544;
+  --amber-soft: #2a2113;
+  --chip: #222724;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 28px -16px rgba(0, 0, 0, 0.7);
+
+  --bar-empty: #222724;
+  --surround: #080a09;
+}

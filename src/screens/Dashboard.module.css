@@ -1,0 +1,251 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.eyebrow {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.month {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+
+.iconButton {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* ------------------------------------------------------------ month totals */
+
+.totals {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.totalLabel {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.totalValue {
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.grandTotal {
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.grandTotalValue {
+  font-size: 32px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  /* The hero figure must never wrap, even at 277,00 €. */
+  white-space: nowrap;
+}
+
+.asOf {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+/* ------------------------------------------------------------------ budget */
+
+.cardHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.budgetSpent {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.scaleRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.forecast {
+  margin-top: 14px;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: var(--red-soft);
+}
+
+.forecast--ok {
+  background: var(--green-soft);
+}
+
+.forecastTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--red);
+}
+
+.forecastDetail {
+  font-size: 13px;
+  color: var(--red);
+  opacity: 0.85;
+  margin-top: 2px;
+}
+
+.forecast--ok .forecastTitle,
+.forecast--ok .forecastDetail {
+  color: var(--green);
+}
+
+.comparison {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.delta {
+  font-weight: 600;
+  color: var(--red);
+}
+
+.delta--down {
+  color: var(--green);
+}
+
+/* ------------------------------------------------------------ health card */
+
+.healthCard {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  text-decoration: none;
+  margin-top: 14px;
+}
+
+.healthSplit {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+.healthTrack {
+  height: 8px;
+  border-radius: 99px;
+  background: var(--chip);
+  margin-top: 12px;
+  overflow: hidden;
+}
+
+.healthFill {
+  height: 8px;
+  border-radius: 99px;
+  background: var(--green);
+}
+
+.score {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.scoreCaption {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------- recent list */
+
+.listCard {
+  background: var(--card);
+  border-radius: 20px;
+  padding: 6px 18px 8px;
+  box-shadow: var(--shadow);
+  margin-top: 14px;
+}
+
+.listTitle {
+  font-size: 15px;
+  font-weight: 600;
+  padding: 12px 0 4px;
+}
+
+.receiptRow {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--line);
+  padding: 14px 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: none;
+}
+
+.merchant {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.receiptMeta {
+  display: block;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.receiptTotal {
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

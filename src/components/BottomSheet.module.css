@@ -1,0 +1,51 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: rgba(8, 10, 9, 0.45);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  animation: fade 0.2s ease;
+}
+
+.sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 41;
+  background: var(--card);
+  border-radius: 24px 24px 0 0;
+  padding: 10px 20px calc(env(safe-area-inset-bottom, 0px) + 20px);
+  box-shadow: 0 -20px 50px -20px rgba(0, 0, 0, 0.4);
+  max-height: 88%;
+  overflow-y: auto;
+  animation: rise 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.grabber {
+  width: 38px;
+  height: 5px;
+  border-radius: 99px;
+  background: var(--line);
+  margin: 0 auto 14px;
+}
+
+.title {
+  font-size: 19px;
+  font-weight: 700;
+  margin: 0 0 16px;
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}

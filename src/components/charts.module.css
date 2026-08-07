@@ -1,0 +1,180 @@
+/* ------------------------------------------------------------------- donut */
+
+.donut {
+  position: relative;
+  width: 124px;
+  height: 124px;
+  flex: 0 0 124px;
+  border-radius: 50%;
+}
+
+/* Punches the hole; sits on the card colour so the ring reads as a donut. */
+.donutHole {
+  position: absolute;
+  inset: 21px;
+  border-radius: 50%;
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.donutValue {
+  font-size: 19px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.donutCaption {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ legend */
+
+.legend {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.legendRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+}
+
+.swatch {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 3px;
+}
+
+.legendName {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+
+.legendValue {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* -------------------------------------------------------------- sparkline */
+
+.sparkline {
+  width: 100%;
+  overflow: visible;
+  display: block;
+}
+
+.sparkAxis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------- barChart */
+
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 132px;
+  margin-top: 18px;
+}
+
+.barColumn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+}
+
+.barValue {
+  font-size: 10.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bar {
+  width: 100%;
+  border-radius: 7px 7px 3px 3px;
+  background: var(--green);
+}
+
+.bar--over {
+  background: var(--red);
+}
+
+.bar--empty {
+  background: var(--bar-empty);
+}
+
+.barLabel {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------- horizontal bars */
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rowName {
+  width: 112px;
+  flex: 0 0 112px;
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rowTrack {
+  flex: 1;
+  height: 9px;
+  border-radius: 99px;
+  background: var(--chip);
+  overflow: hidden;
+}
+
+.rowFill {
+  height: 9px;
+  border-radius: 99px;
+}
+
+.rowValue {
+  width: 60px;
+  flex: 0 0 60px;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

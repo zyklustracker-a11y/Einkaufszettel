@@ -1,0 +1,64 @@
+.subtitle {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0 0 16px;
+}
+
+.cardHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.range {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.historyCard {
+  background: var(--card);
+  border-radius: 20px;
+  padding: 6px 18px 10px;
+  box-shadow: var(--shadow);
+  margin-top: 14px;
+}
+
+.historyTitle {
+  font-size: 15px;
+  font-weight: 600;
+  padding: 12px 0 4px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding: 13px 0;
+}
+
+.merchant {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.date {
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.price {
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  width: 64px;
+  text-align: right;
+}
+
+.price--best {
+  color: var(--green);
+}

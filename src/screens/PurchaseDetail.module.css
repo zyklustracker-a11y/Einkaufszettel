@@ -1,0 +1,96 @@
+.head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0 4px;
+}
+
+.merchant {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+
+.meta {
+  font-size: 14px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+.total {
+  font-size: 30px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  margin: 18px 0 14px;
+}
+
+.action {
+  flex: 1;
+  height: 44px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action--danger {
+  color: var(--red);
+}
+
+.footnote {
+  font-size: 12.5px;
+  color: var(--muted);
+  padding: 14px 4px;
+  line-height: 1.45;
+}
+
+.confirmText {
+  font-size: 14.5px;
+  color: var(--muted);
+  margin: 0 0 20px;
+  line-height: 1.45;
+}
+
+.confirmActions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.confirmDelete {
+  height: 50px;
+  border: none;
+  border-radius: 16px;
+  background: var(--red);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.confirmCancel {
+  height: 50px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card2);
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 600;
+  cursor: pointer;
+}
