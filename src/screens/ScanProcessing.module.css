@@ -57,6 +57,27 @@
   color: var(--muted);
 }
 
+/*
+ * Der Fortschrittsbalken. Der Balken selbst kommt aus <ProgressBar> und bringt
+ * seine Gestaltung mit — hier steht nur, wie er zusammen mit der Prozentzahl
+ * im Screen sitzt.
+ */
+.progress {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progressValue {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-align: center;
+  /* Feste Ziffernbreite, sonst zappelt die Zahl bei jedem Takt. */
+  font-variant-numeric: tabular-nums;
+}
+
 .steps {
   width: 100%;
   display: flex;

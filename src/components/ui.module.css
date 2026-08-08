@@ -132,6 +132,14 @@
   left: 0;
   border-radius: 99px;
   background: var(--green);
+  /*
+   * Glättet die Sprünge, wenn sich die Breite laufend ändert — der
+   * Verarbeitungs-Screen rechnet den Fortschritt zehnmal je Sekunde nach.
+   * Beim Budget-Balken passiert nichts: Der wird mit seiner endgültigen Breite
+   * eingehängt, und ein Element, das gleich mit dem Zielwert erscheint, löst
+   * keinen Übergang aus.
+   */
+  transition: width 0.15s linear;
 }
 
 .fill--over {

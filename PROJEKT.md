@@ -434,6 +434,22 @@ werden kann (`<input type="date">`, auf dem iPhone der Systemauswähler). Es
 entscheidet, in welchen Monat der ganze Einkauf fällt; ein vertipptes Jahr
 verschiebt alles. Alles andere bleibt bis 4b-2 reine Anzeige.
 
+**Der Fortschrittsbalken schätzt — und sagt das durch sein Verhalten.** Wie weit
+Mistral ist, meldet niemand: Die Schnittstelle antwortet einmal, einen
+Zwischenstand gibt es nicht. Der Balken auf dem Verarbeitungs-Screen ist deshalb
+eine Schätzung, gebunden an die drei beobachtbaren Abschnitte und nach deren
+typischer Dauer gewichtet (0,8 s : 14 s : 0,7 s → rund 5 % : 90 % : 4 %).
+
+Drei Regeln halten ihn ehrlich: Er läuft nie rückwärts, er wartet bei 95 %,
+solange die Antwort aussteht, und er erreicht 100 % erst, wenn das Ergebnis
+wirklich da ist. Ein Balken, der bei 100 % steht und trotzdem weiterlädt, wäre
+schlimmer als gar keiner. Kommt die Antwort früher als geschätzt, springt er
+zügig durch — das ist der einzige erlaubte Sprung.
+
+Die Zeitschätzungen stehen als benannte Konstanten oben in
+`src/screens/ScanProcessing.tsx` und sind die einzige Stellschraube, sobald sich
+zeigt, wie lange ein Scan im Alltag dauert.
+
 **Das Ergebnis reist im Speicher**, wie schon das Foto (`src/lib/scanResult.ts`
 neben `capture.ts`). Es gibt in 4b-1 keinen Bon in der Datenbank, den der
 Korrektur-Screen abfragen könnte. Mit 4b-2 fällt dieser Umweg weg: Dann entsteht
