@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ChangeEvent } from 'react'
+import type { ChangeEvent, CSSProperties } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { captureFrame, fileToJpeg } from '../lib/camera'
 import type { CapturedImage } from '../lib/camera'
@@ -20,17 +20,35 @@ interface Shot {
 }
 
 /**
- * Rückkamera, so hoch aufgelöst wie das Gerät sie hergibt: Bon-Text ist klein,
- * und die Voreinstellung vieler Browser (640 × 480) reicht dafür nicht.
+ * Rückkamera, so hoch aufgelöst wie das Gerät sie hergibt.
+ *
+ * **Nur eine Kante vorgeben.** Hier stand einmal `width: 2000` *und*
+ * `height: 2000`. Zwei Vorgaben zusammen sind für den Browser ein
+ * Seitenverhältnis, und er darf das Sensorbild dafür beschneiden: Auf dem
+ * iPhone kam ein quadratischer Strom von 2000 × 2000 heraus, bei dem der
+ * untere Teil des Bons – und damit die Gesamtsumme – schon vor dem Canvas
+ * fehlte. Mit einer einzigen Vorgabe bleibt das natürliche Seitenverhältnis
+ * der Kamera erhalten.
+ *
+ * Vorgegeben wird die **Höhe**, weil die App hochkant benutzt wird und der Bon
+ * die lange Kante füllt. 1920 ist bewusst nicht höher: Was darüber liegt,
+ * würde `MAX_EDGE` ohnehin wieder wegrechnen, kostet aber Akku und macht die
+ * Vorschau träge.
  *
  * `facingMode` ist bewusst eine weiche Angabe ohne `exact`. Auf einem Rechner
  * ohne Rückkamera nimmt der Browser dann die vorhandene, statt abzubrechen –
  * sonst wäre der Screen in der Entwicklung gar nicht zu sehen.
  */
 const CONSTRAINTS: MediaStreamConstraints = {
-  video: { facingMode: 'environment', width: { ideal: 2000 }, height: { ideal: 2000 } },
+  video: { facingMode: 'environment', height: { ideal: 1920 } },
   audio: false,
 }
+
+/**
+ * Format des Rahmens, solange die Kamera ihres noch nicht gemeldet hat –
+ * Breite geteilt durch Höhe, wie im Entwurf.
+ */
+const DESIGN_ASPECT = 3 / 4.2
 
 const HINTS: Record<Mode, string> = {
   starting: 'Kamera wird gestartet…',
@@ -73,6 +91,14 @@ export function ScanCamera() {
   const [shot, setShot] = useState<Shot | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /**
+   * Das Format des Rahmens folgt dem Kamerabild, nicht umgekehrt.
+   *
+   * Sonst zeigte der Rahmen einen anderen Ausschnitt als der, der aufgenommen
+   * wird, und der Bon würde falsch ausgerichtet – sichtbar wäre der Fehler
+   * erst auf dem fertigen Foto.
+   */
+  const [aspect, setAspect] = useState(DESIGN_ASPECT)
 
   /*
    * Kamerastrom starten und – das ist der eigentliche Punkt – zuverlässig
@@ -247,7 +273,10 @@ export function ScanCamera() {
             </p>
           </div>
         ) : (
-          <div className={shot ? `${styles.frame} ${styles['frame--shot']}` : styles.frame}>
+          <div
+            className={shot ? `${styles.frame} ${styles['frame--shot']}` : styles.frame}
+            style={{ '--frame-aspect': aspect } as CSSProperties}
+          >
             {/*
              * Das <video> bleibt während der Vorschau montiert und wird nur vom
              * Bild überdeckt. Ein neu erzeugtes <video> hätte den Strom
@@ -255,7 +284,20 @@ export function ScanCamera() {
              * abfragen – auf iOS jedes Mal mit Systemdialog.
              */}
             {mode !== 'fallback' && (
-              <video ref={videoRef} className={styles.video} playsInline muted autoPlay />
+              <video
+                ref={videoRef}
+                className={styles.video}
+                playsInline
+                muted
+                autoPlay
+                // Erst hier stehen die echten Maße des Stroms fest.
+                onLoadedMetadata={(event) => {
+                  const video = event.currentTarget
+                  if (video.videoWidth && video.videoHeight) {
+                    setAspect(video.videoWidth / video.videoHeight)
+                  }
+                }}
+              />
             )}
 
             {/* Rahmen-Hilfe: nur beim Ausrichten, nicht über der Vorschau. */}

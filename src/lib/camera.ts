@@ -24,6 +24,16 @@ export interface CapturedImage {
   blob: Blob
   width: number
   height: number
+  /**
+   * Die Maße der Quelle vor dem Verkleinern.
+   *
+   * Nur zur Kontrolle: Stimmen Quelle und Ergebnis überein, wurde nichts
+   * verkleinert – dann liefert die Kamera bereits weniger als die lange Kante
+   * zulässt. Ohne diese Angabe lässt sich am Gerät nicht unterscheiden, ob ein
+   * kleines Bild aus einer schwachen Kamera oder aus dem Verkleinern kommt.
+   */
+  sourceWidth: number
+  sourceHeight: number
 }
 
 /**
@@ -81,8 +91,19 @@ async function drawToJpeg(
   const context = canvas.getContext('2d')
   if (!context) throw new Error('Der Browser stellt keine Zeichenfläche bereit.')
 
+  /*
+   * Vier Argumente, nicht acht: Die Quelle geht vollständig in das Ziel, nur
+   * kleiner. Die Zuschnitt-Variante von `drawImage` ist hier bewusst nicht im
+   * Spiel – ein Bon darf an keiner Kante verlieren.
+   */
   context.drawImage(source, 0, 0, size.width, size.height)
-  return { blob: await toJpeg(canvas), width: size.width, height: size.height }
+  return {
+    blob: await toJpeg(canvas),
+    width: size.width,
+    height: size.height,
+    sourceWidth,
+    sourceHeight,
+  }
 }
 
 /** Ein Einzelbild aus dem laufenden Kamerastrom. */

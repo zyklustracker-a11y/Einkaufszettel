@@ -43,12 +43,31 @@
   padding: 14px 34px;
   /* Bezugspunkt für Vorschau und Wartehinweis, die den Rahmen überdecken. */
   position: relative;
+  /*
+   * Macht die Bühne zum Bezugsrahmen für `cqh` weiter unten. Zulässig ist das
+   * nur, weil ihre Größe nicht vom Inhalt abhängt: Die Höhe kommt aus `flex: 1`,
+   * die Breite vom Screen.
+   */
+  container-type: size;
 }
 
+/*
+ * Der Rahmen zeigt genau den Bereich, der aufgenommen wird. Sein
+ * Seitenverhältnis (Breite geteilt durch Höhe) setzt der Screen aus den Maßen
+ * des Kamerabildes; der Wert hier ist nur der Startwert aus dem Entwurf, bis
+ * die Kamera ihres gemeldet hat.
+ *
+ * Die Breite ist der kleinere der beiden Grenzwerte: so breit wie die Bühne,
+ * oder so breit, wie das Seitenverhältnis bei voller Bühnenhöhe zulässt. Erst
+ * daraus folgt die Höhe. Der naheliegende Weg über `height: 100%` und
+ * `max-width: 100%` funktioniert nicht: `max-width` kürzt dann zwar die Breite,
+ * die feste Höhe bleibt aber stehen — bei einer 4:3-Kamera wurde der Rahmen so
+ * wieder zu schmal für das Bild.
+ */
 .frame {
-  width: 100%;
-  max-height: 100%;
-  aspect-ratio: 3 / 4.2;
+  --frame-aspect: 0.714;
+  width: min(100%, 100cqh * var(--frame-aspect));
+  aspect-ratio: var(--frame-aspect);
   border-radius: 14px;
   background: repeating-linear-gradient(115deg, #1c201e 0 14px, #171b19 14px 28px);
   position: relative;
@@ -60,16 +79,18 @@
 }
 
 /*
- * Das Livebild füllt den Rahmen (`cover`). Aufgenommen wird das *ganze*
- * Kamerabild, also eher mehr als hier zu sehen ist – so kann am Rand nichts
- * verloren gehen, was im Rahmen noch sichtbar war.
+ * `contain`, nicht `cover`: Der Rahmen hat bereits das Format des Kamerabildes,
+ * beide decken sich also. Sollte das Format doch einmal auseinanderlaufen —
+ * etwa in dem Moment, bevor die Kamera ihre Maße gemeldet hat —, zeigt
+ * `contain` weniger Bild statt einen anderen Ausschnitt. Was im Rahmen zu
+ * sehen ist, ist damit nie mehr, als tatsächlich aufgenommen wird.
  */
 .video {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   border-radius: 14px;
   /* Ein noch leerer Strom soll den Rahmen nicht weiß aufblitzen lassen. */
   background: transparent;

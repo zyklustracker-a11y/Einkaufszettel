@@ -267,6 +267,31 @@ das Ergebnis an den Verarbeitungs-Screen weiter – eine Variable im Speicher, w
 weder in die Adresse noch in den Verlaufszustand des Routers passt. Bewusst kein
 `localStorage`: Das Bild soll ein Neuladen nicht überleben.
 
+### Nachgebessert nach dem ersten iPhone-Test
+
+**An `getUserMedia` darf immer nur EINE Kante vorgegeben werden.** Der erste Anlauf bat um
+`width: { ideal: 2000 }` *und* `height: { ideal: 2000 }`. Zwei Vorgaben zusammen sind für den
+Browser ein Seitenverhältnis, und er darf das Sensorbild dafür beschneiden: Auf dem iPhone kam
+ein quadratischer Strom von 2000 × 2000 heraus, bei dem der untere Teil des Bons – und damit
+die Gesamtsumme für den Summen-Abgleich – schon fehlte, bevor das Canvas ihn zu sehen bekam.
+Der Canvas-Code war die ganze Zeit richtig.
+
+Vorgegeben wird jetzt nur `height: { ideal: 1920 }`, weil die App hochkant benutzt wird und
+der Bon die lange Kante füllt. Höher wäre sinnlos: Was über 2000 px liegt, rechnet `MAX_EDGE`
+ohnehin wieder weg, es kostet nur Akku und macht die Vorschau träge.
+
+**Der Rahmen folgt dem Kameraformat, nicht umgekehrt.** Er bekommt sein Seitenverhältnis zur
+Laufzeit aus `videoWidth/videoHeight`, das Livebild steht auf `object-fit: contain`. Der
+Nutzer sieht damit genau den Bereich, der aufgenommen wird. Die Alternative – Rahmen fest,
+Bild mit `cover` beschnitten – wurde verworfen: Wer nicht sieht, was aufgenommen wird, richtet
+den Bon falsch aus, und der Fehler fällt erst auf dem fertigen Foto auf.
+
+**Zu erwartende Maße:** hochkant 1080 × 1920 oder 1440 × 1920, je nachdem welches Format die
+Kamera meldet – beides unter der langen Kante von 2000, es wird also gar nicht verkleinert.
+Nur eine 4K-Kamera (2160 × 3840) landet bei 1125 × 2000. Ein quadratisches Ergebnis ist ab
+jetzt immer ein Fehler. Der Verarbeitungs-Screen zeigt deshalb `Quelle → Ergebnis`, sobald
+verkleinert wurde, und sonst nur eine Zahl.
+
 ## Notfallweg ohne Kamera
 
 „Bon-Text einfügen": Der Nutzer kopiert den Text per iOS Live Text aus einem Foto und fügt
