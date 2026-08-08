@@ -34,6 +34,29 @@
   line-height: 1.5;
 }
 
+/*
+ * Die Vorschau des aufgenommenen Bons. `contain` statt `cover`: ein schmaler,
+ * langer Bon darf nicht beschnitten werden, nur weil er nicht ins Kästchen passt.
+ */
+.photo {
+  width: 100%;
+  max-height: 52vh;
+  object-fit: contain;
+  border-radius: 14px;
+  background: var(--chip);
+}
+
+.note {
+  text-align: center;
+}
+
+.meta {
+  margin: 12px 0 0;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .steps {
   width: 100%;
   display: flex;

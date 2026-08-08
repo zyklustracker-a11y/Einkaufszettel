@@ -222,8 +222,7 @@ Wechsel in die Fotos-App, kein manuelles Auswählen aus der Galerie.
 
 **Primärweg:** `navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })`
 mit `<video>`-Livebild im Scan-Screen, darüber die Rahmen-Hilfe aus dem Design. Auslösen
-zeichnet auf ein `<canvas>` und erzeugt ein JPEG. Danach ohne Zwischenschritt weiter in den
-Verarbeitungs-Screen.
+zeichnet auf ein `<canvas>` und erzeugt ein JPEG.
 
 **Automatischer Fallback:** Ist `getUserMedia` nicht verfügbar oder wird die Berechtigung
 verweigert, wird ein verstecktes `<input type="file" accept="image/*" capture="environment">`
@@ -234,9 +233,39 @@ Bekannte iOS-Eigenheit: Installierte PWAs fragen die Kameraberechtigung teils be
 Start neu ab. Kein Fehler in unserem Code; der Fallback fängt Verweigerung ab.
 
 **Zusätzlich:** unauffälliger Sekundärweg „Aus Galerie wählen" (dasselbe Input ohne `capture`).
+Er sitzt auf dem Nebenknopf links neben dem Auslöser, wo im Entwurf „Upload" stand.
 
 **Vor dem Upload wird das Bild verkleinert:** lange Kante max. 2000 px, JPEG-Qualität ca. 0,8.
-Bons sind schmal und lang, deshalb nicht quadratisch zuschneiden.
+Bons sind schmal und lang, deshalb nicht quadratisch zuschneiden. Die Ausrichtung aus den
+EXIF-Daten muss dabei greifen, sonst liegen iPhone-Fotos quer.
+
+### Ergänzt mit Schritt 4a
+
+**Vorschau statt Blindflug.** Anders als oben ursprünglich festgehalten geht es nach dem
+Auslösen *nicht* ohne Zwischenschritt weiter. Der Screen zeigt erst das Foto mit
+„Verwenden" und „Neu aufnehmen". Grund: Ein unscharfer Bon soll gar nicht erst in die
+Erkennung laufen – jede Anfrage an das Modell zählt gegen das freie Kontingent, und ein
+falsch gelesener Bon kostet später Handarbeit im Korrektur-Screen.
+
+**Wie EXIF ausgewertet wird – ohne Bibliothek.** Die Datei wird in ein `<img>` geladen und
+von dort auf das Canvas gezeichnet. Browser drehen ein `<img>` seit `image-orientation:
+from-image` (Voreinstellung ab Safari 13.4) von sich aus richtig herum, und
+`naturalWidth/naturalHeight` melden bereits die gedrehten Maße. Wer die Datei stattdessen
+selbst dekodiert, müsste den EXIF-Block von Hand auswerten – dafür bräuchte es eine
+zusätzliche Abhängigkeit. Aus dem Livebild kommt ohnehin ein bereits aufrechtes Bild.
+
+**Der Kamerastrom wird an drei Stellen beendet:** beim Verlassen des Screens (das deckt auch
+das Zurückwischen ab, weil React den Screen dabei abbaut), beim Wechsel in den Hintergrund
+(`visibilitychange`) und bei `pagehide`. Sonst leuchtet die Kamera-Anzeige weiter und der
+Akku leidet. Beim Zurückkommen aus dem Hintergrund läuft der Strom wieder an.
+
+**Während der Vorschau bleibt der Strom absichtlich aktiv.** „Neu aufnehmen" soll nicht
+jedes Mal einen neuen Berechtigungsdialog auslösen.
+
+**Wo das Bild liegt:** `src/lib/camera.ts` macht die Bildarbeit, `src/lib/capture.ts` reicht
+das Ergebnis an den Verarbeitungs-Screen weiter – eine Variable im Speicher, weil ein `Blob`
+weder in die Adresse noch in den Verlaufszustand des Routers passt. Bewusst kein
+`localStorage`: Das Bild soll ein Neuladen nicht überleben.
 
 ## Notfallweg ohne Kamera
 
@@ -296,7 +325,8 @@ nur die Voreinstellung.
 | 2a | Supabase-Schema inkl. `household_id`, Merkmalstabellen und RLS | erledigt |
 | 2b | Google-Login über Supabase Auth | erledigt |
 | 2c | Mocks gegen echte Queries tauschen, Aggregationen als SQL-Views, Leerzustände | erledigt |
-| 4 | Kamera im Screen, Edge Function mit Mistral, JSON-Validierung, Speichern aus dem Korrektur-Screen | offen |
+| 4a | Kamera im Screen: Livebild, Rückfallweg, Galerie, Verkleinern, Vorschau | erledigt |
+| 4b | Edge Function mit Mistral, JSON-Validierung, Speichern aus dem Korrektur-Screen | offen |
 | 5 | Bestpreis- und Analyse-Logik als SQL-Views | mit 2c vorgezogen |
 | 6 | Health-Score, Merkmals-Verwaltung in den Einstellungen, Sparhinweise, Push zum Monatsreport | Score erledigt, Rest offen |
 
