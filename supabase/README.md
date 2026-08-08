@@ -195,7 +195,38 @@ dich einmal ab und neu an.
 
 ---
 
-## 7. Was noch nicht dabei ist
+## 7. Die zwei Werte für die App eintragen
+
+Damit sich die App mit deinem Projekt verbindet, braucht sie zwei Werte. Beide
+stehen in Supabase unter **Project Settings → Data API**:
+
+| Was | Wo es steht | Trägst du ein als |
+|---|---|---|
+| Projekt-URL (`https://….supabase.co`) | Feld **Project URL** | `VITE_SUPABASE_URL` |
+| Öffentlicher Schlüssel | Feld **anon public** | `VITE_SUPABASE_ANON_KEY` |
+
+**Auf deinem Rechner:** Kopiere `.env.example` im Projektordner nach `.env` und
+trag die Werte dort ein. `.env` ist in `.gitignore` und landet nie auf GitHub.
+Danach `npm run dev` neu starten — Vite liest die Datei nur beim Start.
+
+**Bei Vercel:** Projekt → Settings → Environment Variables → beide Namen mit
+ihren Werten anlegen, für Production **und** Preview. Danach einmal neu
+deployen, sonst stecken die alten (leeren) Werte noch im Build.
+
+Fehlt einer der beiden, zeigt der Anmelde-Screen einen Hinweis statt einer
+weißen Seite — daran erkennst du es sofort.
+
+> Der `anon public`-Schlüssel darf im Browser stehen: Er schaltet nichts frei,
+> was die Zugriffsregeln nicht ohnehin erlauben. Der `service_role`-Schlüssel
+> gehört dagegen nie in die App.
+
+Zusätzlich muss in Supabase unter **Authentication → URL Configuration** die
+Adresse deiner App als **Redirect URL** eingetragen sein — einmal die
+Vercel-Adresse und einmal `http://localhost:5173/` fürs Entwickeln.
+
+---
+
+## 8. Was noch nicht dabei ist
 
 Bewusst nicht Teil dieser Migration, das kommt in späteren Schritten:
 

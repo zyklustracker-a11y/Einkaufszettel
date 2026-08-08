@@ -1,0 +1,20 @@
+.screen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.mark {
+  width: 68px;
+  height: 68px;
+  border-radius: 22px;
+  background: var(--green);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Aus global.css; bei "Bewegung reduzieren" schaltet sie sich dort selbst ab. */
+  animation: pulse 1.6s ease-in-out infinite;
+}

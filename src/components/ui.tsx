@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { initials } from '../lib/format'
@@ -53,9 +54,36 @@ export function CategoryChip({ children }: { children: ReactNode }) {
   return <span className={styles.chip}>{children}</span>
 }
 
-export function Avatar({ name, round = false }: { name: string; round?: boolean }) {
+/**
+ * Kürzel oder Profilbild. Lädt das Bild nicht, fällt die Anzeige auf das Kürzel
+ * zurück — ein Google-Profilbild ist nicht garantiert erreichbar.
+ */
+export function Avatar({
+  name,
+  src,
+  round = false,
+}: {
+  name: string
+  src?: string | null
+  round?: boolean
+}) {
+  const [imageFailed, setImageFailed] = useState(false)
+  const className = round ? `${styles.avatar} ${styles['avatar--round']}` : styles.avatar
+
+  if (src && !imageFailed) {
+    return (
+      <img
+        className={`${className} ${styles['avatar--image']}`}
+        src={src}
+        alt=""
+        referrerPolicy="no-referrer"
+        onError={() => setImageFailed(true)}
+      />
+    )
+  }
+
   return (
-    <span className={round ? `${styles.avatar} ${styles['avatar--round']}` : styles.avatar} aria-hidden="true">
+    <span className={className} aria-hidden="true">
       {initials(name)}
     </span>
   )

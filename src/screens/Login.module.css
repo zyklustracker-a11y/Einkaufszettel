@@ -62,6 +62,23 @@
   box-shadow: var(--shadow);
 }
 
+/* Deaktiviert, während die Weiterleitung zu Google läuft. */
+.googleButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.error {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--red-soft);
+  color: var(--red);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
 .note {
   font-size: 13px;
   color: var(--muted);

@@ -1,4 +1,5 @@
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
+import { AppLoading } from './components/AppLoading'
 import { TabBar } from './components/TabBar'
 import { Analytics } from './screens/Analytics'
 import { Dashboard } from './screens/Dashboard'
@@ -11,34 +12,75 @@ import { ScanCamera } from './screens/ScanCamera'
 import { ScanProcessing } from './screens/ScanProcessing'
 import { ScanReview } from './screens/ScanReview'
 import { SettingsScreen } from './screens/Settings'
+import { useAuth } from './state/AuthContext'
 
 /** Routes that sit behind the tab bar. The scan flow and settings are modal-ish. */
 const TABBED = ['/', '/bestpreise', '/analysen', '/gesundheit', '/einkauf']
+
+/** Where an unauthenticated visitor is sent, and where a login lands. */
+export const LOGIN_PATH = '/anmelden'
 
 function showsTabBar(pathname: string): boolean {
   return TABBED.some((base) => (base === '/' ? pathname === '/' : pathname.startsWith(base)))
 }
 
+/** Everything inside is for signed-in users only. */
+function RequireAuth() {
+  const { status } = useAuth()
+  return status === 'signedIn' ? <Outlet /> : <Navigate to={LOGIN_PATH} replace />
+}
+
 export function App() {
+  const { status } = useAuth()
   const { pathname } = useLocation()
+
+  /*
+   * Solange die Sitzung geprüft wird, kommt weder eine Route noch die Tab-Leiste
+   * zum Zug. Das ist der einzige Weg, sicher zu verhindern, dass beim Start kurz
+   * die falsche Seite aufblitzt.
+   */
+  if (status === 'loading') {
+    return (
+      <div className="app">
+        <AppLoading />
+      </div>
+    )
+  }
 
   return (
     <div className="app">
       <Routes>
-        <Route path="/anmelden" element={<Login />} />
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/scan" element={<ScanCamera />} />
-        <Route path="/scan/verarbeitung" element={<ScanProcessing />} />
-        <Route path="/scan/pruefen" element={<ScanReview />} />
-        <Route path="/bestpreise" element={<Prices />} />
-        <Route path="/bestpreise/:productId" element={<ProductDetail />} />
-        <Route path="/analysen" element={<Analytics />} />
-        <Route path="/gesundheit" element={<Health />} />
-        <Route path="/einkauf/:receiptId" element={<PurchaseDetail />} />
-        <Route path="/einstellungen" element={<SettingsScreen />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* Wer angemeldet ist, hat auf dem Anmelde-Screen nichts zu suchen. */}
+        <Route
+          path={LOGIN_PATH}
+          element={status === 'signedIn' ? <Navigate to="/" replace /> : <Login />}
+        />
+
+        <Route element={<RequireAuth />}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/scan" element={<ScanCamera />} />
+          <Route path="/scan/verarbeitung" element={<ScanProcessing />} />
+          <Route path="/scan/pruefen" element={<ScanReview />} />
+          <Route path="/bestpreise" element={<Prices />} />
+          <Route path="/bestpreise/:productId" element={<ProductDetail />} />
+          <Route path="/analysen" element={<Analytics />} />
+          <Route path="/gesundheit" element={<Health />} />
+          <Route path="/einkauf/:receiptId" element={<PurchaseDetail />} />
+          <Route path="/einstellungen" element={<SettingsScreen />} />
+        </Route>
+
+        {/*
+          Unbekannte Adressen: angemeldet aufs Dashboard, sonst zur Anmeldung.
+          Das fängt auch den Rücksprung von Google ab, falls er auf einer
+          anderen Adresse landet als erwartet.
+        */}
+        <Route
+          path="*"
+          element={<Navigate to={status === 'signedIn' ? '/' : LOGIN_PATH} replace />}
+        />
       </Routes>
-      {showsTabBar(pathname) && <TabBar />}
+
+      {status === 'signedIn' && showsTabBar(pathname) && <TabBar />}
     </div>
   )
 }

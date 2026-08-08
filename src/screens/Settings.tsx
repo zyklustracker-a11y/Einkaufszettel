@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import { Avatar, BackLink, Toggle, toneOf } from '../components/ui'
-import { getHousehold, getTraits } from '../data'
+import { getTraits } from '../data'
 import { useAppState } from '../state/AppState'
+import { useAuth } from '../state/AuthContext'
 import styles from './Settings.module.css'
 
 /** `−3` · `0` · `+2` — the sign carries the meaning, so it is always shown. */
@@ -14,6 +14,7 @@ function formatWeight(weight: number): string {
 
 export function SettingsScreen() {
   const { theme, toggleTheme, settings, setMonthlyBudgetCents, toggleDeleteReceiptPhotos } = useAppState()
+  const { user, signOut } = useAuth()
   const [editingBudget, setEditingBudget] = useState(false)
   // The budget is entered and shown in whole euros; the domain stores cents.
   const budgetEuros = settings.monthlyBudgetCents / 100
@@ -90,18 +91,17 @@ export function SettingsScreen() {
 
       <section className={styles.householdCard}>
         <div className={styles.householdTitle}>Haushalt</div>
-        {getHousehold().map((member) => (
-          <div key={member.id} className={styles.member}>
-            <Avatar name={member.name} round />
+        {user && (
+          <div className={styles.member}>
+            <Avatar name={user.name} src={user.avatarUrl} round />
             <span style={{ flex: 1, minWidth: 0 }}>
-              <span className={styles.memberName}>{member.name}</span>
-              <span className={styles.memberMail}>{member.email}</span>
+              <span className={styles.memberName}>{user.name}</span>
+              <span className={styles.memberMail}>{user.email}</span>
             </span>
-            <span className={member.isCurrentUser ? `${styles.badge} ${styles['badge--current']}` : styles.badge}>
-              {member.isCurrentUser ? 'Angemeldet' : 'Mitglied'}
-            </span>
+            <span className={`${styles.badge} ${styles['badge--current']}`}>Angemeldet</span>
           </div>
-        ))}
+        )}
+        {/* Die weiteren Mitglieder kommen aus der Datenbank, sobald Schritt 2c steht. */}
       </section>
 
       <section className={styles.householdCard}>
@@ -136,9 +136,9 @@ export function SettingsScreen() {
         ))}
       </section>
 
-      <Link to="/anmelden" className={styles.signOut}>
+      <button type="button" className={styles.signOut} onClick={signOut}>
         Konto abmelden
-      </Link>
+      </button>
       <div className={styles.version}>Receipt AI 1.0 · Privater Haushalt</div>
     </div>
   )
