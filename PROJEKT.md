@@ -338,8 +338,17 @@ zurückschreiben) sind deshalb noch offen.
 
 **Wo was liegt:** `supabase/functions/erkennen/`. Die Aufteilung ist Absicht —
 `prompt.ts` ist die eine Datei, an der ohne Codeverständnis nachgeschärft wird;
-`index.ts` (Ablauf), `mistral.ts` (Netz), `validate.ts` (Prüfung) und `schema.ts`
-(Formen) bleiben davon unberührt. Anleitung: `supabase/functions/README.md`.
+`index.ts` (Ablauf), `mistral.ts` (Netz) und `validate.ts` (Prüfung samt der
+Typen, die sie erzeugt) bleiben davon unberührt. Anleitung:
+`supabase/functions/README.md`.
+
+**Ausgerollt wird über GitHub Actions**, nicht von Hand
+(`.github/workflows/edge-functions.yml`). Jede Änderung unter
+`supabase/functions/` auf `main` rollt die Funktion neu aus, nachdem `npm test`
+durchgelaufen ist. Grund: Der Prompt wird noch oft nachgeschärft, und Kopieren
+von Hand wäre bei jedem Mal eine Fehlerquelle. Eine eigene Datei nur für Typen
+gibt es deshalb auch nicht mehr — der Editor in der Supabase-Oberfläche legte
+sie nicht an, weil zur Laufzeit nichts von ihr übrig bleibt.
 
 **Die Funktion arbeitet mit dem Token des Nutzers, nicht mit einem
 Dienstschlüssel.** Sie prüft die Anmeldung als Allererstes — sonst könnte jeder

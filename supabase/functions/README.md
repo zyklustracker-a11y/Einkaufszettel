@@ -37,32 +37,70 @@ der Pixtral-Familie, das im freien Experiment-Tarif läuft.
 > `SUPABASE_URL` und `SUPABASE_ANON_KEY` brauchst du **nicht** anzulegen. Die
 > setzt Supabase in jeder Edge Function von selbst.
 
-### 1.2 Die Funktion ausrollen
+### 1.2 Ausrollen aus GitHub — der eingerichtete Weg
 
-**Weg A — über die Weboberfläche (kein Werkzeug nötig):**
+Die Funktion rollt sich selbst aus, sobald sich etwas an ihr ändert. Dafür sorgt
+`.github/workflows/edge-functions.yml`. Du musst dafür **einmalig zwei
+Geheimnisse in GitHub hinterlegen** — danach nie wieder etwas kopieren.
 
-1. Supabase → **Edge Functions** → **Deploy a new function** → **Via Editor**
-2. Name: `erkennen` (genau so, klein geschrieben — die App ruft diese Adresse auf)
-3. Die fünf Dateien aus `supabase/functions/erkennen/` anlegen und Inhalt
-   einfügen: `index.ts`, `prompt.ts`, `mistral.ts`, `schema.ts`, `validate.ts`
-   (`validate.test.ts` wird nicht gebraucht — die Tests laufen auf deinem Rechner)
-4. **Deploy**
+**Schritt 1 — Zugangs-Token in Supabase erzeugen:**
 
-**Weg B — mit der Supabase-CLI (schneller, wenn du sie ohnehin nutzt):**
+Supabase → oben rechts aufs Konto → **Account Settings** → **Access Tokens** →
+**Generate new token**. Name egal, etwa „GitHub Actions". Der Wert wird **nur
+einmal angezeigt** — gleich kopieren.
+
+**Schritt 2 — die Projekt-Kennung heraussuchen:**
+
+Supabase → **Project Settings** → **General** → **Reference ID**. Das ist eine
+Zeichenfolge wie `abcdefghijklmnopqrst`. Sie steht auch in der Adresse deines
+Projekts hinter `/project/`.
+
+**Schritt 3 — beides in GitHub eintragen:**
+
+GitHub → dein Repository → **Settings** → **Secrets and variables** → **Actions**
+→ **New repository secret**. Zweimal, mit genau diesen Namen:
+
+| Name | Wert |
+|---|---|
+| `SUPABASE_ACCESS_TOKEN` | das Token aus Schritt 1 |
+| `SUPABASE_PROJECT_ID` | die Reference ID aus Schritt 2 |
+
+**Schritt 4 — einmal auslösen:**
+
+GitHub → **Actions** → **Edge Functions ausrollen** → **Run workflow**. Beim
+ersten Mal von Hand, weil seit dem Zusammenführen nach `main` nichts mehr an der
+Funktion geändert wurde. Danach passiert es von selbst: Jede Änderung unter
+`supabase/functions/` löst das Ausrollen aus.
+
+Der Lauf dauert gut eine Minute. Vorher laufen die Tests — schlagen sie fehl,
+geht nichts nach Supabase.
+
+> **Kostet das etwas?** Nein. GitHub Actions ist für öffentliche Repositories
+> unbegrenzt und für private mit 2000 Minuten im Monat kostenlos. Bei gut einer
+> Minute pro Lauf reicht das für rund 1500 Ausrollungen.
+
+### 1.3 Ausrollen von Hand — falls du es doch einmal brauchst
+
+**Über die Weboberfläche:** Supabase → **Edge Functions** → **Deploy a new
+function** → **Via Editor**, Name `erkennen` (genau so, klein geschrieben — die
+App ruft diese Adresse auf), dann die vier Dateien anlegen: `index.ts`,
+`prompt.ts`, `mistral.ts`, `validate.ts`. `validate.test.ts` wird nicht
+gebraucht, die Tests laufen auf deinem Rechner.
+
+**Mit der Supabase-CLI:**
 
 ```bash
 npx supabase login
-npx supabase link --project-ref DEIN-PROJEKT-REF
-npx supabase functions deploy erkennen
+npx supabase functions deploy erkennen --project-ref DEIN-PROJEKT-REF
 ```
 
-Das Secret setzt du dann so, statt über die Weboberfläche:
+Und das Secret ließe sich so setzen, statt über die Weboberfläche:
 
 ```bash
 npx supabase secrets set MISTRAL_API_KEY=dein-schluessel
 ```
 
-### 1.3 Sonst nichts
+### 1.4 Sonst nichts
 
 Kein Storage-Bucket (das Bild wird nicht abgelegt, nur durchgereicht), keine
 neue Migration, keine Änderung an den Zugriffsregeln, keine neuen Werte in der
@@ -111,7 +149,9 @@ Der Ablauf:
    Pfandzeile übersehen? Der Rabatt positiv statt negativ?
 3. Den passenden Abschnitt in `prompt.ts` ergänzen — am besten mit einem
    Beispiel, so wie es die anderen Regeln dort auch machen.
-4. Funktion neu ausrollen, denselben Bon noch einmal scannen.
+4. Änderung nach `main` bringen. Das Ausrollen passiert von selbst (1.2); unter
+   GitHub → **Actions** siehst du, wann es durch ist.
+5. Denselben Bon noch einmal scannen und vergleichen.
 
 **Merkmale und Kategorien musst du dafür nicht anfassen.** Die setzt die
 Funktion zur Laufzeit aus der Datenbank ein: Legst du in `traits` ein neues
@@ -128,9 +168,14 @@ Merkmalsschlüssel, die das Modell erfindet, wirft `validate.ts` weg.
 | `index.ts` | Der Ablauf: Anmeldung prüfen, Merkmale laden, Modell rufen, Antwort prüfen, zurückgeben |
 | `prompt.ts` | **Der Erkennungs-Prompt.** Hier schärfst du nach |
 | `mistral.ts` | Der Netz-Teil: Zeitlimit, Wiederholung bei 429, Antwort auspacken |
-| `validate.ts` | Die Prüfung: Schema, Beträge, Mengen, Summenabgleich, bekannte Schlüssel |
-| `schema.ts` | Die Formen, die zwischen Modell, Funktion und App unterwegs sind |
+| `validate.ts` | Die Prüfung: Schema, Beträge, Mengen, Summenabgleich, bekannte Schlüssel — und die Formen, die dabei entstehen |
 | `validate.test.ts` | Tests für die Prüfung — laufen mit `npm test` mit |
+
+Vier Dateien, nicht fünf: Die Typdefinitionen lagen anfangs in einer eigenen
+`schema.ts`. Der Editor in der Supabase-Oberfläche legte die aber nicht an — sie
+enthält nur Typen, und die verschwinden beim Übersetzen restlos, sodass zur
+Laufzeit eine leere Datei übrig bleibt. Sie stehen jetzt in `validate.ts`, also
+dort, wo sie entstehen.
 
 Zwei Dinge, die absichtlich so sind:
 

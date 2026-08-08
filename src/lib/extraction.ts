@@ -1,7 +1,7 @@
 /**
  * Was die Erkennung liefert — die Sicht der App.
  *
- * Diese Typen sind das Gegenstück zu `supabase/functions/erkennen/schema.ts`
+ * Diese Typen sind das Gegenstück zu `supabase/functions/erkennen/validate.ts`
  * und stehen dort wortgleich noch einmal. Das ist Absicht: Die Edge Function
  * läuft in Deno und wird getrennt ausgerollt, die App in Vite. Ein gemeinsamer
  * Import würde beide Bauwege aneinanderketten, für zwei Dutzend Zeilen Typen.
