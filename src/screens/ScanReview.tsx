@@ -273,6 +273,23 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
           )}
         </div>
 
+        {/*
+          Direkt unter der Zusammenfassung und nicht unter der Positionsliste:
+          Bei einem Bon mit vierzig Zeilen stünde der Hinweis, in welcher
+          Steuerklasse etwas fehlt, sonst außerhalb des Bildschirms — also genau
+          dort, wo ihn niemand liest.
+        */}
+        {notes.length > 0 && (
+          <div className={styles.notes}>
+            <div className={styles.notesTitle}>Hinweise der Prüfung</div>
+            <ul className={styles.notesList}>
+              {notes.map((warning, index) => (
+                <li key={`${warning.code}-${warning.lineNo ?? index}`}>{warning.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {items.length === 0 ? (
           <EmptyState inline title="Keine Positionen erkannt">
             Die Erkennung hat auf diesem Bon keine einzelne Zeile gefunden. Scanne ihn noch einmal –
@@ -286,17 +303,6 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
             <ReceiptItemList items={items} />
             <TraitLegend items={items} />
           </>
-        )}
-
-        {notes.length > 0 && (
-          <div className={styles.notes}>
-            <div className={styles.notesTitle}>Hinweise der Prüfung</div>
-            <ul className={styles.notesList}>
-              {notes.map((warning, index) => (
-                <li key={`${warning.code}-${warning.lineNo ?? index}`}>{warning.message}</li>
-              ))}
-            </ul>
-          </div>
         )}
 
         <RawAnswer result={result} />
