@@ -446,9 +446,13 @@ wirklich da ist. Ein Balken, der bei 100 % steht und trotzdem weiterlädt, wäre
 schlimmer als gar keiner. Kommt die Antwort früher als geschätzt, springt er
 zügig durch — das ist der einzige erlaubte Sprung.
 
-Die Zeitschätzungen stehen als benannte Konstanten oben in
-`src/screens/ScanProcessing.tsx` und sind die einzige Stellschraube, sobald sich
-zeigt, wie lange ein Scan im Alltag dauert.
+Die Rechnung steht in `src/lib/progress.ts` — dieselbe Trennung wie beim
+Health-Score: Was eine reine Funktion über Zahlen ist, gehört nicht in einen
+Screen, sondern dorthin, wo Tests es festnageln können. Die Zusicherung „nie
+rückwärts" steckt deshalb in `advanceProgress` und nicht in einem
+`Math.max`-Aufruf mitten im Screen. Die Zeitschätzungen stehen als benannte
+Konstanten oben in derselben Datei und sind die einzige Stellschraube, sobald
+sich zeigt, wie lange ein Scan im Alltag dauert.
 
 **Das Ergebnis reist im Speicher**, wie schon das Foto (`src/lib/scanResult.ts`
 neben `capture.ts`). Es gibt in 4b-1 keinen Bon in der Datenbank, den der

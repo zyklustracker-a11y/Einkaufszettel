@@ -1,6 +1,9 @@
 import { functionsUrl, supabase, supabaseAnonKey } from '../lib/supabase'
 import type { CapturedImage } from '../lib/camera'
-import type { ExtractionResponse } from '../lib/extraction'
+import type { ExtractionPhase, ExtractionResponse } from '../lib/extraction'
+
+// Weiterreichen, damit Aufrufer den Typ zusammen mit `extractReceipt` bekommen.
+export type { ExtractionPhase }
 
 /**
  * Der Aufruf der Bon-Erkennung.
@@ -79,17 +82,6 @@ const FALLBACK: Record<number, string> = {
 }
 
 const GENERIC = 'Die Erkennung hat nicht geklappt. Bitte versuch es noch einmal.'
-
-/**
- * Die drei Abschnitte eines Scans, an denen der Verarbeitungs-Screen ablesen
- * kann, wie weit es ist.
- *
- * Bewusst nur drei, und bewusst genau diese: Es sind die einzigen Zeitpunkte,
- * die sich hier wirklich beobachten lassen. Ein Fortschritt, der nur nach
- * Stoppuhr weiterläuft, wäre eine Behauptung — und der Screen soll nichts
- * andeuten, was nicht passiert.
- */
-export type ExtractionPhase = 'vorbereiten' | 'senden' | 'auswerten'
 
 export async function extractReceipt(
   capture: CapturedImage,

@@ -2,105 +2,25 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ProgressBar } from '../components/ui'
 import { ExtractionError, extractReceipt } from '../data'
-import type { ExtractionPhase } from '../data'
 import type { CapturedImage } from '../lib/camera'
-import type { ExtractionResponse } from '../lib/extraction'
+import type { ExtractionPhase, ExtractionResponse } from '../lib/extraction'
 import { getPendingCapture } from '../lib/capture'
 import { formatPercent } from '../lib/format'
+/*
+ * Der Fortschritt selbst steht in `lib/progress.ts` — dort sind auch die
+ * Zeitschätzungen die Stellschraube, und dort sind die drei Regeln (nie
+ * rückwärts, Halt bei 95 %, 100 % erst mit dem Ergebnis) mit Tests festgenagelt.
+ * Hier steht nur, wie oft nachgerechnet und wie das Ergebnis gezeichnet wird.
+ */
+import {
+  advanceProgress,
+  COMPLETE,
+  FINISH_MS,
+  PROGRESS_STEPS,
+  TICK_MS,
+} from '../lib/progress'
 import { clearPendingExtraction, setPendingExtraction } from '../lib/scanResult'
 import styles from './ScanProcessing.module.css'
-
-/* ============================================================================
- * DER FORTSCHRITTSBALKEN — und warum er schätzt, ohne zu lügen
- *
- * Wie weit Mistral mit einem Bon ist, sagt uns niemand. Die Schnittstelle
- * antwortet einmal, fertig; einen Zwischenstand gibt es nicht. Der Balken ist
- * deshalb eine **Schätzung**, und damit er trotzdem ehrlich bleibt, gelten drei
- * Regeln:
- *
- *   1. Er läuft nie rückwärts (`Math.max` bei jedem Schritt).
- *   2. Er erreicht 100 % erst, wenn das Ergebnis wirklich da ist. Solange die
- *      Antwort aussteht, wartet er bei WAIT_CEILING. Ein Balken, der bei 100 %
- *      steht und trotzdem weiterlädt, wäre schlimmer als gar keiner.
- *   3. Was er anzeigt, ist an echte Abschnitte gebunden — dieselben drei, die
- *      als Häkchen darunter stehen.
- *
- * Die Zeitschätzungen unten sind die Stellschraube: Wenn sich zeigt, wie lange
- * ein Scan im Alltag wirklich dauert, werden hier die Zahlen angepasst und
- * sonst nichts.
- * ========================================================================== */
-
-/**
- * Wie lange ein Abschnitt typischerweise dauert.
- *
- * `senden` umfasst alles zwischen Absenden und Antwort: Hochladen über
- * Mobilfunk, den Modell-Aufruf selbst und die Prüfung auf dem Server. Das ist
- * mit Abstand das Längste — die Base64-Umwandlung davor dauert Millisekunden.
- */
-const EXPECTED_MS: Record<ExtractionPhase, number> = {
-  vorbereiten: 800,
-  senden: 14_000,
-  auswerten: 700,
-}
-
-/**
- * Hier wartet der Balken, solange die Antwort aussteht.
- *
- * Bewusst nicht 100: Die letzten Prozent gehören dem Ergebnis, das wirklich
- * eingetroffen ist.
- */
-const WAIT_CEILING = 95
-
-/** Und hier, während die eingetroffene Antwort geprüft wird. */
-const CHECK_CEILING = 99
-
-/**
- * Die drei Abschnitte mit ihrem Prozentbereich.
- *
- * Die Bereiche sind nach der typischen Dauer gewichtet — 0,8 s : 14 s : 0,7 s
- * entspricht rund 5 % : 90 % : 4 %. Deshalb steht der Balken die meiste Zeit im
- * mittleren Abschnitt, und genau da wird auch am längsten gewartet.
- *
- * Jeder Haken steht weiterhin für einen Abschnitt, der wirklich fertig ist —
- * keiner läuft nach Stoppuhr weiter. Genau deshalb sind es nur drei: Mehr lässt
- * sich von außen nicht beobachten.
- */
-const STEPS: Array<{
-  phase: ExtractionPhase
-  label: string
-  from: number
-  to: number
-}> = [
-  { phase: 'vorbereiten', label: 'Bild wird vorbereitet…', from: 0, to: 5 },
-  { phase: 'senden', label: 'Mistral liest den Bon…', from: 5, to: WAIT_CEILING },
-  { phase: 'auswerten', label: 'Ergebnis wird geprüft…', from: WAIT_CEILING, to: CHECK_CEILING },
-]
-
-/** Wie oft der Balken nachrechnet. Fein genug, dass die Bewegung flüssig wirkt. */
-const TICK_MS = 100
-
-/**
- * Wie lange die volle Anzeige stehen bleibt, bevor es weitergeht.
- *
- * Ohne diese kurze Pause wäre die 100 nie zu sehen — der Screen verschwände im
- * selben Augenblick, in dem sie erscheint.
- */
-const FINISH_MS = 250
-
-/**
- * Der geschätzte Stand innerhalb eines Abschnitts.
- *
- * Gleichmäßig von `from` nach `to` über die erwartete Dauer, danach Halt am
- * oberen Ende. Dieses Stehenbleiben ist der ehrliche Teil: Dauert es länger als
- * geschätzt, wird eben nichts weitergezählt, statt eine Bewegung zu erfinden,
- * die nichts bedeutet.
- */
-function estimateProgress(phase: ExtractionPhase, elapsedMs: number): number {
-  const step = STEPS.find((entry) => entry.phase === phase)
-  if (!step) return 0
-  const share = Math.min(1, elapsedMs / EXPECTED_MS[phase])
-  return step.from + (step.to - step.from) * share
-}
 
 /**
  * Ab wann zusätzlich beruhigt wird.
@@ -233,9 +153,7 @@ export function ScanProcessing() {
 
     const tick = () =>
       setProgress((current) =>
-        // Nie rückwärts: Beim Abschnittswechsel ist der neue Startwert höher
-        // als der alte Stand, bei einem Nachzügler bleibt der alte stehen.
-        Math.max(current, estimateProgress(phase, Date.now() - phaseStartRef.current)),
+        advanceProgress(current, phase, Date.now() - phaseStartRef.current),
       )
 
     // Sofort einmal, damit der Sprung zum nächsten Abschnitt nicht erst nach
@@ -267,7 +185,7 @@ export function ScanProcessing() {
         if (cancelled) return
         setPendingExtraction(result)
         // Erst jetzt die volle Anzeige — vorher wäre sie eine Behauptung.
-        setProgress(100)
+        setProgress(COMPLETE)
         finishTimer = window.setTimeout(
           () => navigate('/scan/pruefen', { replace: true }),
           FINISH_MS,
@@ -332,7 +250,7 @@ export function ScanProcessing() {
     )
   }
 
-  const current = STEPS.findIndex((step) => step.phase === phase)
+  const current = PROGRESS_STEPS.findIndex((step) => step.phase === phase)
 
   return (
     <div className={styles.screen}>
@@ -353,7 +271,7 @@ export function ScanProcessing() {
       </div>
 
       <ol className={styles.steps} aria-live="polite">
-        {STEPS.map((step, index) => {
+        {PROGRESS_STEPS.map((step, index) => {
           const complete = index < current
           return (
             <li

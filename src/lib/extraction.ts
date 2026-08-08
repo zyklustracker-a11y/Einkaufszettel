@@ -14,6 +14,20 @@
 
 import type { CategoryId, MilkHeat, MilkHomogenized, TraitId } from '../types'
 
+/**
+ * Die drei Abschnitte eines Scans, an denen sich ablesen lässt, wie weit es ist.
+ *
+ * Bewusst nur drei, und bewusst genau diese: Es sind die einzigen Zeitpunkte,
+ * die sich beobachten lassen. Ein Fortschritt, der nur nach Stoppuhr
+ * weiterläuft, wäre eine Behauptung — und der Verarbeitungs-Screen soll nichts
+ * andeuten, was nicht passiert.
+ *
+ * Steht hier und nicht bei der Abfrage in `src/data/extract.ts`, weil auch
+ * `src/lib/progress.ts` damit rechnet: Die Datenschicht baut auf `lib` auf, nie
+ * umgekehrt.
+ */
+export type ExtractionPhase = 'vorbereiten' | 'senden' | 'auswerten'
+
 /** Anzeige-Einheit einer Menge. Die Menge selbst ist immer g / ml / Stück. */
 export type ExtractedUnit = 'kg' | 'g' | 'l' | 'ml' | 'stk'
 
