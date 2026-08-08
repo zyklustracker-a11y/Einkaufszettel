@@ -85,6 +85,16 @@ export function formatMonthNumeric(iso: string): string {
   return `${String(date.getMonth() + 1).padStart(2, '0')}.${date.getFullYear()}`
 }
 
+/** `Mo` — Wochentag, für die Balken des Wochenverlaufs. */
+export function formatWeekdayShort(iso: string): string {
+  return new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(parseISO(iso)).replace('.', '')
+}
+
+/** `1.–7.` — Tagesbereich eines Balkens, wie im Design nur mit Tageszahlen. */
+export function formatDayRange(fromIso: string, toIso: string): string {
+  return `${dayOfMonth(fromIso)}.–${dayOfMonth(toIso)}.`
+}
+
 /** `Juli` */
 export function formatMonthName(iso: string): string {
   return new Intl.DateTimeFormat('de-DE', { month: 'long' }).format(parseISO(iso))
@@ -132,6 +142,11 @@ export function shiftMonth(iso: string, delta: number): string {
 
 export function dayOfMonth(iso: string): number {
   return parseISO(iso).getDate()
+}
+
+/** Der heutige Tag als ISO-Datum, aus der lokalen Zeit des Geräts. */
+export function todayISO(): string {
+  return toISO(new Date())
 }
 
 export function toISO(date: Date): string {

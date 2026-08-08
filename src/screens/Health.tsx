@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { Sparkline } from '../components/charts'
-import { getFoodItems, getHealthSummary, getTraits } from '../data'
+import { Async, EmptyState } from '../components/states'
+import { getHealthData, useQuery } from '../data'
+import type { HealthData } from '../data'
+import { share } from '../lib/derive'
 import { formatEuro, formatMonthName, formatMonthShort, formatPercent } from '../lib/format'
-import { traitSpending } from '../lib/score'
 import type { TraitSpending } from '../lib/score'
 import styles from './Health.module.css'
 
@@ -10,30 +12,48 @@ import styles from './Health.module.css'
 const VISIBLE_CONCERNS = 5
 
 export function Health() {
-  const health = getHealthSummary()
-  const [showAllConcerns, setShowAllConcerns] = useState(false)
-
-  const scores = health.scores
-  const current = scores[scores.length - 1]
-  const previous = scores[scores.length - 2]
-  const delta = previous ? current.score - previous.score : 0
-
-  const foodSpendCents = health.unprocessedCents + health.processedCents
-  const unprocessedShare = health.unprocessedCents / foodSpendCents
-
-  // Both lists come from the traits, not from hard-wired copy: whatever the
-  // household watches shows up here on its own.
-  const spending = traitSpending(getFoodItems(), getTraits())
-  const critical = spending.filter((row) => row.trait.weight < 0)
-  // Everything that is not criticised, so a positively weighted trait cannot
-  // silently fall out of both lists.
-  const watched = spending.filter((row) => row.trait.weight >= 0)
-  const visible = showAllConcerns ? critical : critical.slice(0, VISIBLE_CONCERNS)
+  const state = useQuery(getHealthData, [])
 
   return (
     <div className="screen screen--tabbed">
       <h1 className="screenTitle">Gesundheit</h1>
+      <Async state={state}>{(data) => <HealthBody data={data} />}</Async>
+    </div>
+  )
+}
 
+function HealthBody({ data }: { data: HealthData }) {
+  const [showAllConcerns, setShowAllConcerns] = useState(false)
+
+  const scores = data.scores
+  const current = scores.length > 0 ? scores[scores.length - 1] : null
+  const previous = scores.length > 1 ? scores[scores.length - 2] : null
+  const delta = current && previous ? current.score - previous.score : 0
+
+  const foodSpendCents = data.unprocessedCents + data.processedCents
+  const unprocessedShare = share(data.unprocessedCents, foodSpendCents)
+
+  // Beide Listen entstehen aus den Merkmalen, nicht aus festem Text: Worauf der
+  // Haushalt achtet, taucht hier von selbst auf.
+  const critical = data.spending.filter((row) => row.trait.weight < 0)
+  // Alles, was nicht kritisiert wird — damit ein positiv gewichtetes Merkmal
+  // nicht stillschweigend aus beiden Listen fällt.
+  const watched = data.spending.filter((row) => row.trait.weight >= 0)
+  const visible = showAllConcerns ? critical : critical.slice(0, VISIBLE_CONCERNS)
+
+  if (current === null) {
+    return (
+      <EmptyState title="Noch keine Auswertung" scanHint>
+        Der Gesundheits-Score entsteht aus den Merkmalen deiner Lebensmittel – Hochverarbeitet,
+        Industriezucker, Weizen und die übrigen –, gewichtet nach ihrem Euro-Anteil. Nach dem ersten
+        Bon stehen hier eine Zahl von 0 bis 100, der Verlauf über die Monate und deine kritischsten
+        Ausgaben.
+      </EmptyState>
+    )
+  }
+
+  return (
+    <>
       <section className={styles.scoreCard}>
         <div className={styles.scoreRow}>
           <div className={styles.score}>{current.score}</div>
@@ -48,39 +68,75 @@ export function Health() {
           </div>
         </div>
 
-        <div style={{ marginTop: 18 }}>
-          <Sparkline values={scores.map((s) => s.score)} height={90} label="Gesundheits-Score im Verlauf" />
-        </div>
-        <div className={styles.months}>
-          {scores.map((s) => (
-            <span key={s.month}>{formatMonthShort(s.month)}</span>
-          ))}
-        </div>
+        {/*
+          Ein einzelner Monat ergibt keine Kurve. Statt einer Linie aus einem
+          Punkt steht dann ein Satz da, was hier später zu sehen sein wird.
+        */}
+        {scores.length > 1 ? (
+          <>
+            <div style={{ marginTop: 18 }}>
+              <Sparkline
+                values={scores.map((s) => s.score)}
+                height={90}
+                label="Gesundheits-Score im Verlauf"
+              />
+            </div>
+            <div className={styles.months}>
+              {scores.map((s) => (
+                <span key={s.month}>{formatMonthShort(s.month)}</span>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className={styles.empty} style={{ marginTop: 16 }}>
+            Ab dem zweiten Monat mit Einkäufen zeigt sich hier der Verlauf.
+          </p>
+        )}
       </section>
 
       <section className="card">
-        <div className="cardTitle" style={{ marginBottom: 16 }}>
+        <div className="cardTitle" style={{ marginBottom: foodSpendCents > 0 ? 16 : 0 }}>
           Unverarbeitet vs. verarbeitet
         </div>
-        <div className={styles.split} role="img" aria-label="Anteil unverarbeiteter Lebensmittel">
-          <div className={styles.splitUnprocessed} style={{ width: `${(unprocessedShare * 100).toFixed(1)}%` }} />
-          <div className={styles.splitProcessed} style={{ width: `${((1 - unprocessedShare) * 100).toFixed(1)}%` }} />
-        </div>
-        <div className={styles.splitLegend}>
-          <div>
-            <span className={styles.splitValue}>{formatPercent(unprocessedShare)}</span>{' '}
-            <span className="muted">unverarbeitet · {formatEuro(health.unprocessedCents)}</span>
-          </div>
-          <div>
-            <span className={styles.splitValue}>{formatPercent(1 - unprocessedShare)}</span>{' '}
-            <span className="muted">{formatEuro(health.processedCents)}</span>
-          </div>
-        </div>
+        {foodSpendCents > 0 ? (
+          <>
+            <div className={styles.split} role="img" aria-label="Anteil unverarbeiteter Lebensmittel">
+              <div
+                className={styles.splitUnprocessed}
+                style={{ width: `${(unprocessedShare * 100).toFixed(1)}%` }}
+              />
+              <div
+                className={styles.splitProcessed}
+                style={{ width: `${((1 - unprocessedShare) * 100).toFixed(1)}%` }}
+              />
+            </div>
+            <div className={styles.splitLegend}>
+              <div>
+                <span className={styles.splitValue}>{formatPercent(unprocessedShare)}</span>{' '}
+                <span className="muted">
+                  unverarbeitet · {formatEuro(data.unprocessedCents)}
+                </span>
+              </div>
+              <div>
+                <span className={styles.splitValue}>{formatPercent(1 - unprocessedShare)}</span>{' '}
+                <span className="muted">{formatEuro(data.processedCents)}</span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <EmptyState inline title="Noch keine Lebensmittel erfasst">
+            Hier teilt sich später dein Lebensmittel-Budget in unverarbeitet und hochverarbeitet
+            auf – in Euro, nicht in Stückzahlen.
+          </EmptyState>
+        )}
       </section>
 
       <h2 className="sectionLabel">Kritische Ausgaben</h2>
       {critical.length === 0 && (
-        <p className={styles.empty}>Keine kritischen Merkmale in diesem Zeitraum.</p>
+        <p className={styles.empty}>
+          Keine kritischen Merkmale in diesem Zeitraum. Sobald Produkte mit Merkmalen wie
+          Industriezucker oder Samenöl dabei sind, stehen sie hier – nach Eurobetrag sortiert.
+        </p>
       )}
       {visible.map((row) => (
         <ConcernCard key={row.trait.id} row={row} />
@@ -117,7 +173,7 @@ export function Health() {
           </section>
         </>
       )}
-    </div>
+    </>
   )
 }
 

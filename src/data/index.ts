@@ -1,78 +1,72 @@
 /**
- * Data access seam.
+ * Die Datenschicht — die einzige Stelle, an der die Screens die Datenbank
+ * berühren.
  *
- * Every screen reads through these functions, never from `src/mocks/*` directly.
- * Wiring up Supabase means replacing the bodies here (and making the callers
- * await them) — no component needs to change shape.
+ * Bis Schritt 2b kamen die Ergebnisse aus `src/mocks/`. Seit 2c kommen sie aus
+ * Supabase. Die Dateien unter `src/mocks/` bleiben als Referenz für Typen und
+ * Tests liegen, werden von hier aus aber nicht mehr gelesen — und von einer
+ * Komponente erst recht nicht.
+ *
+ * Zwei Sorten Funktionen liegen hier:
+ *
+ *   * **Synchron** — Stammdaten (Kategorien, Merkmale, Händler). Sie stehen
+ *     nach dem Start im Zwischenlager und lassen sich mitten im Rendern
+ *     nachschlagen. Gefüllt wird es von `<DataGate>`.
+ *   * **Asynchron** — alles, was von Bons abhängt. Eine Funktion je Screen,
+ *     damit ein Screen genau einen Ladezustand hat.
  */
-import { categories } from '../mocks/categories'
-import { today } from '../mocks/dates'
-import { merchants } from '../mocks/merchants'
-import { traits } from '../mocks/traits'
-import { receipts, scannedReceiptId } from '../mocks/receipts'
-import { products } from '../mocks/products'
-import {
-  categoryTotals,
-  defaultSettings,
-  healthSummary,
-  household,
-  monthSummary,
-  rangeLabels,
-  topProducts,
-  trends,
-} from '../mocks/summary'
-import { foodItems } from '../lib/score'
-import type {
-  Category,
-  Merchant,
-  MerchantId,
-  Product,
-  RangeId,
-  Receipt,
-  ReceiptItem,
-  Trait,
-  TraitId,
-} from '../types'
 
-export const getToday = () => today
+import { reference } from './reference'
+import type { Category, Merchant, MerchantId, Trait, TraitId } from '../types'
 
-export const getCategories = (): Category[] => categories
-export const getCategory = (id: string): Category | undefined => categories.find((c) => c.id === id)
-export const getTraits = (): Trait[] => traits
-export const getTrait = (id: TraitId): Trait | undefined => traits.find((t) => t.id === id)
-/** Only active traits reach the UI; inactive ones keep their data but stay hidden. */
-export const getActiveTraits = (): Trait[] => traits.filter((t) => t.active)
+export { loadReference, clearReference, refreshMerchants } from './reference'
+export type { Reference } from './reference'
 
-export const getMerchants = (): Merchant[] => merchants
-export const getMerchant = (id: MerchantId): Merchant | undefined => merchants.find((m) => m.id === id)
-/** Display name for a merchant id; falls back to the raw id if it is unknown. */
-export const getMerchantName = (id: MerchantId): string => getMerchant(id)?.name ?? id
+export { useQuery } from './useQuery'
+export type { QueryState } from './useQuery'
 
-export const getMonthSummary = () => monthSummary
-export const getCategoryTotals = () => categoryTotals
+export { DataError, germanDataError } from './client'
 
-export const getReceipts = (): Receipt[] => receipts
-export const getRecentReceipts = (limit = 3): Receipt[] => receipts.slice(0, limit)
-export const getReceipt = (id: string): Receipt | undefined => receipts.find((r) => r.id === id)
-/** The receipt the scan flow hands to the correction screen. */
-export const getScannedReceipt = (): Receipt => getReceipt(scannedReceiptId) ?? receipts[0]
+export {
+  getDashboardData,
+  getAnalyticsData,
+  getHealthData,
+  getPriceOverview,
+  getProductPriceDetail,
+  getReceipt,
+  getScannedReceipt,
+  getMonthlyBudgetCents,
+  saveMonthlyBudgetCents,
+  searchItemSpending,
+} from './queries'
+export type { AnalyticsData, DashboardData, HealthData, RecentReceipt } from './queries'
 
-export const getProducts = (): Product[] => products
-export const getProduct = (id: string): Product | undefined => products.find((p) => p.id === id)
+/* ------------------------------------------------- Stammdaten, synchron */
 
-export const getTrend = (range: RangeId) => trends[range]
-export const getRangeLabels = () => rangeLabels
-export const getTopProducts = () => topProducts
+export const getCategories = (): Category[] => reference().categories
 
-export const getHealthSummary = () => healthSummary
+export const getCategory = (id: string): Category | undefined =>
+  reference().categories.find((c) => c.id === id)
 
-/** The input to the health score and the trait breakdown. */
-export const getFoodItems = (): ReceiptItem[] => foodItems(receipts, categories)
+export const getTraits = (): Trait[] => reference().traits
 
-export const getHousehold = () => household
-export const getDefaultSettings = () => defaultSettings
+export const getTrait = (id: TraitId): Trait | undefined =>
+  reference().traits.find((t) => t.id === id)
 
-/** The current month as an ISO range, for period filters. */
-export function getMonthRange(): { start: string; end: string } {
-  return { start: monthSummary.month, end: monthSummary.asOf }
+/** Nur aktive Merkmale erreichen die Oberfläche; inaktive behalten ihre Daten. */
+export const getActiveTraits = (): Trait[] => reference().traits.filter((t) => t.active)
+
+export const getMerchants = (): Merchant[] => reference().merchants
+
+export const getMerchant = (id: MerchantId): Merchant | undefined =>
+  reference().merchants.find((m) => m.id === id)
+
+/**
+ * Anzeigename eines Händlers. Ein Bon ohne Händler ist möglich (etwa über „Text
+ * einfügen"), deshalb gibt es hier zwei verschiedene Ersatztexte statt der
+ * rohen id — eine uuid hilft niemandem weiter.
+ */
+export const getMerchantName = (id: MerchantId): string => {
+  if (!id) return 'Ohne Händler'
+  return getMerchant(id)?.name ?? 'Unbekannter Laden'
 }

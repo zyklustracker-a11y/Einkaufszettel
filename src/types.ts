@@ -165,6 +165,24 @@ export interface TrendPoint {
   amountCents: number
 }
 
+/**
+ * Ein Topf des Ausgabenverlaufs, so wie ihn die View `v_spending_trend` liefert:
+ * Zeitraum und Summe, aber keine Beschriftung. Ob daraus `Mo`, `KW32`, `Aug`
+ * oder `1.–7.` wird, entscheidet die Anzeige (PROJEKT.md: Formatierung nur in
+ * der UI).
+ */
+export interface TrendBucket {
+  rangeId: RangeId
+  index: number
+  /** ISO-Datum, erster Tag des Topfs. */
+  start: string
+  /** ISO-Datum, letzter Tag des Topfs. */
+  end: string
+  /** Kalenderwoche des Topf-Anfangs, für die `KW32`-Beschriftung. */
+  isoWeek: number
+  amountCents: number
+}
+
 export interface TopProduct {
   name: string
   purchaseCount: number
@@ -196,4 +214,57 @@ export interface HouseholdMember {
 export interface Settings {
   monthlyBudgetCents: number
   deleteReceiptPhotos: boolean
+}
+
+/* ------------------------------------------------------- aus den SQL-Sichten */
+
+/**
+ * Eine Karte auf dem Bestpreise-Screen. Bestpreis, Grundpreis und die
+ * Vergleichszeilen sind bereits in der Datenbank ausgerechnet.
+ */
+export interface ProductPriceOverview {
+  id: string
+  name: string
+  categoryId: CategoryId
+  /** €/kg, €/l oder €/Stück in Cent. Null bei Produkten ohne Packungsgröße. */
+  basePriceCents: number | null
+  baseUnit: string | null
+  purchaseCount: number
+  best: PricePoint
+  /** Jüngster Preis je anderem Händler, günstigster zuerst. */
+  others: PricePoint[]
+}
+
+/** Der Produkt-Detailschirm: Kennzahlen plus die vollständige Kaufhistorie. */
+export interface ProductPriceDetail {
+  id: string
+  name: string
+  basePriceCents: number | null
+  baseUnit: string | null
+  purchaseCount: number
+  minCents: number
+  maxCents: number
+  averageCents: number
+  /** ISO-Datum des ersten erfassten Kaufs. */
+  firstPurchasedOn: string
+  /** Älteste zuerst — so liest sich die Verlaufskurve von links nach rechts. */
+  purchases: PricePoint[]
+}
+
+/** Eine Zeile unter „Sparpotenzial" auf dem Analysen-Screen. */
+export interface SavingsRow {
+  productId: string
+  productName: string
+  cheapest: PricePoint
+  /** Der teuerste Kauf im Zeitraum — das anschaulichste Gegenbeispiel. */
+  worst: PricePoint
+  /** Wie viele Käufe im Zeitraum über dem Bestpreis lagen. */
+  overpaidCount: number
+  excessCents: number
+}
+
+/** Ergebnis der Produktsuche im Zeitraum. */
+export interface ItemSearchResult {
+  purchaseCount: number
+  amountCents: number
 }

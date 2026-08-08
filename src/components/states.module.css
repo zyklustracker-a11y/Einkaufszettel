@@ -1,0 +1,165 @@
+/* Lade-, Fehler- und Leerzustände.
+   Bewusst dieselben Bausteine wie überall: Kartenradius 20px, 18px Innenabstand,
+   14px zwischen Karten, Farben nur über die Token aus tokens.css. */
+
+/* ------------------------------------------------------------------- laden */
+
+.skeletonCard {
+  background: var(--card);
+  border-radius: 20px;
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+
+.skeletonCard + .skeletonCard {
+  margin-top: 14px;
+}
+
+.line {
+  height: 12px;
+  border-radius: 99px;
+  background: var(--chip);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.line + .line {
+  margin-top: 10px;
+}
+
+.line--title {
+  height: 16px;
+  width: 40%;
+}
+
+.line--wide {
+  width: 100%;
+}
+
+.line--half {
+  width: 60%;
+}
+
+.line--block {
+  height: 96px;
+  border-radius: 14px;
+  margin-top: 16px;
+}
+
+/* ------------------------------------------------------------------ Fehler */
+
+.errorCard {
+  background: var(--card);
+  border-radius: 20px;
+  padding: 18px;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--red-soft);
+}
+
+.errorTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--red);
+}
+
+.errorText {
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--muted);
+  margin: 6px 0 0;
+}
+
+.retry {
+  margin-top: 14px;
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--card2);
+  color: var(--text);
+  border-radius: 14px;
+  padding: 11px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ------------------------------------------------------------------- leer */
+
+.empty {
+  background: var(--card);
+  border-radius: 20px;
+  padding: 22px 18px;
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.empty + .empty,
+.empty + .card,
+.card + .empty {
+  margin-top: 14px;
+}
+
+/* Die schlanke Variante innerhalb einer bestehenden Karte — dort trägt schon
+   die Karte den Rahmen, hier bleibt nur der Text. Linksbündig, damit er unter
+   der ebenfalls linksbündigen Kartenüberschrift sitzt. */
+.inline {
+  text-align: left;
+  padding: 12px 0 2px;
+}
+
+.inline .emptyTitle {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.inline .emptyText {
+  margin-left: 0;
+  margin-right: 0;
+  max-width: none;
+}
+
+.mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  margin: 0 auto 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.emptyTitle {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.emptyText {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 6px auto 0;
+  max-width: 30ch;
+}
+
+.scanLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  border-radius: 14px;
+  padding: 11px 18px;
+  background: var(--green);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.textLink {
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--green);
+  text-decoration: none;
+}

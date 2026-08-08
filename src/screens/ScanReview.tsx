@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { BottomSheet } from '../components/BottomSheet'
 import { ReceiptItemList, TraitLegend } from '../components/ReceiptItemList'
-import { getCategories, getMerchantName, getScannedReceipt } from '../data'
+import { Async, EmptyState } from '../components/states'
+import { getCategories, getMerchantName, getScannedReceipt, useQuery } from '../data'
 import { receiptItemsTotal } from '../lib/derive'
 import { formatDate, formatEuro, roundCents } from '../lib/format'
-import type { CategoryId, Quantity, ReceiptItem } from '../types'
+import type { CategoryId, Quantity, Receipt, ReceiptItem } from '../types'
 import styles from './ScanReview.module.css'
 
 /**
@@ -47,10 +48,71 @@ function pricingFields(item: ReceiptItem): { amount: number; priceCents: number 
   }
 }
 
+/**
+ * Der Korrektur-Screen.
+ *
+ * Gezeigt wird der zuletzt erkannte, noch nicht bestätigte Bon. Solange es
+ * keinen gibt — und nach dem Umbau auf die leere Datenbank gibt es keinen —
+ * steht hier eine Erklärung statt einer leeren Liste. Die Fußleiste mit dem
+ * Speichern-Knopf erscheint nur dann, wenn es auch etwas zu speichern gibt;
+ * sie ist im Layout ein Geschwister des Scrollbereichs und darf deshalb nicht
+ * in ihn hineinrutschen.
+ */
 export function ScanReview() {
+  const state = useQuery(getScannedReceipt, [])
+  const receipt = state.data ?? null
+
+  return (
+    <div className={styles.screen}>
+      <div className={styles.scroll}>
+        <div className={styles.head}>
+          <Link to="/scan" replace className={styles.rescan}>
+            Erneut scannen
+          </Link>
+          <div className={styles.headTitle}>Prüfen &amp; korrigieren</div>
+        </div>
+
+        <Async state={state} loading={<LoadingNote />}>
+          {(loaded) =>
+            loaded === null ? (
+              <EmptyState title="Kein Bon zum Prüfen" link={{ to: '/scan', label: 'Bon scannen' }}>
+                Hier erscheint gleich nach dem Scannen, was die Erkennung gelesen hat: Händler,
+                Datum und alle Positionen – jede Zeile antippbar, falls etwas nicht stimmt.
+              </EmptyState>
+            ) : (
+              <ReviewBody receipt={loaded} />
+            )
+          }
+        </Async>
+      </div>
+
+      {receipt && <SaveBar totalCents={receipt.printedTotalCents} />}
+    </div>
+  )
+}
+
+function LoadingNote() {
+  return (
+    <p className={styles.hint} role="status">
+      Erkannter Bon wird geladen…
+    </p>
+  )
+}
+
+function SaveBar({ totalCents }: { totalCents: number }) {
   const navigate = useNavigate()
-  const receipt = getScannedReceipt()
-  // Corrections live here until "Speichern"; a real build would post them.
+  return (
+    <div className={styles.footer}>
+      {/* Das Speichern selbst kommt in Schritt 4. */}
+      <button type="button" className={styles.save} onClick={() => navigate('/', { replace: true })}>
+        Speichern · {formatEuro(totalCents)}
+      </button>
+    </div>
+  )
+}
+
+function ReviewBody({ receipt }: { receipt: Receipt }) {
+  // Corrections live here until "Speichern"; Schritt 4 posts them.
   const [items, setItems] = useState<ReceiptItem[]>(receipt.items)
   const [editing, setEditing] = useState<ReceiptItem | null>(null)
 
@@ -64,54 +126,49 @@ export function ScanReview() {
   }
 
   return (
-    <div className={styles.screen}>
-      <div className={styles.scroll}>
-        <div className={styles.head}>
-          <Link to="/scan" replace className={styles.rescan}>
-            Erneut scannen
-          </Link>
-          <div className={styles.headTitle}>Prüfen &amp; korrigieren</div>
-        </div>
-
-        <div className={styles.summary}>
-          <div className={styles.summaryTop}>
-            <div style={{ flex: 1 }}>
-              <div className={styles.merchant}>{getMerchantName(receipt.merchantId)}</div>
-              <div className={styles.date}>
-                {formatDate(receipt.date)} · {items.length} Positionen
-              </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div className={styles.totalLabel}>Bon-Summe</div>
-              <div className={styles.total}>{formatEuro(receipt.printedTotalCents)}</div>
+    <>
+      <div className={styles.summary}>
+        <div className={styles.summaryTop}>
+          <div style={{ flex: 1 }}>
+            <div className={styles.merchant}>{getMerchantName(receipt.merchantId)}</div>
+            <div className={styles.date}>
+              {formatDate(receipt.date)} · {items.length}{' '}
+              {items.length === 1 ? 'Position' : 'Positionen'}
             </div>
           </div>
-
-          <div className={reconciles ? `${styles.banner} ${styles['banner--ok']}` : styles.banner}>
-            <div className={styles.bannerIcon} aria-hidden="true">
-              {reconciles ? '✓' : '!'}
-            </div>
-            <div className={styles.bannerText}>
-              {reconciles
-                ? `Positionssumme ${formatEuro(itemsTotalCents)} stimmt mit dem Bon-Total überein.`
-                : `Positionssumme ${formatEuro(itemsTotalCents)} weicht um ${formatEuro(Math.abs(differenceCents))} ab – bitte prüfen.`}
-            </div>
+          <div style={{ textAlign: 'right' }}>
+            <div className={styles.totalLabel}>Bon-Summe</div>
+            <div className={styles.total}>{formatEuro(receipt.printedTotalCents)}</div>
           </div>
         </div>
 
-        <div className={styles.hint}>Zeile antippen zum Bearbeiten</div>
-        <ReceiptItemList items={items} onEdit={setEditing} />
-        <TraitLegend items={items} />
+        <div className={reconciles ? `${styles.banner} ${styles['banner--ok']}` : styles.banner}>
+          <div className={styles.bannerIcon} aria-hidden="true">
+            {reconciles ? '✓' : '!'}
+          </div>
+          <div className={styles.bannerText}>
+            {reconciles
+              ? `Positionssumme ${formatEuro(itemsTotalCents)} stimmt mit dem Bon-Total überein.`
+              : `Positionssumme ${formatEuro(itemsTotalCents)} weicht um ${formatEuro(Math.abs(differenceCents))} ab – bitte prüfen.`}
+          </div>
+        </div>
       </div>
 
-      <div className={styles.footer}>
-        <button type="button" className={styles.save} onClick={() => navigate('/', { replace: true })}>
-          Speichern · {formatEuro(receipt.printedTotalCents)}
-        </button>
-      </div>
+      {items.length === 0 ? (
+        <EmptyState inline title="Keine Positionen erkannt">
+          Die Erkennung hat auf diesem Bon keine einzelne Zeile gefunden. Scanne ihn noch einmal –
+          flach, gut beleuchtet und in ganzer Länge im Rahmen.
+        </EmptyState>
+      ) : (
+        <>
+          <div className={styles.hint}>Zeile antippen zum Bearbeiten</div>
+          <ReceiptItemList items={items} onEdit={setEditing} />
+          <TraitLegend items={items} />
+        </>
+      )}
 
       {editing && <EditSheet item={editing} onCancel={() => setEditing(null)} onSave={save} />}
-    </div>
+    </>
   )
 }
 

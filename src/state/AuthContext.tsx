@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase, supabaseConfigError } from '../lib/supabase'
+import { clearReference } from '../data'
 
 /**
  * Wer ist angemeldet.
@@ -156,6 +157,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (awaitingOAuth.current) return
 
       settled.current = true
+      // Stammdaten des vorigen Haushalts wegräumen: Beim nächsten Anmelden lädt
+      // <DataGate> sie neu, statt fremde Merkmale zu zeigen.
+      clearReference()
       setUser(null)
       setStatus('signedOut')
     })
