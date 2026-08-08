@@ -1,103 +1,80 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { BottomSheet } from '../components/BottomSheet'
 import { ReceiptItemList, TraitLegend } from '../components/ReceiptItemList'
-import { Async, EmptyState } from '../components/states'
-import { getCategories, getMerchantName, getScannedReceipt, useQuery } from '../data'
-import { receiptItemsTotal } from '../lib/derive'
-import type { ExtractedItem, ExtractionResponse } from '../lib/extraction'
+import { EmptyState } from '../components/states'
+import { getActiveTraits, getCategories, saveReceipt } from '../data'
+import {
+  DAIRY_CATEGORY,
+  DERIVED_TRAIT_KEYS,
+  baseAmount,
+  buildSavePayload,
+  differs,
+  displayAmount,
+  draftQuantity,
+  draftsTotalCents,
+  emptyDraft,
+  expectedTotalCents,
+  taxReconciliation,
+  toDrafts,
+  withoutCategory,
+} from '../lib/draft'
+import type { DraftItem } from '../lib/draft'
+import { clearPendingCapture } from '../lib/capture'
+import type { ExtractedUnit, ExtractionResponse } from '../lib/extraction'
 import { daysBetween, formatDate, formatEuro, formatMonth, roundCents, todayISO } from '../lib/format'
-import { getPendingExtraction } from '../lib/scanResult'
-import type { CategoryId, Quantity, Receipt, ReceiptItem } from '../types'
+import { clearPendingExtraction, getPendingExtraction } from '../lib/scanResult'
+import type { CategoryId, MilkHeat, MilkHomogenized, ReceiptItem } from '../types'
 import styles from './ScanReview.module.css'
-
-/**
- * Recomputes the line total after an edit, keeping quantity × price honest.
- * A weight times a €/kg price lands between cents, so the result is rounded.
- */
-function applyPricing(
-  quantity: Quantity,
-  amount: number,
-  priceCents: number,
-): { quantity: Quantity; totalCents: number } {
-  switch (quantity.kind) {
-    case 'count': {
-      const count = Math.max(1, Math.round(amount))
-      return {
-        quantity: { kind: 'count', count, unitPriceCents: priceCents },
-        totalCents: roundCents(count * priceCents),
-      }
-    }
-    case 'weight':
-      return {
-        quantity: { ...quantity, amount, pricePerUnitCents: priceCents },
-        totalCents: roundCents(amount * priceCents),
-      }
-    case 'unknown':
-      return { quantity, totalCents: priceCents }
-  }
-}
-
-/** Starting values for the edit sheet's two numeric fields. */
-function pricingFields(item: ReceiptItem): { amount: number; priceCents: number } {
-  switch (item.quantity.kind) {
-    case 'count':
-      return { amount: item.quantity.count, priceCents: item.quantity.unitPriceCents }
-    case 'weight':
-      return { amount: item.quantity.amount, priceCents: item.quantity.pricePerUnitCents }
-    case 'unknown':
-      return { amount: 0, priceCents: item.totalCents }
-  }
-}
 
 /**
  * Der Korrektur-Screen.
  *
- * Er hat seit Schritt 4b-1 zwei Quellen, und die Reihenfolge ist Absicht:
+ * Er arbeitet auf dem, was der Verarbeitungs-Screen im Speicher hinterlegt hat
+ * (`src/lib/scanResult.ts`). Einen Bon in der Datenbank gibt es an dieser Stelle
+ * bewusst noch nicht: Geschrieben wird genau einmal, beim Speichern, vollständig
+ * — sonst bliebe jeder abgebrochene Scan als halber Bon liegen.
  *
- *   1. **Das frisch Erkannte**, das der Verarbeitungs-Screen im Speicher
- *      hinterlegt hat. In diesem Schritt wird ausdrücklich noch nichts
- *      gespeichert — es gäbe also gar nichts abzufragen.
- *   2. **Ein Bon aus der Datenbank** mit Status `extracted`. Diesen Weg gibt es
- *      noch nicht zu sehen (es schreibt ja niemand), er bleibt aber stehen: Mit
- *      4b-2 wird er der Regelfall, und der Umweg über den Speicher entfällt.
- *
- * Ohne beides steht hier eine Erklärung statt einer leeren Liste.
+ * Alles, was hier bearbeitet wird, lebt bis dahin in `drafts`. Erst „Speichern"
+ * macht daraus einen Datensatz, und zwar in einer einzigen Transaktion
+ * (`supabase/migrations/0003_speichern.sql`).
  */
 export function ScanReview() {
   const extraction = getPendingExtraction()
 
   return (
     <div className={styles.screen}>
-      {extraction ? <ExtractionReview result={extraction} /> : <StoredReview />}
+      {extraction ? <ExtractionReview result={extraction} /> : <NothingToReview />}
     </div>
   )
 }
 
-/* ========================================================= frisch erkannt */
+function Head() {
+  return (
+    <div className={styles.head}>
+      <Link to="/scan" replace className={styles.rescan}>
+        Erneut scannen
+      </Link>
+      <div className={styles.headTitle}>Prüfen &amp; korrigieren</div>
+    </div>
+  )
+}
 
 /**
- * Aus einer erkannten Position wird eine Position, wie die Anzeige sie kennt.
- *
- * Damit zeigen Positionsliste, Badges und Legende das Erkannte mit denselben
- * Bausteinen wie einen gespeicherten Bon — nichts wird für diesen Schritt
- * nachgebaut.
+ * Ohne Ergebnis im Speicher gibt es nichts zu prüfen. Das ist der Normalfall
+ * nach einem Neuladen: Das Erkannte überlebt es absichtlich nicht.
  */
-function toReceiptItem(item: ExtractedItem): ReceiptItem {
-  const suggestion = item.suggestion
-  return {
-    id: String(item.lineNo),
-    // Der Klarname ist ein Vorschlag; ohne ihn steht da, was auf dem Bon stand.
-    name: suggestion?.name ?? item.rawText,
-    categoryId: categoryLabel(item),
-    quantity: toQuantity(item),
-    totalCents: item.totalCents,
-    traitIds: suggestion?.traitKeys ?? [],
-    ...(suggestion && suggestion.milkHeat !== 'unbekannt' ? { milkHeat: suggestion.milkHeat } : {}),
-    ...(suggestion && suggestion.milkHomogenized !== 'unbekannt'
-      ? { milkHomogenized: suggestion.milkHomogenized }
-      : {}),
-  }
+function NothingToReview() {
+  return (
+    <div className={styles.scroll}>
+      <Head />
+      <EmptyState title="Kein Bon zum Prüfen" link={{ to: '/scan', label: 'Bon scannen' }}>
+        Hier erscheint gleich nach dem Scannen, was die Erkennung gelesen hat: Händler, Datum und
+        alle Positionen – jede Zeile antippbar, falls etwas nicht stimmt.
+      </EmptyState>
+    </div>
+  )
 }
 
 /**
@@ -106,43 +83,26 @@ function toReceiptItem(item: ExtractedItem): ReceiptItem {
  * Die Positionsliste schlägt den Schlüssel in den Stammdaten nach und zeigt
  * sonst den Schlüssel selbst. Genau das wird hier ausgenutzt: Pfand, Rabatt und
  * „noch offen" sind keine Kategorien und sollen auch nicht so aussehen, als
- * hätte das Modell sich für eine entschieden.
+ * hätte sich jemand für eine entschieden.
  */
-function categoryLabel(item: ExtractedItem): CategoryId {
-  if (item.kind === 'pfand') return 'Pfand' as CategoryId
-  if (item.kind === 'rabatt') return 'Rabatt' as CategoryId
-  return (item.suggestion?.categoryKey ?? 'Kategorie offen') as CategoryId
+function categoryLabel(draft: DraftItem): CategoryId {
+  if (draft.kind === 'pfand') return 'Pfand' as CategoryId
+  if (draft.kind === 'rabatt') return 'Rabatt' as CategoryId
+  return (draft.categoryKey ?? 'Kategorie offen') as CategoryId
 }
 
-/**
- * Menge und Einzelpreis in die Anzeigeform bringen.
- *
- * Wortgleich zu `toQuantity` in `src/data/queries.ts`, und aus demselben Grund:
- * Intern ist eine Menge eine ganze Zahl in der kleinsten Einheit (Gramm,
- * Milliliter, Stück), angezeigt wird in Kilo, Liter oder Stück.
- */
-function toQuantity(item: ExtractedItem): Quantity {
-  if (item.quantityBase === null || item.quantityUnit === null) return { kind: 'unknown' }
-
-  if (item.quantityUnit === 'stk') {
-    const count = item.quantityBase
-    const unitPriceCents =
-      item.unitPriceCents ?? (count > 0 ? Math.round(item.totalCents / count) : item.totalCents)
-    return { kind: 'count', count, unitPriceCents }
+/** Aus einem Entwurf wird eine Position, wie die Anzeige sie kennt. */
+function toReceiptItem(draft: DraftItem): ReceiptItem {
+  return {
+    id: draft.key,
+    name: draft.name.trim() || draft.rawText.trim() || 'Ohne Namen',
+    categoryId: categoryLabel(draft),
+    quantity: draftQuantity(draft),
+    totalCents: draft.totalCents,
+    traitIds: draft.traitKeys,
+    ...(draft.milkHeat !== 'unbekannt' ? { milkHeat: draft.milkHeat } : {}),
+    ...(draft.milkHomogenized !== 'unbekannt' ? { milkHomogenized: draft.milkHomogenized } : {}),
   }
-
-  const perThousand = item.quantityUnit === 'kg' || item.quantityUnit === 'l'
-  const unit = item.quantityUnit === 'kg' || item.quantityUnit === 'g' ? 'kg' : 'l'
-  const amount = item.quantityBase / 1000
-  const factor = perThousand ? 1 : 1000
-  const pricePerUnitCents =
-    item.unitPriceCents !== null
-      ? item.unitPriceCents * factor
-      : amount > 0
-        ? Math.round(item.totalCents / amount)
-        : item.totalCents
-
-  return { kind: 'weight', amount, unit, pricePerUnitCents }
 }
 
 /**
@@ -160,11 +120,7 @@ const UNUSUAL_AGE_DAYS = 60
  * **Das ist ausdrücklich kein Fehler.** Ein alter Bon ist ein gültiger Bon; ein
  * Testscan von 2017 ist richtig gelesen und nicht falsch. Deshalb wird hier
  * nichts überschrieben, nichts blockiert und nichts rot eingefärbt — es wird
- * nur gesagt, in welchen Monat der Einkauf dann zählt. Das ist die einzige
- * Folge, die der Nutzer sonst erst in der Monatsübersicht bemerken würde.
- *
- * Gerechnet wird gegen die Uhr des Geräts und nicht gegen die des Servers: Der
- * Hinweis ist reine Anzeige, und „heute" ist hier das Heute des Nutzers.
+ * nur gesagt, in welchen Monat der Einkauf dann zählt.
  */
 function dateNotice(iso: string, today: string): string | null {
   if (!iso) return null
@@ -190,27 +146,117 @@ function dateNotice(iso: string, today: string): string | null {
   return null
 }
 
+/**
+ * Warnungen, die inzwischen woanders stehen und deshalb nicht doppelt in der
+ * Liste auftauchen: Der Summenabgleich hat sein eigenes Banner, die
+ * Steuerklassen ihren eigenen Block — und beide rechnen bei jeder Änderung neu,
+ * während diese Meldungen vom Zeitpunkt der Erkennung stammen.
+ */
+/**
+ * Zähler für die Schlüssel von Hand ergänzter Zeilen. Er muss über die ganze
+ * Sitzung eindeutig bleiben, auch nachdem Zeilen gelöscht wurden — die Länge der
+ * Liste taugt dafür nicht.
+ */
+let nextKey = 1
+
+const SUPERSEDED_WARNINGS = [
+  'summe_weicht_ab',
+  'summe_fehlt',
+  'steuerklasse_weicht_ab',
+  'steuerklasse_unbekannt',
+  'steuer_kennzeichen_fehlt',
+]
+
 function ExtractionReview({ result }: { result: ExtractionResponse }) {
+  const navigate = useNavigate()
   const { extraction } = result
-  const items = extraction.items.map(toReceiptItem)
 
   /*
-   * Das Datum ist der einzige Wert, der hier schon geändert werden kann.
-   * Grund: Es entscheidet, in welchen Monat der Einkauf fällt, und ein
-   * vertipptes Jahr verschiebt den ganzen Einkauf — das soll man sehen und
-   * richtigstellen können, bevor 4b-2 daraus einen Datensatz macht.
+   * Alles Bearbeitete lebt hier, bis gespeichert wird. `toDrafts` läuft nur
+   * einmal — mit `useState`-Initialisierer und nicht in einem Effekt, sonst
+   * würde jede Neuzeichnung die Korrekturen des Nutzers überschreiben.
    */
-  const [purchasedOn, setPurchasedOn] = useState(extraction.purchasedOn ?? '')
+  const [drafts, setDrafts] = useState<DraftItem[]>(() => toDrafts(extraction))
+  const [editing, setEditing] = useState<string | null>(null)
+  const [purchasedOn, setPurchasedOn] = useState(extraction.purchasedOn ?? todayISO())
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
   const notice = dateNotice(purchasedOn, todayISO())
 
-  // Der Abgleich kommt aus der Funktion; sie hat ihn beim Prüfen gerechnet.
+  /* Beides rechnet aus dem aktuellen Stand, nicht aus dem der Erkennung. */
+  const itemsTotalCents = draftsTotalCents(drafts)
   const printed = extraction.printedTotalCents
-  const reconciles = printed !== null && extraction.discrepancyCents === 0
+  const differenceCents = printed === null ? null : printed - itemsTotalCents
+  const reconciles = differenceCents === 0
 
-  /* Warnungen, die nicht schon im Summen-Banner stehen. */
-  const notes = extraction.warnings.filter(
-    (warning) => warning.code !== 'summe_weicht_ab' && warning.code !== 'summe_fehlt',
+  const tax = useMemo(
+    () => taxReconciliation(drafts, extraction.printedTaxGroups),
+    [drafts, extraction.printedTaxGroups],
   )
+
+  const openCategories = withoutCategory(drafts)
+  const learned = drafts.filter((draft) => draft.known).map((draft) => draft.key)
+
+  const notes = extraction.warnings.filter(
+    (warning) => !SUPERSEDED_WARNINGS.includes(warning.code),
+  )
+
+  const items = drafts.map(toReceiptItem)
+  const editingDraft = drafts.find((draft) => draft.key === editing) ?? null
+
+  const applyEdit = (updated: DraftItem) => {
+    setDrafts((current) =>
+      current.map((draft) =>
+        draft.key === updated.key
+          ? { ...updated, edited: draft.edited || differs(draft, updated) }
+          : draft,
+      ),
+    )
+    setEditing(null)
+  }
+
+  const removeDraft = (key: string) => {
+    setDrafts((current) => current.filter((draft) => draft.key !== key))
+    setEditing(null)
+  }
+
+  const addDraft = () => {
+    const key = `neu-${nextKey++}`
+    setDrafts((current) => [...current, emptyDraft(key)])
+    setEditing(key)
+  }
+
+  const save = async () => {
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const receiptId = await saveReceipt(
+        buildSavePayload({
+          merchantName: extraction.merchantName,
+          purchasedOn: purchasedOn || todayISO(),
+          printedTotalCents: printed,
+          drafts,
+        }),
+      )
+
+      /*
+       * Erst jetzt wird das Foto weggeworfen, zusammen mit dem Ergebnis. Es
+       * wird nirgends hochgeladen (PROJEKT.md, Datenschutz) — gebraucht wird es
+       * nur, solange die Erkennung wiederholt werden könnte.
+       */
+      clearPendingCapture()
+      clearPendingExtraction()
+      navigate(`/einkauf/${receiptId}`, { replace: true, state: { justSaved: true } })
+    } catch (cause) {
+      setSaveError(
+        cause instanceof Error
+          ? cause.message
+          : 'Der Bon konnte nicht gespeichert werden. Bitte noch einmal versuchen.',
+      )
+      setSaving(false)
+    }
+  }
 
   return (
     <>
@@ -251,11 +297,11 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
               {reconciles ? '✓' : '!'}
             </div>
             <div className={styles.bannerText}>
-              {printed === null
-                ? `Keine gedruckte Gesamtsumme gelesen – die Positionen ergeben ${formatEuro(extraction.itemsTotalCents)}.`
+              {differenceCents === null
+                ? `Keine gedruckte Gesamtsumme gelesen – die Positionen ergeben ${formatEuro(itemsTotalCents)}.`
                 : reconciles
-                  ? `Positionssumme ${formatEuro(extraction.itemsTotalCents)} stimmt mit dem Bon-Total überein.`
-                  : `Positionssumme ${formatEuro(extraction.itemsTotalCents)} weicht um ${formatEuro(Math.abs(extraction.discrepancyCents ?? 0))} ab – bitte prüfen.`}
+                  ? `Positionssumme ${formatEuro(itemsTotalCents)} stimmt mit dem Bon-Total überein.`
+                  : `Positionssumme ${formatEuro(itemsTotalCents)} weicht um ${formatEuro(Math.abs(differenceCents))} ab – bitte prüfen.`}
             </div>
           </div>
 
@@ -273,11 +319,12 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
           )}
         </div>
 
+        <TaxBlock tax={tax} />
+
         {/*
           Direkt unter der Zusammenfassung und nicht unter der Positionsliste:
-          Bei einem Bon mit vierzig Zeilen stünde der Hinweis, in welcher
-          Steuerklasse etwas fehlt, sonst außerhalb des Bildschirms — also genau
-          dort, wo ihn niemand liest.
+          Bei einem Bon mit vierzig Zeilen stünde der Hinweis sonst außerhalb des
+          Bildschirms — also genau dort, wo ihn niemand liest.
         */}
         {notes.length > 0 && (
           <div className={styles.notes}>
@@ -291,25 +338,121 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
         )}
 
         {items.length === 0 ? (
-          <EmptyState inline title="Keine Positionen erkannt">
-            Die Erkennung hat auf diesem Bon keine einzelne Zeile gefunden. Scanne ihn noch einmal –
-            flach, gut beleuchtet und in ganzer Länge im Rahmen.
+          <EmptyState inline title="Keine Positionen">
+            Auf diesem Bon steht keine Zeile mehr. Scanne ihn noch einmal – flach, gut beleuchtet
+            und in ganzer Länge im Rahmen – oder ergänze die Positionen von Hand.
           </EmptyState>
         ) : (
           <>
             <div className={styles.hint}>
-              Korrigieren und Speichern kommen in Schritt 4b-2. Bis dahin ist das hier reine Anzeige.
+              Zeile antippen zum Bearbeiten oder Löschen.
+              {learned.length > 0 &&
+                ` ${learned.length} ${learned.length === 1 ? 'Zeile war' : 'Zeilen waren'} schon bekannt.`}
             </div>
-            <ReceiptItemList items={items} />
+            <ReceiptItemList items={items} onEdit={(item) => setEditing(item.id)} learnedIds={learned} />
             <TraitLegend items={items} />
           </>
         )}
 
+        <button type="button" className={styles.add} onClick={addDraft}>
+          + Position hinzufügen
+        </button>
+
         <RawAnswer result={result} />
       </div>
 
-      <DisabledSaveBar totalCents={printed ?? extraction.itemsTotalCents} />
+      {editingDraft && (
+        <EditSheet
+          // Der Schlüssel setzt das Blatt beim Wechsel der Zeile zurück; sonst
+          // stünden im Formular noch die Eingaben der vorigen Position.
+          key={editingDraft.key}
+          draft={editingDraft}
+          taxCodes={extraction.printedTaxGroups.map((group) => group.code)}
+          onCancel={() => setEditing(null)}
+          onSave={applyEdit}
+          onDelete={() => removeDraft(editingDraft.key)}
+        />
+      )}
+
+      <div className={styles.footer}>
+        {saveError && (
+          <p className={styles.saveError} role="alert">
+            {saveError}
+          </p>
+        )}
+        {openCategories > 0 && (
+          <p className={styles.saveHint}>
+            {openCategories === 1
+              ? 'Eine Position hat noch keine Kategorie und wird ohne Produkt gespeichert – dann lernt die App für diese Zeile nichts.'
+              : `${openCategories} Positionen haben noch keine Kategorie und werden ohne Produkt gespeichert – dann lernt die App für diese Zeilen nichts.`}
+          </p>
+        )}
+        <button
+          type="button"
+          className={styles.save}
+          disabled={saving || drafts.length === 0}
+          onClick={save}
+        >
+          {saving ? 'Wird gespeichert…' : `Speichern · ${formatEuro(printed ?? itemsTotalCents)}`}
+        </button>
+      </div>
     </>
+  )
+}
+
+/**
+ * Der Abgleich je Steuerklasse — die schärfere Probe.
+ *
+ * Der Gesamtabgleich sagt nur, *dass* etwas fehlt; dieser sagt *wo*. Er rechnet
+ * bei jeder Änderung neu, damit sich beim Korrigieren zusehen lässt, wie die
+ * Lücke zugeht.
+ */
+function TaxBlock({ tax }: { tax: ReturnType<typeof taxReconciliation> }) {
+  if (tax.groups.length === 0 && tax.missingCodes === 0 && tax.unknownCodes.length === 0) {
+    return null
+  }
+
+  return (
+    <div className={styles.tax}>
+      <div className={styles.notesTitle}>Abgleich je Steuerklasse</div>
+
+      {tax.groups.map((group) => (
+        <div key={group.code} className={styles.taxRow}>
+          <span className={styles.taxCode}>{group.code}</span>
+          <span className={styles.taxNumbers}>
+            {formatEuro(group.itemsTotalCents)} von {formatEuro(group.grossCents)}
+          </span>
+          <span
+            className={
+              group.differenceCents === 0
+                ? `${styles.taxState} ${styles['taxState--ok']}`
+                : styles.taxState
+            }
+          >
+            {group.differenceCents === 0
+              ? 'stimmt'
+              : `${formatEuro(Math.abs(group.differenceCents))} ${group.differenceCents > 0 ? 'fehlen' : 'zu viel'}`}
+          </span>
+        </div>
+      ))}
+
+      {tax.missingCodes > 0 && (
+        <p className={styles.taxNote}>
+          {tax.missingCodes === 1
+            ? 'Einer Position fehlt das Steuerkennzeichen'
+            : `${tax.missingCodes} Positionen fehlt das Steuerkennzeichen`}{' '}
+          – solange wäre jede Klasse zu niedrig, deshalb wird nicht verglichen. Trag es beim
+          Bearbeiten der Zeile nach, dann rechnet der Abgleich mit.
+        </p>
+      )}
+
+      {tax.unknownCodes.length > 0 && (
+        <p className={styles.taxNote}>
+          Das Kennzeichen „{tax.unknownCodes.join('“, „')}“ steht an einer Position, aber nicht im
+          gedruckten Steuerblock.
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -350,247 +493,308 @@ function RawAnswer({ result }: { result: ExtractionResponse }) {
   )
 }
 
-/**
- * Der Speichern-Knopf ist da, aber abgeschaltet.
- *
- * Absicht aus Schritt 4b-1: Der Prompt sitzt beim ersten Mal nicht, und es soll
- * sich beliebig oft testen lassen, ohne hinterher in der Datenbank aufzuräumen.
- * Der Knopf steht trotzdem hier, damit sichtbar bleibt, wo das Speichern
- * hingehört.
- */
-function DisabledSaveBar({ totalCents }: { totalCents: number }) {
-  return (
-    <div className={styles.footer}>
-      <button type="button" className={styles.save} disabled aria-disabled="true">
-        Speichern · {formatEuro(totalCents)}
-      </button>
-      <p className={styles.saveHint}>
-        Speichern kommt in Schritt 4b-2. Dieser Bon wird noch nicht in die Datenbank geschrieben.
-      </p>
-    </div>
-  )
+/* ========================================================= Bearbeiten */
+
+/** Die Mengen-Einheiten zur Auswahl, plus „ohne Mengenangabe". */
+const UNITS: Array<{ value: ExtractedUnit | ''; label: string }> = [
+  { value: '', label: 'ohne' },
+  { value: 'stk', label: 'Stück' },
+  { value: 'kg', label: 'kg' },
+  { value: 'g', label: 'g' },
+  { value: 'l', label: 'l' },
+  { value: 'ml', label: 'ml' },
+]
+
+const MILK_HEATS: Array<{ value: MilkHeat; label: string }> = [
+  { value: 'unbekannt', label: 'unbekannt' },
+  { value: 'roh', label: 'Rohmilch' },
+  { value: 'pasteurisiert', label: 'pasteurisiert' },
+  { value: 'esl', label: 'ESL' },
+  { value: 'uht', label: 'H-Milch' },
+]
+
+const MILK_HOMOGENIZED: Array<{ value: MilkHomogenized; label: string }> = [
+  { value: 'unbekannt', label: 'unbekannt' },
+  { value: 'ja', label: 'homogenisiert' },
+  { value: 'nein', label: 'nicht homogenisiert' },
+]
+
+/** Ein Feld, in das eine deutsche Kommazahl getippt wird. */
+function parseInput(value: string): number {
+  return Number(value.replace(',', '.')) || 0
 }
 
-/* ==================================================== aus der Datenbank */
-
-function Head() {
-  return (
-    <div className={styles.head}>
-      <Link to="/scan" replace className={styles.rescan}>
-        Erneut scannen
-      </Link>
-      <div className={styles.headTitle}>Prüfen &amp; korrigieren</div>
-    </div>
-  )
+/** Das Feld ist in Euro, gerechnet wird in Cent. */
+function parsePrice(value: string): number {
+  return roundCents(parseInput(value) * 100)
 }
 
-/**
- * Der Weg über die Datenbank: der zuletzt erkannte, noch nicht bestätigte Bon.
- *
- * Solange nichts geschrieben wird, führt er verlässlich in den Leerzustand.
- * Genau das ist der Fall, den ein Neuladen des Korrektur-Screens auslöst — das
- * Ergebnis im Speicher überlebt es nicht.
- */
-function StoredReview() {
-  const state = useQuery(getScannedReceipt, [])
-  const receipt = state.data ?? null
-
-  return (
-    <>
-      <div className={styles.scroll}>
-        <Head />
-
-        <Async state={state} loading={<LoadingNote />}>
-          {(loaded) =>
-            loaded === null ? (
-              <EmptyState title="Kein Bon zum Prüfen" link={{ to: '/scan', label: 'Bon scannen' }}>
-                Hier erscheint gleich nach dem Scannen, was die Erkennung gelesen hat: Händler,
-                Datum und alle Positionen – jede Zeile antippbar, falls etwas nicht stimmt.
-              </EmptyState>
-            ) : (
-              <ReviewBody receipt={loaded} />
-            )
-          }
-        </Async>
-      </div>
-
-      {receipt && <SaveBar totalCents={receipt.printedTotalCents} />}
-    </>
-  )
+function toField(value: number): string {
+  return String(value).replace('.', ',')
 }
 
-function LoadingNote() {
-  return (
-    <p className={styles.hint} role="status">
-      Erkannter Bon wird geladen…
-    </p>
-  )
-}
-
-function SaveBar({ totalCents }: { totalCents: number }) {
-  const navigate = useNavigate()
-  return (
-    <div className={styles.footer}>
-      {/* Das Speichern selbst kommt in Schritt 4b-2. */}
-      <button type="button" className={styles.save} onClick={() => navigate('/', { replace: true })}>
-        Speichern · {formatEuro(totalCents)}
-      </button>
-    </div>
-  )
-}
-
-function ReviewBody({ receipt }: { receipt: Receipt }) {
-  // Corrections live here until "Speichern"; Schritt 4b-2 posts them.
-  const [items, setItems] = useState<ReceiptItem[]>(receipt.items)
-  const [editing, setEditing] = useState<ReceiptItem | null>(null)
-
-  const itemsTotalCents = receiptItemsTotal({ ...receipt, items })
-  const differenceCents = receipt.printedTotalCents - itemsTotalCents
-  const reconciles = differenceCents === 0
-
-  const save = (updated: ReceiptItem) => {
-    setItems((current) => current.map((item) => (item.id === updated.id ? updated : item)))
-    setEditing(null)
-  }
-
-  return (
-    <>
-      <div className={styles.summary}>
-        <div className={styles.summaryTop}>
-          <div style={{ flex: 1 }}>
-            <div className={styles.merchant}>{getMerchantName(receipt.merchantId)}</div>
-            <div className={styles.date}>
-              {formatDate(receipt.date)} · {items.length}{' '}
-              {items.length === 1 ? 'Position' : 'Positionen'}
-            </div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div className={styles.totalLabel}>Bon-Summe</div>
-            <div className={styles.total}>{formatEuro(receipt.printedTotalCents)}</div>
-          </div>
-        </div>
-
-        <div className={reconciles ? `${styles.banner} ${styles['banner--ok']}` : styles.banner}>
-          <div className={styles.bannerIcon} aria-hidden="true">
-            {reconciles ? '✓' : '!'}
-          </div>
-          <div className={styles.bannerText}>
-            {reconciles
-              ? `Positionssumme ${formatEuro(itemsTotalCents)} stimmt mit dem Bon-Total überein.`
-              : `Positionssumme ${formatEuro(itemsTotalCents)} weicht um ${formatEuro(Math.abs(differenceCents))} ab – bitte prüfen.`}
-          </div>
-        </div>
-      </div>
-
-      {items.length === 0 ? (
-        <EmptyState inline title="Keine Positionen erkannt">
-          Die Erkennung hat auf diesem Bon keine einzelne Zeile gefunden. Scanne ihn noch einmal –
-          flach, gut beleuchtet und in ganzer Länge im Rahmen.
-        </EmptyState>
-      ) : (
-        <>
-          <div className={styles.hint}>Zeile antippen zum Bearbeiten</div>
-          <ReceiptItemList items={items} onEdit={setEditing} />
-          <TraitLegend items={items} />
-        </>
-      )}
-
-      {editing && <EditSheet item={editing} onCancel={() => setEditing(null)} onSave={save} />}
-    </>
-  )
+function toPriceField(cents: number | null): string {
+  return cents === null ? '' : (cents / 100).toFixed(2).replace('.', ',')
 }
 
 function EditSheet({
-  item,
+  draft,
+  taxCodes,
   onCancel,
   onSave,
+  onDelete,
 }: {
-  item: ReceiptItem
+  draft: DraftItem
+  /** Die Kennzeichen aus dem gedruckten Steuerblock. Leer: kein Block gelesen. */
+  taxCodes: string[]
   onCancel: () => void
-  onSave: (item: ReceiptItem) => void
+  onSave: (draft: DraftItem) => void
+  onDelete: () => void
 }) {
-  const initial = pricingFields(item)
-  const [name, setName] = useState(item.name)
-  // Fields show and accept German decimals in euros; `parseInput` takes them
-  // back to numbers and `parsePrice` back to cents.
-  const [amount, setAmount] = useState(String(initial.amount).replace('.', ','))
-  const [price, setPrice] = useState((initial.priceCents / 100).toFixed(2).replace('.', ','))
-  const [categoryId, setCategoryId] = useState<CategoryId>(item.categoryId)
+  const [name, setName] = useState(draft.name)
+  const [unit, setUnit] = useState<ExtractedUnit | ''>(draft.quantityUnit ?? '')
+  const [amount, setAmount] = useState(
+    draft.quantityBase === null || draft.quantityUnit === null
+      ? ''
+      : toField(displayAmount(draft.quantityBase, draft.quantityUnit)),
+  )
+  const [unitPrice, setUnitPrice] = useState(toPriceField(draft.unitPriceCents))
+  const [total, setTotal] = useState(toPriceField(draft.totalCents))
+  const [categoryKey, setCategoryKey] = useState<CategoryId | null>(draft.categoryKey)
+  const [traitKeys, setTraitKeys] = useState<string[]>(draft.traitKeys)
+  const [milkHeat, setMilkHeat] = useState<MilkHeat>(draft.milkHeat)
+  const [milkHomogenized, setMilkHomogenized] = useState<MilkHomogenized>(draft.milkHomogenized)
+  const [taxCode, setTaxCode] = useState<string | null>(draft.taxCode)
 
-  const isWeight = item.quantity.kind === 'weight'
-  const hasAmount = item.quantity.kind !== 'unknown'
-  const amountLabel = isWeight && item.quantity.kind === 'weight' ? `Menge (${item.quantity.unit})` : 'Menge'
-  const priceLabel = hasAmount ? 'Einzelpreis' : 'Preis'
+  const isArticle = draft.kind === 'artikel'
+  const isDairy = categoryKey === DAIRY_CATEGORY
 
-  const parseInput = (value: string) => Number(value.replace(',', '.')) || 0
-  /** The field is euros, the domain is cents. */
-  const parsePrice = (value: string) => roundCents(parseInput(value) * 100)
+  /*
+   * Die abgeleiteten Merkmale (roh, pasteurisiert, esl, uht, homogenisiert)
+   * stehen bewusst nicht zum Anhaken: Sie entstehen aus den beiden Milch-Feldern
+   * darunter. Zwei Wege zur selben Aussage wären zwei Wahrheiten.
+   */
+  const traits = getActiveTraits().filter((trait) => !DERIVED_TRAIT_KEYS.includes(trait.id))
 
-  const apply = () => {
-    const { quantity, totalCents } = applyPricing(item.quantity, parseInput(amount), parsePrice(price))
-    onSave({ ...item, name: name.trim() || item.name, categoryId, quantity, totalCents })
+  const collect = (): DraftItem => {
+    const quantityUnit = unit === '' ? null : unit
+    const quantityBase =
+      quantityUnit === null || amount.trim() === '' ? null : baseAmount(parseInput(amount), quantityUnit)
+
+    return {
+      ...draft,
+      name: name.trim() || draft.name,
+      quantityBase: quantityBase !== null && quantityBase > 0 ? quantityBase : null,
+      quantityUnit: quantityBase !== null && quantityBase > 0 ? quantityUnit : null,
+      unitPriceCents: unitPrice.trim() === '' ? null : parsePrice(unitPrice),
+      totalCents: parsePrice(total),
+      categoryKey: isArticle ? categoryKey : null,
+      traitKeys: isArticle ? traitKeys : [],
+      milkHeat: isArticle && isDairy ? milkHeat : 'unbekannt',
+      milkHomogenized: isArticle && isDairy ? milkHomogenized : 'unbekannt',
+      taxCode,
+    }
+  }
+
+  const expected = expectedTotalCents(collect())
+  const current = parsePrice(total)
+  const mismatch = expected !== null && Math.abs(expected - current) > 2
+
+  const toggleTrait = (key: string) => {
+    setTraitKeys((keys) => (keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key]))
   }
 
   return (
-    <BottomSheet title="Position bearbeiten" onClose={onCancel}>
+    <BottomSheet title={draft.added ? 'Position hinzufügen' : 'Position bearbeiten'} onClose={onCancel}>
       <div className={styles.form}>
+        {draft.rawText && <div className={styles.rawLine}>Auf dem Bon: {draft.rawText}</div>}
+
         <div>
           <div className={styles.fieldLabel}>Name</div>
-          <input className={styles.input} value={name} onChange={(event) => setName(event.target.value)} />
+          <input
+            className={styles.input}
+            value={name}
+            placeholder="Klarname"
+            onChange={(event) => setName(event.target.value)}
+          />
+        </div>
+
+        <div>
+          <div className={styles.fieldLabel}>Menge</div>
+          <div className={styles.chips}>
+            {UNITS.map((option) => (
+              <Chip
+                key={option.value || 'ohne'}
+                selected={unit === option.value}
+                onClick={() => setUnit(option.value)}
+              >
+                {option.label}
+              </Chip>
+            ))}
+          </div>
+          {unit !== '' && (
+            <input
+              className={`${styles.input} ${styles['input--number']}`}
+              style={{ marginTop: 8 }}
+              type="text"
+              inputMode="decimal"
+              value={amount}
+              placeholder={unit === 'kg' || unit === 'l' ? 'z. B. 1,12' : 'z. B. 2'}
+              aria-label={`Menge in ${unit}`}
+              onChange={(event) => setAmount(event.target.value)}
+            />
+          )}
         </div>
 
         <div className={styles.fieldRow}>
           <div>
-            <div className={styles.fieldLabel}>{amountLabel}</div>
+            <div className={styles.fieldLabel}>
+              Einzelpreis {unit === '' ? '' : `je ${unit === 'stk' ? 'Stück' : unit}`}
+            </div>
             <input
               className={`${styles.input} ${styles['input--number']}`}
               type="text"
               inputMode="decimal"
-              value={hasAmount ? amount : ''}
-              placeholder="ohne Mengenangabe"
-              disabled={!hasAmount}
-              onChange={(event) => setAmount(event.target.value)}
+              value={unitPrice}
+              placeholder="leer lassen"
+              onChange={(event) => setUnitPrice(event.target.value)}
             />
           </div>
           <div>
-            <div className={styles.fieldLabel}>{priceLabel}</div>
+            <div className={styles.fieldLabel}>Zeilensumme</div>
             <input
               className={`${styles.input} ${styles['input--number']}`}
               type="text"
               inputMode="decimal"
-              value={price}
-              onChange={(event) => setPrice(event.target.value)}
+              value={total}
+              onChange={(event) => setTotal(event.target.value)}
             />
           </div>
         </div>
 
-        <div>
-          <div className={styles.fieldLabel} style={{ marginBottom: 8 }}>
-            Kategorie
+        {/*
+          Nur ein Hinweis, keine Korrektur: Welcher der drei Werte falsch ist,
+          weiß hier niemand — und geraten wird nicht (PROJEKT.md).
+        */}
+        {mismatch && expected !== null && (
+          <div className={styles.mismatch}>
+            Menge × Einzelpreis ergibt {formatEuro(expected)}, in der Zeilensumme stehen{' '}
+            {formatEuro(current)}.
           </div>
-          <div className={styles.categoryGrid}>
-            {getCategories().map((category) => (
-              <button
-                key={category.id}
-                type="button"
-                aria-pressed={category.id === categoryId}
-                className={
-                  category.id === categoryId
-                    ? `${styles.categoryOption} ${styles['categoryOption--selected']}`
-                    : styles.categoryOption
-                }
-                onClick={() => setCategoryId(category.id)}
-              >
-                {category.name}
-              </button>
-            ))}
+        )}
+
+        {taxCodes.length > 0 && (
+          <div>
+            <div className={styles.fieldLabel}>Steuerkennzeichen</div>
+            <div className={styles.chips}>
+              <Chip selected={taxCode === null} onClick={() => setTaxCode(null)}>
+                keins
+              </Chip>
+              {taxCodes.map((code) => (
+                <Chip key={code} selected={taxCode === code} onClick={() => setTaxCode(code)}>
+                  {code}
+                </Chip>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
+
+        {isArticle && (
+          <>
+            <div>
+              <div className={styles.fieldLabel}>Kategorie</div>
+              <div className={styles.chips}>
+                {getCategories().map((category) => (
+                  <Chip
+                    key={category.id}
+                    selected={category.id === categoryKey}
+                    onClick={() => setCategoryKey(category.id === categoryKey ? null : category.id)}
+                  >
+                    {category.name}
+                  </Chip>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className={styles.fieldLabel}>Merkmale</div>
+              <div className={styles.chips}>
+                {traits.map((trait) => (
+                  <Chip
+                    key={trait.id}
+                    selected={traitKeys.includes(trait.id)}
+                    onClick={() => toggleTrait(trait.id)}
+                  >
+                    {trait.label}
+                  </Chip>
+                ))}
+              </div>
+            </div>
+
+            {isDairy && (
+              <>
+                <div>
+                  <div className={styles.fieldLabel}>Erhitzung</div>
+                  <div className={styles.chips}>
+                    {MILK_HEATS.map((option) => (
+                      <Chip
+                        key={option.value}
+                        selected={milkHeat === option.value}
+                        onClick={() => setMilkHeat(option.value)}
+                      >
+                        {option.label}
+                      </Chip>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className={styles.fieldLabel}>Homogenisierung</div>
+                  <div className={styles.chips}>
+                    {MILK_HOMOGENIZED.map((option) => (
+                      <Chip
+                        key={option.value}
+                        selected={milkHomogenized === option.value}
+                        onClick={() => setMilkHomogenized(option.value)}
+                      >
+                        {option.label}
+                      </Chip>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </>
+        )}
       </div>
 
-      <button type="button" className={styles.apply} onClick={apply}>
+      <button type="button" className={styles.apply} onClick={() => onSave(collect())}>
         Übernehmen
       </button>
+      <button type="button" className={styles.remove} onClick={onDelete}>
+        Position löschen
+      </button>
     </BottomSheet>
+  )
+}
+
+function Chip({
+  selected,
+  onClick,
+  children,
+}: {
+  selected: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      className={selected ? `${styles.chip} ${styles['chip--selected']}` : styles.chip}
+      onClick={onClick}
+    >
+      {children}
+    </button>
   )
 }

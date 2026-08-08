@@ -35,6 +35,12 @@ export { DataError, germanDataError } from './client'
 export { extractReceipt, ExtractionError } from './extract'
 export type { ExtractionPhase } from './extract'
 
+/**
+ * Schreiben. Bis Schritt 4b-2 gab es hier nur das Monatsbudget; seitdem
+ * entstehen Bons — und zwar ganz oder gar nicht (siehe `save.ts`).
+ */
+export { saveReceipt, deleteReceipt } from './save'
+
 export {
   getDashboardData,
   getAnalyticsData,
@@ -42,7 +48,6 @@ export {
   getPriceOverview,
   getProductPriceDetail,
   getReceipt,
-  getScannedReceipt,
   getMonthlyBudgetCents,
   saveMonthlyBudgetCents,
   searchItemSpending,

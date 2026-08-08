@@ -43,6 +43,18 @@
   flex-wrap: wrap;
 }
 
+/*
+ * „gelernt" — die Zuordnung kam aus der eigenen Datenbank und nicht vom Modell.
+ * Bewusst nur Text in der gedämpften Farbe: eine Auskunft, kein Zustand, der
+ * Aufmerksamkeit verlangt.
+ */
+.learned {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
 .total {
   display: block;
   font-size: 15.5px;
