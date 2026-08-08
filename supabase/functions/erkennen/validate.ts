@@ -89,6 +89,18 @@ export interface ExtractedSuggestion {
   traitKeys: string[]
   milkHeat: MilkHeat
   milkHomogenized: MilkHomogenized
+  /**
+   * Woher der Vorschlag stammt.
+   *
+   * `db` heißt: Der Rohtext war schon bekannt, und die Zuordnung kommt aus
+   * `product_mappings`. Der Vorschlag des Modells wurde dafür verworfen
+   * (PROJEKT.md: „Das Ergebnis wird dauerhaft gespeichert und nie neu
+   * erfragt."). `validate.ts` setzt hier immer `model`; auf `db` stellt es
+   * `mappings.ts` um.
+   */
+  source: 'model' | 'db'
+  /** Das kanonische Produkt, wenn der Rohtext schon bekannt war. */
+  canonicalProductId: string | null
 }
 
 export interface ExtractedItem {
@@ -116,6 +128,19 @@ export interface ExtractedItem {
   taxCode: string | null
   /** Null bei Pfand- und Rabattzeilen. */
   suggestion: ExtractedSuggestion | null
+}
+
+/**
+ * Eine Zeile des gedruckten Steuerblocks, ohne jede Gegenrechnung.
+ *
+ * Sie wird getrennt von `TaxGroup` weitergereicht, weil der Korrektur-Screen
+ * beides braucht: Der Abgleich unten rechnet nur, wenn jede Position ein
+ * Kennzeichen trägt — die *Klassen* muss der Screen aber auch dann kennen,
+ * damit sich ein fehlendes Kennzeichen von Hand nachtragen lässt.
+ */
+export interface PrintedTaxGroup {
+  code: string
+  grossCents: number
 }
 
 /**
@@ -179,6 +204,12 @@ export interface Extraction {
    * dann bleibt es beim Gesamtabgleich über `discrepancyCents`.
    */
   taxGroups: TaxGroup[]
+  /**
+   * Der gedruckte Steuerblock, sobald er zu sich selbst passt — auch dann,
+   * wenn der Abgleich oben mangels Kennzeichen ausfällt. Der Korrektur-Screen
+   * rechnet daraus bei jeder Änderung neu.
+   */
+  printedTaxGroups: PrintedTaxGroup[]
   warnings: ExtractionWarning[]
 }
 
@@ -511,7 +542,7 @@ function checkTaxGroups(
   items: ExtractedItem[],
   rawBlock: unknown,
   printedTotalCents: number | null,
-): { groups: TaxGroup[]; warnings: ExtractionWarning[] } {
+): { groups: TaxGroup[]; printed: PrintedTaxGroup[]; warnings: ExtractionWarning[] } {
   const warnings: ExtractionWarning[] = []
   const entries = Array.isArray(rawBlock) ? rawBlock : []
 
@@ -525,7 +556,7 @@ function checkTaxGroups(
     gross.set(code, cents)
   }
 
-  if (gross.size === 0) return { groups: [], warnings }
+  if (gross.size === 0) return { groups: [], printed: [], warnings }
 
   // Tor 1: Passt der Block zur gedruckten Gesamtsumme?
   const blockTotal = [...gross.values()].reduce((sum, cents) => sum + cents, 0)
@@ -536,8 +567,12 @@ function checkTaxGroups(
         `Der Steuerblock ergibt ${euro(blockTotal)}, gedruckt sind ${euro(printedTotalCents)} — ` +
         'er wurde vermutlich falsch gelesen. Der Abgleich je Steuerklasse entfällt.',
     })
-    return { groups: [], warnings }
+    return { groups: [], printed: [], warnings }
   }
+
+  const printed: PrintedTaxGroup[] = [...gross.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([code, grossCents]) => ({ code, grossCents }))
 
   // Tor 2: Trägt jede Position ein Kennzeichen?
   if (items.some((item) => item.taxCode === null)) {
@@ -545,9 +580,10 @@ function checkTaxGroups(
       code: 'steuer_kennzeichen_fehlt',
       message:
         'Nicht jede Position trägt ein Steuerkennzeichen — der genauere Abgleich je ' +
-        'Steuerklasse entfällt. Es bleibt beim Abgleich über die Gesamtsumme.',
+        'Steuerklasse entfällt. Es bleibt beim Abgleich über die Gesamtsumme. Trag das ' +
+        'Kennzeichen an der Position nach, dann rechnet der Abgleich mit.',
     })
-    return { groups: [], warnings }
+    return { groups: [], printed, warnings }
   }
 
   const sums = new Map<string, number>()
@@ -568,17 +604,15 @@ function checkTaxGroups(
     })
   }
 
-  const groups: TaxGroup[] = [...gross.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([code, grossCents]) => {
-      const itemsTotalCents = sums.get(code) ?? 0
-      return {
-        code,
-        grossCents,
-        itemsTotalCents,
-        differenceCents: grossCents - itemsTotalCents,
-      }
-    })
+  const groups: TaxGroup[] = printed.map(({ code, grossCents }) => {
+    const itemsTotalCents = sums.get(code) ?? 0
+    return {
+      code,
+      grossCents,
+      itemsTotalCents,
+      differenceCents: grossCents - itemsTotalCents,
+    }
+  })
 
   for (const group of groups) {
     if (group.differenceCents === 0) continue
@@ -592,7 +626,7 @@ function checkTaxGroups(
     })
   }
 
-  return { groups, warnings }
+  return { groups, printed, warnings }
 }
 
 /* ============================================================== Der Vorschlag */
@@ -660,6 +694,10 @@ function resolveSuggestion(
     milkHomogenized: MILK_HOMOGENIZED.includes(homogenized as MilkHomogenized)
       ? (homogenized as MilkHomogenized)
       : 'unbekannt',
+    // Hier kommt alles vom Modell. Ob die Datenbank es besser weiß, entscheidet
+    // `mappings.ts` — diese Datei kennt keine Datenbank.
+    source: 'model',
+    canonicalProductId: null,
   }
 }
 
@@ -805,6 +843,7 @@ export function validateExtraction(model: ModelReceipt, context: ValidationConte
     itemsTotalCents,
     discrepancyCents,
     taxGroups: tax.groups,
+    printedTaxGroups: tax.printed,
     warnings,
   }
 }

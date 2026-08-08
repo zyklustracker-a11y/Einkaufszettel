@@ -11,7 +11,15 @@ import styles from './ReceiptItemList.module.css'
  */
 const MAX_BADGES = 3
 
-function Row({ item, traits }: { item: ReceiptItem; traits: Trait[] }) {
+function Row({
+  item,
+  traits,
+  learned,
+}: {
+  item: ReceiptItem
+  traits: Trait[]
+  learned: boolean
+}) {
   const applied = itemTraits(item, traits)
   const shown = applied.slice(0, MAX_BADGES)
   const hidden = applied.slice(MAX_BADGES)
@@ -26,6 +34,16 @@ function Row({ item, traits }: { item: ReceiptItem; traits: Trait[] }) {
             <TraitBadge key={trait.id} trait={trait} />
           ))}
           {hidden.length > 0 && <TraitOverflow hidden={hidden} />}
+          {/*
+            Dezent und ohne Farbe: Die Zeile ist nichts Besonderes, sie war nur
+            schon bekannt. Sichtbar soll trotzdem sein, was die App bereits
+            gelernt hat — das ist der halbe Sinn des Lernkreises.
+          */}
+          {learned && (
+            <span className={styles.learned} title="Zuordnung kam aus der Datenbank">
+              gelernt
+            </span>
+          )}
         </span>
       </span>
       <span style={{ textAlign: 'right' }}>
@@ -39,15 +57,21 @@ function Row({ item, traits }: { item: ReceiptItem; traits: Trait[] }) {
 /**
  * The line items of a receipt. Pass `onEdit` on the correction screen to make
  * each row tappable; the read-only purchase detail leaves it out.
+ *
+ * `learnedIds` marks the rows whose product came from the household's own
+ * database rather than from the model.
  */
 export function ReceiptItemList({
   items,
   onEdit,
+  learnedIds,
 }: {
   items: ReceiptItem[]
   onEdit?: (item: ReceiptItem) => void
+  learnedIds?: readonly string[]
 }) {
   const traits = getActiveTraits()
+  const learned = new Set(learnedIds ?? [])
 
   return (
     <div className={styles.list}>
@@ -59,11 +83,11 @@ export function ReceiptItemList({
             className={`${styles.row} ${styles['row--tappable']}`}
             onClick={() => onEdit(item)}
           >
-            <Row item={item} traits={traits} />
+            <Row item={item} traits={traits} learned={learned.has(item.id)} />
           </button>
         ) : (
           <div key={item.id} className={styles.row}>
-            <Row item={item} traits={traits} />
+            <Row item={item} traits={traits} learned={learned.has(item.id)} />
           </div>
         ),
       )}

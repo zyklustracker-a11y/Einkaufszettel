@@ -49,6 +49,15 @@ export interface ExtractedSuggestion {
   traitKeys: TraitId[]
   milkHeat: MilkHeat
   milkHomogenized: MilkHomogenized
+  /**
+   * `db` heißt: Der Rohtext stand schon in `product_mappings`, und Name,
+   * Kategorie und Merkmale kommen von dort — der Vorschlag des Modells wurde
+   * dafür verworfen (PROJEKT.md, Kernprinzip). Der Korrektur-Screen macht diese
+   * Zeilen als „gelernt" kenntlich.
+   */
+  source: 'model' | 'db'
+  /** Das kanonische Produkt, wenn der Rohtext schon bekannt war. */
+  canonicalProductId: string | null
 }
 
 export interface ExtractedItem {
@@ -89,6 +98,16 @@ export interface TaxGroup {
   differenceCents: number
 }
 
+/**
+ * Eine Zeile des gedruckten Steuerblocks, ohne Gegenrechnung. Der
+ * Korrektur-Screen rechnet daraus bei jeder Änderung neu — und bietet die
+ * Kennzeichen zur Auswahl an, wenn an einer Position eines fehlt.
+ */
+export interface PrintedTaxGroup {
+  code: string
+  grossCents: number
+}
+
 /** Eine Auffälligkeit, die den Bon markiert, aber nicht ablehnt. */
 export interface ExtractionWarning {
   code: string
@@ -113,6 +132,11 @@ export interface Extraction {
    * dann bleibt es beim Gesamtabgleich über `discrepancyCents`.
    */
   taxGroups: TaxGroup[]
+  /**
+   * Der gedruckte Steuerblock, sobald er zu sich selbst passt — auch dann, wenn
+   * der Abgleich oben mangels Kennzeichen ausfällt.
+   */
+  printedTaxGroups: PrintedTaxGroup[]
   warnings: ExtractionWarning[]
 }
 

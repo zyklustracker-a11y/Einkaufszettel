@@ -18,7 +18,14 @@ const NO_CONNECTION =
 const NO_PERMISSION =
   'Für diese Daten fehlt die Berechtigung. Bist du noch angemeldet?'
 
-const GENERIC = 'Die Daten konnten nicht geladen werden. Bitte versuch es noch einmal.'
+/**
+ * Der Satz für alles, was sich nicht genauer benennen lässt. Exportiert, damit
+ * das Schreiben (`save.ts`) erkennen kann, ob `germanDataError` einen echten
+ * Grund gefunden hat oder nur diesen — beim Speichern gibt es einen passenderen.
+ */
+export const GENERIC_DATA_ERROR = 'Die Daten konnten nicht geladen werden. Bitte versuch es noch einmal.'
+
+const GENERIC = GENERIC_DATA_ERROR
 
 /** Technische Meldung → deutscher Satz. Unbekanntes bekommt den allgemeinen. */
 export function germanDataError(error: unknown): string {

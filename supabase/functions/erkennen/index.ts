@@ -14,18 +14,25 @@
  *      Ein Dienstschlüssel wird bewusst nirgends benutzt.
  *   3. Prompt aus diesen Merkmalen zusammenbauen (prompt.ts).
  *   4. Mistral aufrufen (mistral.ts) — mit Zeitlimit und Backoff bei 429.
+ *      Daneben, gleichzeitig: die gelernten Zuordnungen des Haushalts laden.
  *   5. Antwort prüfen und umrechnen (validate.ts).
- *   6. Ergebnis samt Rohantwort zurückgeben.
+ *   6. Bekannte Rohtexte aus der Datenbank auflösen (mappings.ts). Was der
+ *      Haushalt schon weiß, schlägt den Vorschlag des Modells.
+ *   7. Ergebnis samt Rohantwort zurückgeben.
  *
- * **Gespeichert wird hier nichts.** Das ist Schritt 4b-2. Diese Funktion liest
- * aus der Datenbank (Merkmale, Kategorien) und schreibt nie hinein.
+ * **Gespeichert wird hier nichts.** Geschrieben wird erst beim „Speichern" im
+ * Korrektur-Screen, und zwar über die Datenbankfunktion `save_receipt` — in
+ * einer Transaktion, damit kein halber Bon zurückbleiben kann. Diese Funktion
+ * liest nur.
  */
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { buildSystemPrompt, USER_PROMPT } from './prompt.ts'
 import { callMistral } from './mistral.ts'
 import { isUnreadable, parseModelJson, validateExtraction } from './validate.ts'
-import type { Extraction } from './validate.ts'
+import type { Extraction, MilkHeat, MilkHomogenized } from './validate.ts'
+import { applyKnownProducts, mappingKey } from './mappings.ts'
+import type { KnownProducts } from './mappings.ts'
 
 /* -------------------------------------------------- Was die Funktion liefert */
 
@@ -96,6 +103,84 @@ function json(body: unknown, status: number): Response {
 function fail(code: ExtractionErrorCode, message: string, status: number, raw?: string): Response {
   const body: ErrorBody = raw === undefined ? { code, message } : { code, message, raw }
   return json(body, status)
+}
+
+/* --------------------------------------------- Was der Haushalt schon weiß */
+
+/** So wenig wie möglich: nur, was ein Vorschlag braucht. */
+type Client = ReturnType<typeof createClient>
+
+/**
+ * Die gelernten Zuordnungen des Haushalts, fertig zum Nachschlagen.
+ *
+ * Vier flache Abfragen statt eines verschachtelten Selects — aus demselben
+ * Grund wie in `src/data/queries.ts`: Die Beziehungen hängen an
+ * zusammengesetzten Fremdschlüsseln, denen PostgREST nicht zuverlässig folgt.
+ * Für einen Familienhaushalt sind das ein paar hundert Zeilen.
+ *
+ * **Schlägt eine Abfrage fehl, kommt eine leere Karte zurück statt eines
+ * Fehlers.** Der Scan soll daran nicht scheitern: Ohne Gedächtnis liefert das
+ * Modell eben wieder einen Vorschlag, und der Nutzer korrigiert ihn. Markieren
+ * statt ablehnen gilt auch hier.
+ */
+async function loadKnownProducts(supabase: Client, householdId: string): Promise<KnownProducts> {
+  const known: KnownProducts = new Map()
+
+  const [mappings, products, links, traits] = await Promise.all([
+    supabase
+      .from('product_mappings')
+      .select('raw_text, canonical_product_id')
+      .eq('household_id', householdId),
+    supabase
+      .from('canonical_products')
+      .select('id, name, category_key, milk_heat, milk_homogenized')
+      .eq('household_id', householdId),
+    supabase
+      .from('canonical_product_traits')
+      .select('canonical_product_id, trait_id')
+      .eq('household_id', householdId),
+    supabase.from('traits').select('id, key').eq('household_id', householdId),
+  ])
+
+  if (mappings.error || products.error || links.error || traits.error) {
+    console.error('Zuordnungen konnten nicht geladen werden:', mappings.error ?? products.error)
+    return known
+  }
+
+  const traitKeyById = new Map(
+    (traits.data ?? []).map((row) => [String(row.id), String(row.key)]),
+  )
+
+  const traitKeysByProduct = new Map<string, string[]>()
+  for (const link of links.data ?? []) {
+    const key = traitKeyById.get(String(link.trait_id))
+    if (!key) continue
+    const list = traitKeysByProduct.get(String(link.canonical_product_id)) ?? []
+    list.push(key)
+    traitKeysByProduct.set(String(link.canonical_product_id), list)
+  }
+
+  const productById = new Map(
+    (products.data ?? []).map((row) => [
+      String(row.id),
+      {
+        canonicalProductId: String(row.id),
+        name: String(row.name),
+        categoryKey: String(row.category_key),
+        traitKeys: traitKeysByProduct.get(String(row.id)) ?? [],
+        milkHeat: String(row.milk_heat) as MilkHeat,
+        milkHomogenized: String(row.milk_homogenized) as MilkHomogenized,
+      },
+    ]),
+  )
+
+  for (const mapping of mappings.data ?? []) {
+    const product = productById.get(String(mapping.canonical_product_id))
+    if (!product) continue
+    known.set(mappingKey(String(mapping.raw_text)), product)
+  }
+
+  return known
 }
 
 interface RequestBody {
@@ -230,6 +315,13 @@ Deno.serve(async (request: Request): Promise<Response> => {
     )
   }
 
+  /*
+   * Die gelernten Zuordnungen. Sie werden **vor** dem Modellaufruf angestoßen
+   * und erst nach der Prüfung gebraucht — so laufen sie neben den vierzehn
+   * Sekunden beim Modell her und kosten keine zusätzliche Wartezeit.
+   */
+  const knownProducts = loadKnownProducts(supabase, householdId)
+
   const outcome = await callMistral({
     apiKey,
     // Ohne dieses Secret gilt die Voreinstellung aus mistral.ts.
@@ -293,10 +385,17 @@ Deno.serve(async (request: Request): Promise<Response> => {
     traitKeys: traits.map((trait) => trait.key),
   })
 
-  /* ---------------------------------------------------------- 6. Antwort */
+  /* ------------------------------------------------- 6. Bekanntes einsetzen */
+
+  // Ein Rohtext, den der Haushalt schon kennt, übernimmt Name, Kategorie und
+  // Merkmale aus der Datenbank — der Vorschlag des Modells wird dafür verworfen
+  // (PROJEKT.md, Kernprinzip).
+  const resolved = applyKnownProducts(extraction, await knownProducts)
+
+  /* ---------------------------------------------------------- 7. Antwort */
 
   const response: ExtractionResponse = {
-    extraction,
+    extraction: resolved,
     model: outcome.model,
     durationMs: outcome.durationMs,
     raw: outcome.text,

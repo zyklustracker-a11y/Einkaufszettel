@@ -94,6 +94,52 @@ dann bitte melden.
 
 ---
 
+## 2c. Die dritte Migration: Speichern und Lernen
+
+`migrations/0003_speichern.sql` gehört zu Schritt 4b-2. **Ohne sie lässt sich
+kein Bon speichern** — die App sagt dann „Die Speicher-Funktion fehlt in der
+Datenbank".
+
+Sie legt drei Dinge an:
+
+| Was | Wofür |
+|---|---|
+| Spalte `receipt_items.tax_code` | das Steuerkennzeichen (A, B, …) vom Bon |
+| Funktion `merchant_key()` | „REWE", „Rewe" und „REWE CITY" sind ein Händler |
+| Funktion `save_receipt()` | schreibt einen ganzen Bon in **einer** Transaktion |
+
+Genauso ausführen wie oben: **SQL Editor → New query → Datei einfügen → Run.**
+Erwartet: **Success. No rows returned.** Eine Meldung wie `column "tax_code" …
+already exists, skipping` ist in Ordnung — die Datei lässt sich gefahrlos
+mehrfach ausführen.
+
+**Prüfen, ob die beiden Funktionen da sind:**
+
+```sql
+select routine_name
+from information_schema.routines
+where routine_schema = 'public'
+  and routine_name in ('merchant_key', 'save_receipt');
+```
+
+Erwartet: zwei Zeilen.
+
+**Und dass die Zusammenführung greift:**
+
+```sql
+select public.merchant_key('REWE CITY') as a, public.merchant_key('Rewe') as b;
+```
+
+Erwartet: zweimal `rewe`.
+
+> Warum eine Datenbankfunktion und nicht einfach mehrere Anfragen aus der App?
+> Weil ein Bon aus Händler, Bon, Positionen, Produkten, deren Merkmalen und den
+> gelernten Zuordnungen besteht. Bräche mitten in der Reihe die Verbindung ab,
+> läge ein halber Bon in der Datenbank. Der Rumpf einer Funktion ist dagegen
+> eine einzige Transaktion: entweder alles oder nichts.
+
+---
+
 ## 3. Prüfen, ob alles angekommen ist
 
 Öffne eine neue Abfrage und führe diese vier Blöcke nacheinander aus.
@@ -283,8 +329,10 @@ Die Einrichtung steht Schritt für Schritt in
 [`functions/README.md`](functions/README.md).
 
 Was die Funktion mit der Datenbank macht: Sie **liest** `household_members`,
-`traits` und `categories`, um daraus den Prompt zu bauen. Geschrieben wird
-nichts — das kommt in 4b-2.
+`traits` und `categories`, um daraus den Prompt zu bauen — und seit 4b-2
+zusätzlich `product_mappings`, `canonical_products` und deren Merkmale, damit
+ein schon bekannter Bontext gar nicht erst neu geraten wird. Geschrieben wird
+nichts; das macht `save_receipt` beim Speichern.
 
 ---
 
@@ -292,12 +340,11 @@ nichts — das kommt in 4b-2.
 
 Bewusst nicht Teil dieser Migrationen, das kommt in späteren Schritten:
 
-- **Speicherort für die Bon-Fotos.** `receipts.image_path` ist vorbereitet, der
-  Storage-Bucket wird in Schritt 4b-2 angelegt — falls die Fotos überhaupt
-  aufgehoben werden sollen.
-- **Schreiben von Bons.** Die App liest seit Schritt 2c alles aus der Datenbank
-  und schreibt bislang nur das Monatsbudget. Bons anlegen, korrigieren und
-  löschen kommt in Schritt 4b-2.
+- **Speicherort für die Bon-Fotos.** Es gibt keinen und soll keinen geben: Das
+  Foto wird nach dem Speichern verworfen und nie hochgeladen (PROJEKT.md).
+  `receipts.image_path` bleibt deshalb null.
+- **Einen gespeicherten Bon nachträglich ändern.** Korrigiert wird vor dem
+  Speichern; danach ist der Weg löschen und neu scannen.
 - **Merkmale bearbeiten.** Die Einstellungen zeigen die dreizehn Merkmale, aber
   schreibgeschützt — das Bearbeiten kommt in Schritt 6.
 

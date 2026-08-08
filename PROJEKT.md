@@ -326,6 +326,8 @@ unauffälliger Link auf dem Kamera-Screen.
 6. Korrektur-Screen, Nutzer bestätigt oder korrigiert
 7. Speichern; Korrekturen fließen in `product_mappings` und `canonical_products` zurück
 
+Schritte 5 und 7 sind seit 4b-2 umgesetzt; die Details stehen weiter unten.
+
 Die Modellantwort wird **nie ungeprüft gespeichert.**
 
 ### Ergänzt mit Schritt 4b-1 (Erkennung, noch ohne Speichern)
@@ -416,10 +418,9 @@ wäre eine Klasse zwangsläufig zu niedrig — dann entfällt der Abgleich, stat
 Warnungen zu erzeugen, die nur ein nicht gelesenes Kennzeichen bedeuten. In
 beiden Fällen bleibt es beim Gesamtabgleich.
 
-*Offen für 4b-2:* `receipt_items` hat keine Spalte für das Steuerkennzeichen.
-Beim Speichern ist zu entscheiden, ob eine dazukommt (nützlich für spätere
-Auswertungen nach Steuersatz) oder ob der Wert nur zur Prüfung dient und danach
-verfällt.
+*Mit 4b-2 entschieden:* `receipt_items` bekommt die Spalte `tax_code`. Das
+Kennzeichen ist eine Tatsache vom Bon, kostet zwei Zeichen und wäre später nie
+zu rekonstruieren — das Foto ist dann längst weg.
 
 **Ein ungewöhnliches Bon-Datum ist ein Hinweis, kein Fehler.** Liegt das Datum
 mehr als 60 Tage zurück oder in der Zukunft, sagt der Korrektur-Screen in
@@ -455,10 +456,89 @@ Konstanten oben in derselben Datei und sind die einzige Stellschraube, sobald
 sich zeigt, wie lange ein Scan im Alltag dauert.
 
 **Das Ergebnis reist im Speicher**, wie schon das Foto (`src/lib/scanResult.ts`
-neben `capture.ts`). Es gibt in 4b-1 keinen Bon in der Datenbank, den der
-Korrektur-Screen abfragen könnte. Mit 4b-2 fällt dieser Umweg weg: Dann entsteht
-ein Bon mit Status `extracted`, und der Screen lädt ihn wie jeder andere Screen.
-Der Abfrageweg über `getScannedReceipt` bleibt deshalb stehen.
+neben `capture.ts`). Es gibt keinen Bon in der Datenbank, den der
+Korrektur-Screen abfragen könnte. *Mit 4b-2 ist daraus die dauerhafte Lösung
+geworden — siehe „Kein Bon mit Status `extracted`" weiter unten.*
+
+### Ergänzt mit Schritt 4b-2 (Speichern und Lernen)
+
+**Ein Bon entsteht in einem Rutsch oder gar nicht.** Das Speichern läuft über
+die Datenbankfunktion `save_receipt` (`supabase/migrations/0003_speichern.sql`).
+Über den Browser wären es sechs bis zehn einzelne Anfragen — Händler, Bon,
+Positionen, kanonische Produkte, deren Merkmale, die gelernten Zuordnungen —,
+und bräche eine davon ab (Funkloch an der Kasse), bliebe ein halber Bon zurück,
+den niemand mehr geradebiegt. Der Rumpf einer Funktion ist dagegen eine einzige
+Transaktion.
+
+Die Funktion läuft mit den Rechten des **Aufrufers**, nicht als `SECURITY
+DEFINER`. In einen fremden Haushalt kann sie damit gar nicht schreiben, und das
+verhindert die Datenbank und nicht der Code — dieselbe Linie wie bei der Edge
+Function.
+
+**Kein Bon mit Status `extracted`.** Die frühere Planung sah vor, dass schon die
+Erkennung einen Bon anlegt, den der Korrektur-Screen dann abfragt. Beim Bauen
+zeigte sich, dass das der schlechtere Weg ist: Jeder Scan, den der Nutzer nicht
+bestätigt — Abbruch, Neuladen, „lieber noch mal scannen" —, bliebe als
+Karteileiche liegen und müsste irgendwann aufgeräumt werden. Das Erkannte reist
+deshalb weiter im Speicher (`src/lib/scanResult.ts`), und geschrieben wird genau
+einmal. `getScannedReceipt` ist damit entfallen.
+
+**Händler werden zusammengeführt.** `merchant_key()` normalisiert den Namen:
+kleinschreiben, Umlaute übersetzen (nicht `lower()` überlassen — was dabei
+herauskommt, hängt sonst von der Spracheinstellung des Servers ab), Rechtsformen
+abschneiden. Beginnt der Name mit einer bekannten Kette, *ist* die Kette der
+Schlüssel: „REWE", „Rewe" und „REWE CITY" ergeben einen Eintrag. Bei einem
+unbekannten Namen bleibt der ganze Name stehen — sonst würde „Bio Company" zu
+„Bio" und fiele mit jedem anderen Bioladen zusammen. Lieber zwei Einträge zu
+viel als zwei Läden, deren Preise sich vermischen.
+
+**Der Lernkreis, in drei Regeln.** Sie hängen alle an der Datenbank und nicht am
+Client — auch dann, wenn die App etwas anderes schickt:
+
+1. *Ein Klarname, ein Produkt.* Gibt es den Namen schon, wird darauf verwiesen.
+2. *Nutzerkorrekturen schreiben durch.* Kategorie, Merkmale und
+   Milch-Eigenschaften eines vorhandenen Produkts ändert nur `quelle = user`.
+   Ein Modellvorschlag fasst vorhandenes Wissen nie an.
+3. *Eine bestehende `user`-Zuordnung wird nie auf `model` zurückgestuft.* Das
+   ist die Zusicherung „einmal korrigiert, bleibt korrigiert", und sie gilt
+   auch, wenn das Modell beim nächsten Mal etwas völlig anderes vorschlägt.
+
+Vor dem Modellaufruf lädt die Edge Function die Zuordnungen des Haushalts
+(`mappings.ts`) — gleichzeitig mit dem Aufruf, sie kosten damit keine Wartezeit.
+Ein bekannter Rohtext übernimmt Name, Kategorie, Merkmale und Milch-Attribute
+aus der Datenbank; der Vorschlag des Modells wird dafür verworfen. Unangetastet
+bleibt, was auf *diesem* Bon steht: Menge, Preise, Steuerkennzeichen. Im
+Korrektur-Screen tragen solche Zeilen ein unauffälliges „gelernt".
+
+**Eine Position ohne Kategorie bekommt kein Produkt.** `category_key` ist
+Pflicht, und einen Wert zu raten ist auch dem Code verboten. Die Zeile wird
+trotzdem gespeichert — mit `canonical_product_id = null`, einem Zustand, den das
+Schema ausdrücklich vorsieht. Der Korrektur-Screen sagt vor dem Speichern, wie
+viele Zeilen das betrifft und was die Folge ist: Für die lernt die App nichts.
+
+**Abgeleitete Merkmale werden nicht doppelt geführt.** `roh`, `pasteurisiert`,
+`esl`, `uht` und `homogenisiert` entstehen aus `milk_heat` und
+`milk_homogenized` (die View `v_item_trait_keys` leitet sie ab). Sie stehen
+deshalb nicht zum Anhaken und werden nicht zusätzlich in
+`canonical_product_traits` geschrieben. Schlägt das Modell `uht` als Merkmal
+vor, wird daraus das Sachattribut.
+
+**Das Bon-Foto wird nach dem Speichern verworfen und nie hochgeladen.** Es gibt
+keinen Storage-Bucket und `receipts.image_path` bleibt null. Alles, was auf dem
+Papier steht und später gebraucht wird, steht dann in den Positionen; das Bild
+wäre nur noch personenbezogener Ballast im freien Kontingent.
+
+**Löschen entfernt den Einkauf, nicht das Gelernte.** Ein `delete` auf
+`receipts` nimmt per Kaskade die Positionen mit. `product_mappings` und
+`canonical_products` hängen nicht am Bon und bleiben stehen — sonst finge man
+nach jedem gelöschten Testbon von vorn an.
+
+**Der Abgleich rechnet live.** Summenabgleich und Steuerklassen-Probe rechnen im
+Korrektur-Screen bei jeder Änderung neu (`src/lib/draft.ts`, mit Tests). Die
+Warnungen aus der Erkennung beschreiben einen Zeitpunkt und werden deshalb
+ausgeblendet, sobald der lebende Block dasselbe besser sagt. Fehlt einer
+Position ihr Steuerkennzeichen, entfällt der Klassenabgleich wie bisher — es
+lässt sich jetzt aber im Bearbeiten-Blatt nachtragen, und dann rechnet er mit.
 
 ## Datenmodell-Grundsätze
 
@@ -497,7 +577,7 @@ nur die Voreinstellung.
 | 2c | Mocks gegen echte Queries tauschen, Aggregationen als SQL-Views, Leerzustände | erledigt |
 | 4a | Kamera im Screen: Livebild, Rückfallweg, Galerie, Verkleinern, Vorschau | erledigt |
 | 4b-1 | Edge Function mit Mistral, Prompt aus den Merkmalen, JSON-Validierung, Anzeige im Korrektur-Screen | erledigt |
-| 4b-2 | Speichern aus dem Korrektur-Screen: `product_mappings`, `canonical_products`, Bon und Positionen | offen |
+| 4b-2 | Speichern aus dem Korrektur-Screen: `product_mappings`, `canonical_products`, Bon und Positionen | erledigt |
 | 5 | Bestpreis- und Analyse-Logik als SQL-Views | mit 2c vorgezogen |
 | 6 | Health-Score, Merkmals-Verwaltung in den Einstellungen, Sparhinweise, Push zum Monatsreport | Score erledigt, Rest offen |
 

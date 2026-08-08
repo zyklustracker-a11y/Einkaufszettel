@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { BottomSheet } from '../components/BottomSheet'
 import { ReceiptItemList } from '../components/ReceiptItemList'
 import { Async, EmptyState } from '../components/states'
 import { BackLink } from '../components/ui'
-import { getMerchantName, getReceipt, useQuery } from '../data'
+import { deleteReceipt, getMerchantName, getReceipt, useQuery } from '../data'
 import { receiptDiscrepancy, receiptItemsTotal } from '../lib/derive'
 import { formatDate, formatEuro } from '../lib/format'
 import type { Receipt } from '../types'
@@ -13,6 +13,13 @@ import styles from './PurchaseDetail.module.css'
 export function PurchaseDetail() {
   const { receiptId } = useParams()
   const state = useQuery(() => getReceipt(receiptId ?? ''), [receiptId])
+
+  /*
+   * Der Korrektur-Screen setzt das beim Weiterleiten. Es reist im Zustand des
+   * Routers und nicht in der Adresse: Ein Neuladen soll die Bestätigung nicht
+   * wiederholen — gespeichert wurde ja nur einmal.
+   */
+  const justSaved = (useLocation().state as { justSaved?: boolean } | null)?.justSaved === true
 
   return (
     <div className="screen screen--tabbed">
@@ -25,7 +32,7 @@ export function PurchaseDetail() {
               gelöscht.
             </EmptyState>
           ) : (
-            <PurchaseBody receipt={receipt} />
+            <PurchaseBody receipt={receipt} justSaved={justSaved} />
           )
         }
       </Async>
@@ -33,15 +40,36 @@ export function PurchaseDetail() {
   )
 }
 
-function PurchaseBody({ receipt }: { receipt: Receipt }) {
+function PurchaseBody({ receipt, justSaved }: { receipt: Receipt; justSaved: boolean }) {
   const navigate = useNavigate()
   const [confirming, setConfirming] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const itemsTotalCents = receiptItemsTotal(receipt)
   const differenceCents = receiptDiscrepancy(receipt)
 
+  const remove = async () => {
+    setDeleting(true)
+    setError(null)
+    try {
+      await deleteReceipt(receipt.id)
+      navigate('/', { replace: true })
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Der Einkauf konnte nicht gelöscht werden.')
+      setDeleting(false)
+      setConfirming(false)
+    }
+  }
+
   return (
     <>
+      {justSaved && (
+        <div className={styles.saved} role="status">
+          Gespeichert. Der Einkauf zählt ab jetzt in der Übersicht mit.
+        </div>
+      )}
+
       <div className={styles.head}>
         <div>
           <h1 className={styles.merchant}>{getMerchantName(receipt.merchantId)}</h1>
@@ -53,10 +81,15 @@ function PurchaseBody({ receipt }: { receipt: Receipt }) {
         <div className={styles.total}>{formatEuro(receipt.printedTotalCents)}</div>
       </div>
 
+      {/*
+        „Korrigieren" stand hier bis Schritt 4b-2 und führte in den
+        Korrektur-Screen. Das ist entfallen: Der Screen arbeitet an einem frisch
+        erkannten Bon, nicht an einem gespeicherten — ein Knopf, der etwas
+        anderes tut als er verspricht, ist schlechter als keiner. Einen
+        gespeicherten Bon nachträglich zu ändern kommt später; bis dahin ist der
+        Weg: löschen und neu scannen.
+      */}
       <div className={styles.actions}>
-        <Link to="/scan/pruefen" className={styles.action}>
-          Korrigieren
-        </Link>
         <button
           type="button"
           className={`${styles.action} ${styles['action--danger']}`}
@@ -65,6 +98,12 @@ function PurchaseBody({ receipt }: { receipt: Receipt }) {
           Löschen
         </button>
       </div>
+
+      {error && (
+        <p className={styles.error} role="alert">
+          {error}
+        </p>
+      )}
 
       {receipt.items.length === 0 ? (
         <EmptyState inline title="Keine Positionen erfasst">
@@ -89,16 +128,29 @@ function PurchaseBody({ receipt }: { receipt: Receipt }) {
             {receipt.items.length} Positionen wird dauerhaft entfernt. Die Preishistorie dieser
             Produkte verliert diesen Eintrag.
           </p>
+          {/*
+            Der Unterschied, auf den es ankommt: Gelöscht wird der Einkauf, nicht
+            das Gelernte. Die Zuordnungen von Bontext zu Produkt bleiben stehen —
+            sonst müsste man nach jedem gelöschten Testbon von vorn anfangen.
+          */}
+          <p className={styles.confirmText}>
+            Was die App gelernt hat, bleibt: Produkte, Kategorien und Merkmale werden nicht
+            gelöscht.
+          </p>
           <div className={styles.confirmActions}>
-            {/* Das Löschen selbst kommt in Schritt 4, zusammen mit dem Speichern. */}
             <button
               type="button"
               className={styles.confirmDelete}
-              onClick={() => navigate('/', { replace: true })}
+              disabled={deleting}
+              onClick={remove}
             >
-              Endgültig löschen
+              {deleting ? 'Wird gelöscht…' : 'Endgültig löschen'}
             </button>
-            <button type="button" className={styles.confirmCancel} onClick={() => setConfirming(false)}>
+            <button
+              type="button"
+              className={styles.confirmCancel}
+              onClick={() => setConfirming(false)}
+            >
               Abbrechen
             </button>
           </div>

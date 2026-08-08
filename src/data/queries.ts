@@ -602,24 +602,17 @@ export async function getReceipt(receiptId: string): Promise<Receipt | null> {
   return buildReceipt(head)
 }
 
-/**
- * Der zuletzt erkannte, noch nicht bestätigte Bon — das, was der
- * Korrektur-Screen prüfen soll. Ist keiner da, gibt es nichts zu korrigieren.
+/*
+ * Einen Bon mit Status `extracted` gibt es bewusst nicht mehr.
+ *
+ * PROJEKT.md hatte für 4b-2 vorgesehen, dass die Erkennung schon einen Bon
+ * anlegt, den der Korrektur-Screen dann abfragt. Beim Bauen zeigte sich, dass
+ * das der schlechtere Weg ist: Ein Bon, den der Nutzer nie bestätigt (Abbruch,
+ * Neuladen, „lieber noch mal scannen"), bliebe als Karteileiche liegen und
+ * müsste irgendwann aufgeräumt werden. Das Ergebnis reist deshalb weiter im
+ * Speicher (`src/lib/scanResult.ts`), und geschrieben wird genau einmal: beim
+ * Speichern, vollständig, über `save_receipt`.
  */
-export async function getScannedReceipt(): Promise<Receipt | null> {
-  const head = unwrapMaybe(
-    await supabase
-      .from('receipts')
-      .select('id, merchant_id, purchased_on, printed_total_cents, receipt_items(count)')
-      .eq('status', 'extracted')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  ) as ReceiptRow | null
-
-  if (!head) return null
-  return buildReceipt(head)
-}
 
 async function buildReceipt(head: ReceiptRow): Promise<Receipt> {
   const itemRows = unwrap<ItemRow[]>(
