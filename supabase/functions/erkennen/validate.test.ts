@@ -116,9 +116,12 @@ test('Mengen', async (t) => {
     const result = receipt([
       { rohtext: 'IRGENDWAS', menge: 7, einheit: 'kg', einzelpreis_cent: 199, zeilensumme_cent: 500 },
     ])
-    // Nicht korrigiert, nur markiert: Raten ist auch dem Code verboten.
+    // Menge und Zeilensumme bleiben stehen: Welcher Wert der falsche ist, weiß
+    // hier niemand. Verworfen wird nur der Einzelpreis.
     assert.equal(result.items[0].quantityBase, 7)
-    assert.ok(result.warnings.some((w) => w.code === 'menge_unplausibel'))
+    assert.equal(result.items[0].totalCents, 500)
+    assert.equal(result.items[0].unitPriceCents, null)
+    assert.ok(result.warnings.some((w) => w.code === 'einzelpreis_verworfen'))
   })
 
   await t.test('„ohne Mengenangabe" ist kein Fehler', () => {
@@ -139,6 +142,75 @@ test('Mengen', async (t) => {
       assert.equal(item.quantityUnit, 'stk', `Einheit ${einheit}`)
       assert.equal(item.quantityBase, 2)
     }
+  })
+})
+
+/* -------------------------------------------------- Einzelpreis-Gegenprobe */
+
+test('Einzelpreis gegen die Zeilensumme', async (t) => {
+  await t.test('lässt einen stimmigen Einzelpreis durch', () => {
+    const result = receipt(
+      [{ rohtext: 'SPRUEHSAHNE 30%', menge: 2, einheit: 'stk', einzelpreis_cent: 99, zeilensumme_cent: 198 }],
+      { summe_cent: 198 },
+    )
+    assert.equal(result.items[0].unitPriceCents, 99)
+    assert.equal(result.warnings.length, 0)
+  })
+
+  await t.test('verwirft einen Einzelpreis aus der Zeile darüber', () => {
+    /*
+     * Der Fall vom REWE-Bon: Die Mengenzeile "2 Stk x 0,99" gehört zur
+     * Sprühsahne, das Modell hat die 0,99 aber an die folgende Position
+     * gehängt. Ohne Menge muss der Einzelpreis die Zeilensumme sein — 99 ist
+     * es nicht, also fliegt er raus.
+     */
+    const result = receipt(
+      [{ rohtext: 'VANILLE MILCHSCHOKOSTR', einzelpreis_cent: 99, zeilensumme_cent: 199 }],
+      { summe_cent: 199 },
+    )
+    assert.equal(result.items[0].unitPriceCents, null)
+    assert.equal(result.items[0].totalCents, 199)
+    assert.ok(result.warnings.some((w) => w.code === 'einzelpreis_verworfen'))
+  })
+
+  await t.test('lässt Einzelpreis gleich Zeilensumme unangetastet', () => {
+    const result = receipt(
+      [{ rohtext: 'VANILLE MILCHSCHOKOSTR', einzelpreis_cent: 199, zeilensumme_cent: 199 }],
+      { summe_cent: 199 },
+    )
+    assert.equal(result.items[0].unitPriceCents, 199)
+    assert.equal(result.warnings.length, 0)
+  })
+
+  await t.test('verzeiht den Rundungscent bei Gewichtsware', () => {
+    // 1,120 kg × 1,79 €/kg = 2,0048 €, gedruckt sind 2,00 €.
+    const result = receipt(
+      [{ rohtext: 'RINDERHACK', menge: 1120, einheit: 'kg', einzelpreis_cent: 179, zeilensumme_cent: 200 }],
+      { summe_cent: 200 },
+    )
+    assert.equal(result.items[0].unitPriceCents, 179)
+    assert.equal(result.warnings.length, 0)
+  })
+
+  await t.test('prüft Pfand und Rabatt nicht gegen', () => {
+    // "2 Stück × Einzelpreis" ist bei einem Rabatt keine sinnvolle Rechnung.
+    const result = receipt(
+      [{ rohtext: 'AKTION', art: 'rabatt', einzelpreis_cent: 50, zeilensumme_cent: -50 }],
+      { summe_cent: -50 },
+    )
+    assert.equal(result.items[0].unitPriceCents, 50)
+    assert.equal(result.warnings.length, 0)
+  })
+
+  await t.test('prüft die bereinigte Menge, nicht die gelieferte', () => {
+    // Erst wird 1.12 zu 1120 umgerechnet, dann geht die Gegenprobe auf — die
+    // Zeile darf danach nicht trotzdem als unstimmig gelten.
+    const result = receipt(
+      [{ rohtext: 'RINDERHACK', menge: 1.12, einheit: 'kg', einzelpreis_cent: 179, zeilensumme_cent: 200 }],
+      { summe_cent: 200 },
+    )
+    assert.equal(result.items[0].unitPriceCents, 179)
+    assert.ok(!result.warnings.some((w) => w.code === 'einzelpreis_verworfen'))
   })
 })
 

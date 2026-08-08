@@ -88,8 +88,35 @@ MENGENZEILEN
 - "2 Stk x 1,29" bedeutet: 2 Stück zu je 1,29 EUR, Zeilensumme 2,58 EUR.
 - "1,120 kg x 1,79 EUR/kg" bedeutet: 1,120 Kilogramm zu 1,79 EUR je Kilogramm,
   Zeilensumme 2,00 EUR.
-- Die Mengenzeile steht oft in einer eigenen Zeile ÜBER oder UNTER dem
-  Artikelnamen. Sie gehört zu diesem Artikel und ist KEINE eigene Position.
+- Die Mengenzeile steht meist eingerückt in einer eigenen Zeile und ist KEINE
+  eigene Position.
+
+- WICHTIG, das ist die häufigste Verwechslung: Eine Mengenzeile gehört IMMER zu
+  der Position DARÜBER, niemals zur folgenden. Sie erklärt nachträglich, wie der
+  Betrag der Zeile über ihr zustande kommt.
+
+  Beispiel:
+
+      SPRUEHSAHNE 30%
+        2 Stk x   0,99          1,98 B
+      VANILLE MILCHSCHOKOSTR    1,99 B
+
+  Richtig sind GENAU ZWEI Positionen:
+    1. "SPRUEHSAHNE 30%"        menge 2, einheit "stk",
+                                einzelpreis_cent 99, zeilensumme_cent 198
+    2. "VANILLE MILCHSCHOKOSTR" menge null, einheit null,
+                                einzelpreis_cent 199, zeilensumme_cent 199
+
+  Falsch wäre, der Vanilleschokolade den Einzelpreis 99 zu geben. Die 0,99 EUR
+  gehören zur Sprühsahne darüber und sind mit der Zeile darüber verbraucht.
+
+- Hat eine Position KEINE eigene Mengenzeile, dann gilt ohne Ausnahme:
+  menge = null, einheit = null, und einzelpreis_cent ist gleich
+  zeilensumme_cent. Übernimm niemals einen Einzelpreis aus einer anderen Zeile.
+
+- Gegenprobe vor dem Antworten, für JEDE Position: Menge × Einzelpreis muss die
+  Zeilensumme ergeben. Ohne Menge muss Einzelpreis = Zeilensumme sein. Geht das
+  nicht auf, hast du einen Wert aus der falschen Zeile genommen.
 
 STEUERKENNZEICHEN
 - Am Zeilenende steht häufig ein einzelner Buchstabe: A, B, seltener 1, 2, AW, BW.
@@ -156,7 +183,9 @@ MENGE immer als GANZE ZAHL in der kleinsten Einheit
 EINZELPREIS immer bezogen auf die gedruckte Einheit ("einheit"):
 - "2 Stk x 1,29"          ->  einzelpreis_cent: 129   (je Stück)
 - "1,120 kg x 1,79 EUR/kg" -> einzelpreis_cent: 179   (je Kilogramm)
-- kein Einzelpreis erkennbar -> einzelpreis_cent: null
+- keine eigene Mengenzeile -> einzelpreis_cent = zeilensumme_cent
+  (NICHT den Einzelpreis der Zeile darüber übernehmen)
+- Betrag gar nicht lesbar  -> einzelpreis_cent: null
 
 DATUM immer als "JJJJ-MM-TT" (z. B. "2026-08-14"), UHRZEIT als "HH:MM"
 (24-Stunden, z. B. "17:42"). Steht auf dem Bon "14.08.26", ist das der

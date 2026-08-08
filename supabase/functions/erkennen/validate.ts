@@ -117,7 +117,7 @@ export interface ExtractionWarning {
     | 'haendler_fehlt'
     | 'betrag_fehlt'
     | 'menge_umgerechnet'
-    | 'menge_unplausibel'
+    | 'einzelpreis_verworfen'
     | 'kategorie_unbekannt'
     | 'merkmal_verworfen'
     | 'position_unvollstaendig'
@@ -295,8 +295,8 @@ interface QuantityResult {
  *     *einen* Lesart die gedruckte Zeilensumme ergibt und mit der anderen
  *     nicht, wird umgestellt.
  *
- * Geht keine Lesart auf, bleibt der gelieferte Wert stehen und die Zeile
- * bekommt eine Warnung. Raten ist auch dem Code verboten.
+ * Geht keine Lesart auf, bleibt der gelieferte Wert stehen — die Zeile fällt
+ * dann bei `checkUnitPrice` weiter unten auf. Raten ist auch dem Code verboten.
  */
 function resolveQuantity(
   rawAmount: unknown,
@@ -349,16 +349,77 @@ function resolveQuantity(
       }
     }
 
-    if (!fits) {
-      warnings.push({
-        code: 'menge_unplausibel',
-        lineNo,
-        message: `Zeile ${lineNo}: Menge × Einzelpreis ergibt nicht die gelesene Zeilensumme. Bitte prüfen.`,
-      })
-    }
   }
 
   return { base, unit, warnings }
+}
+
+/**
+ * Passt der Einzelpreis überhaupt zu dieser Zeile?
+ *
+ * **Warum das nötig ist.** Auf einem REWE-Bon steht die Mengenzeile eingerückt
+ * *unter* dem Artikelnamen:
+ *
+ *     SPRUEHSAHNE 30%
+ *       2 Stk x   0,99          1,98 B
+ *     VANILLE MILCHSCHOKOSTR    1,99 B
+ *
+ * Das Modell hat die 0,99 schon einmal an die *folgende* Position gehängt — die
+ * Vanilleschokolade bekam einen Einzelpreis von 0,99 € bei einer Zeilensumme von
+ * 1,99 €. Der Prompt sagt inzwischen ausdrücklich, dass eine Mengenzeile zur
+ * Position darüber gehört; verlassen sollte man sich darauf trotzdem nicht.
+ *
+ * Die Rechnung entlarvt so eine Verschiebung zuverlässig, denn sie geht dann
+ * nicht auf:
+ *
+ *   * **mit Menge:** Menge × Einzelpreis muss die Zeilensumme ergeben.
+ *   * **ohne Menge:** Dann *ist* der Einzelpreis die Zeilensumme. Etwas anderes
+ *     kann er gar nicht sein — genau das war der Fehler oben.
+ *
+ * Stimmt es nicht, wird der Einzelpreis **verworfen** statt weitergereicht. Er
+ * ist der unsicherste der drei Werte, und er ist der einzige, der sich zur Not
+ * aus Menge und Zeilensumme zurückrechnen lässt. Menge und Zeilensumme bleiben
+ * unangetastet: Welcher der Werte der falsche ist, weiß hier niemand, und ein
+ * fehlender Wert ist besser als ein falscher (PROJEKT.md).
+ *
+ * Pfand- und Rabattzeilen sind ausgenommen. „2 Stück × Einzelpreis" ist bei
+ * einem Aktionsrabatt keine sinnvolle Rechnung, und eine Warnung dazu wäre nur
+ * Rauschen.
+ */
+function checkUnitPrice(
+  kind: ItemKind,
+  base: number | null,
+  unit: ExtractedUnit | null,
+  unitPriceCents: number | null,
+  totalCents: number,
+  lineNo: number,
+): { unitPriceCents: number | null; warnings: ExtractionWarning[] } {
+  const keep = { unitPriceCents, warnings: [] as ExtractionWarning[] }
+
+  if (kind !== 'artikel' || unitPriceCents === null) return keep
+  // Eine Nullzeile sagt über den Einzelpreis nichts aus.
+  if (totalCents === 0) return keep
+
+  const expected =
+    base !== null && unit !== null
+      ? Math.round(displayAmount(base, unit) * unitPriceCents)
+      : unitPriceCents
+
+  if (Math.abs(expected - totalCents) <= LINE_TOLERANCE_CENTS) return keep
+
+  return {
+    unitPriceCents: null,
+    warnings: [
+      {
+        code: 'einzelpreis_verworfen',
+        lineNo,
+        message:
+          base === null
+            ? `Zeile ${lineNo}: Der Einzelpreis passt nicht zur Zeilensumme und stammt vermutlich aus einer anderen Zeile — verworfen. Menge und Betrag bitte prüfen.`
+            : `Zeile ${lineNo}: Menge × Einzelpreis ergibt nicht die Zeilensumme — Einzelpreis verworfen. Menge und Betrag bitte prüfen.`,
+      },
+    ],
+  }
 }
 
 /* ============================================================== Der Vorschlag */
@@ -449,7 +510,7 @@ function resolveItem(
     })
   }
 
-  const unitPriceCents = toCents(raw.einzelpreis_cent)
+  const rawUnitPriceCents = toCents(raw.einzelpreis_cent)
   let totalCents = toCents(raw.zeilensumme_cent)
 
   if (totalCents === null) {
@@ -468,8 +529,14 @@ function resolveItem(
    */
   if (kind === 'rabatt') totalCents = -Math.abs(totalCents)
 
-  const quantity = resolveQuantity(raw.menge, raw.einheit, unitPriceCents, totalCents, lineNo)
+  const quantity = resolveQuantity(raw.menge, raw.einheit, rawUnitPriceCents, totalCents, lineNo)
   warnings.push(...quantity.warnings)
+
+  // Erst nach dem Umrechnen prüfen: Die Gegenprobe soll gegen die *bereinigte*
+  // Menge laufen, sonst würde eine erfolgreich korrigierte Zeile trotzdem
+  // auffallen.
+  const price = checkUnitPrice(kind, quantity.base, quantity.unit, rawUnitPriceCents, totalCents, lineNo)
+  warnings.push(...price.warnings)
 
   return {
     lineNo,
@@ -477,7 +544,7 @@ function resolveItem(
     kind,
     quantityBase: quantity.base,
     quantityUnit: quantity.unit,
-    unitPriceCents,
+    unitPriceCents: price.unitPriceCents,
     totalCents,
     // Beide Felder sind in der Datenbank auf „nicht negativ" geprüft, deshalb
     // steht hier der Betrag und im Vorzeichen von totalCents die Richtung.

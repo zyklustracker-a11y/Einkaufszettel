@@ -378,6 +378,33 @@ wird nur, was gar nicht lesbar ist — dann sagt das Modell selbst `lesbar: fals
 Ohne sie lässt sich nicht sehen, *warum* eine Zeile falsch gelesen wurde, und
 damit auch der Prompt nicht nachschärfen. Sie wird nirgends gespeichert.
 
+**Eine Mengenzeile gehört zur Position darüber.** Nach dem ersten echten Scan
+aufgefallen: Auf einem REWE-Bon steht die Mengenzeile eingerückt *unter* dem
+Artikelnamen, und das Modell hängte den Einzelpreis daraus an die *folgende*
+Position — die Vanilleschokolade bekam 0,99 € statt 1,99 €. Der Prompt sagt die
+Regel jetzt ausdrücklich, mit genau diesem Beispiel.
+
+Verlassen wird sich darauf nicht: `checkUnitPrice` in `validate.ts` rechnet
+gegen. Mit Menge muss Menge × Einzelpreis die Zeilensumme ergeben, ohne Menge
+*ist* der Einzelpreis die Zeilensumme. Geht es nicht auf, wird der **Einzelpreis
+verworfen** und die Zeile markiert. Verworfen wird er und nicht Menge oder
+Betrag, weil er der unsicherste der drei Werte ist und sich als einziger aus den
+beiden anderen zurückrechnen lässt. Welcher Wert tatsächlich falsch war, weiß
+der Code nicht — und rät deshalb auch nicht.
+
+**Ein ungewöhnliches Bon-Datum ist ein Hinweis, kein Fehler.** Liegt das Datum
+mehr als 60 Tage zurück oder in der Zukunft, sagt der Korrektur-Screen in
+neutralem Ton, zu welchem Monat der Einkauf dann zählt. Nichts wird
+überschrieben, nichts blockiert, nichts rot eingefärbt: Ein Bon von 2017 ist
+richtig gelesen und nicht falsch — beim Testen mit Bons aus dem Internet ist das
+der Normalfall. Gerechnet wird gegen die Uhr des Geräts, weil der Hinweis reine
+Anzeige ist.
+
+Das Bon-Datum ist deshalb auch der einzige Wert, der in 4b-1 schon geändert
+werden kann (`<input type="date">`, auf dem iPhone der Systemauswähler). Es
+entscheidet, in welchen Monat der ganze Einkauf fällt; ein vertipptes Jahr
+verschiebt alles. Alles andere bleibt bis 4b-2 reine Anzeige.
+
 **Das Ergebnis reist im Speicher**, wie schon das Foto (`src/lib/scanResult.ts`
 neben `capture.ts`). Es gibt in 4b-1 keinen Bon in der Datenbank, den der
 Korrektur-Screen abfragen könnte. Mit 4b-2 fällt dieser Umweg weg: Dann entsteht

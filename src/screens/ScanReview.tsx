@@ -6,7 +6,7 @@ import { Async, EmptyState } from '../components/states'
 import { getCategories, getMerchantName, getScannedReceipt, useQuery } from '../data'
 import { receiptItemsTotal } from '../lib/derive'
 import type { ExtractedItem, ExtractionResponse } from '../lib/extraction'
-import { formatDate, formatEuro, roundCents } from '../lib/format'
+import { daysBetween, formatDate, formatEuro, formatMonth, roundCents, todayISO } from '../lib/format'
 import { getPendingExtraction } from '../lib/scanResult'
 import type { CategoryId, Quantity, Receipt, ReceiptItem } from '../types'
 import styles from './ScanReview.module.css'
@@ -145,9 +145,63 @@ function toQuantity(item: ExtractedItem): Quantity {
   return { kind: 'weight', amount, unit, pricePerUnitCents }
 }
 
+/**
+ * Ab wann ein Bon-Datum einen Hinweis wert ist.
+ *
+ * Sechzig Tage sind bewusst großzügig: Ein Bon, der zwei Wochen im Portemonnaie
+ * lag, ist völlig normal und soll nicht kommentiert werden.
+ */
+const UNUSUAL_AGE_DAYS = 60
+
+/**
+ * Der Hinweis zu einem ungewöhnlichen Bon-Datum — oder `null`, wenn alles
+ * unauffällig ist.
+ *
+ * **Das ist ausdrücklich kein Fehler.** Ein alter Bon ist ein gültiger Bon; ein
+ * Testscan von 2017 ist richtig gelesen und nicht falsch. Deshalb wird hier
+ * nichts überschrieben, nichts blockiert und nichts rot eingefärbt — es wird
+ * nur gesagt, in welchen Monat der Einkauf dann zählt. Das ist die einzige
+ * Folge, die der Nutzer sonst erst in der Monatsübersicht bemerken würde.
+ *
+ * Gerechnet wird gegen die Uhr des Geräts und nicht gegen die des Servers: Der
+ * Hinweis ist reine Anzeige, und „heute" ist hier das Heute des Nutzers.
+ */
+function dateNotice(iso: string, today: string): string | null {
+  if (!iso) return null
+
+  const age = daysBetween(iso, today)
+  const month = formatMonth(iso)
+
+  if (age < 0) {
+    return (
+      `Das Bon-Datum liegt in der Zukunft (${formatDate(iso)}). Der Einkauf würde zu ` +
+      `${month} zählen. Stimmt das nicht, kannst du das Datum oben ändern.`
+    )
+  }
+
+  if (age > UNUSUAL_AGE_DAYS) {
+    return (
+      `Dieser Bon ist vom ${formatDate(iso)} und liegt damit mehr als ${UNUSUAL_AGE_DAYS} Tage ` +
+      `zurück. Das ist in Ordnung — der Einkauf zählt dann zu ${month} und nicht zum laufenden ` +
+      `Monat. Stimmt das Datum nicht, kannst du es oben ändern.`
+    )
+  }
+
+  return null
+}
+
 function ExtractionReview({ result }: { result: ExtractionResponse }) {
   const { extraction } = result
   const items = extraction.items.map(toReceiptItem)
+
+  /*
+   * Das Datum ist der einzige Wert, der hier schon geändert werden kann.
+   * Grund: Es entscheidet, in welchen Monat der Einkauf fällt, und ein
+   * vertipptes Jahr verschiebt den ganzen Einkauf — das soll man sehen und
+   * richtigstellen können, bevor 4b-2 daraus einen Datensatz macht.
+   */
+  const [purchasedOn, setPurchasedOn] = useState(extraction.purchasedOn ?? '')
+  const notice = dateNotice(purchasedOn, todayISO())
 
   // Der Abgleich kommt aus der Funktion; sie hat ihn beim Prüfen gerechnet.
   const printed = extraction.printedTotalCents
@@ -170,7 +224,18 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
                 {extraction.merchantName ?? 'Händler nicht erkannt'}
               </div>
               <div className={styles.date}>
-                {extraction.purchasedOn ? formatDate(extraction.purchasedOn) : 'Datum nicht erkannt'}
+                {/*
+                  Ein echtes Datumsfeld statt Text: Auf dem iPhone öffnet das den
+                  Systemauswähler, und der Wert ist bereits das ISO-Format, mit
+                  dem die App ohnehin rechnet.
+                */}
+                <input
+                  type="date"
+                  className={styles.dateInput}
+                  value={purchasedOn}
+                  onChange={(event) => setPurchasedOn(event.target.value)}
+                  aria-label="Bon-Datum"
+                />
                 {extraction.purchasedAt ? ` · ${extraction.purchasedAt} Uhr` : ''} · {items.length}{' '}
                 {items.length === 1 ? 'Position' : 'Positionen'}
               </div>
@@ -193,6 +258,19 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
                   : `Positionssumme ${formatEuro(extraction.itemsTotalCents)} weicht um ${formatEuro(Math.abs(extraction.discrepancyCents ?? 0))} ab – bitte prüfen.`}
             </div>
           </div>
+
+          {/*
+            Bewusst neutral gehalten und nicht im Warnton der Summen-Zeile
+            darüber: Das hier ist eine Auskunft, kein Mangel.
+          */}
+          {notice && (
+            <div className={styles.notice} role="status">
+              <div className={styles.noticeIcon} aria-hidden="true">
+                i
+              </div>
+              <div className={styles.noticeText}>{notice}</div>
+            </div>
+          )}
         </div>
 
         {items.length === 0 ? (
