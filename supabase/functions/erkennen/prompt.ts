@@ -84,6 +84,35 @@ NICHT RATEN — das ist die wichtigste Regel überhaupt.
 const BON_EIGENHEITEN = `
 So sind deutsche Kassenzettel aufgebaut:
 
+EINE ZEILE MIT PREIS IST EINE POSITION — die wichtigste Aufteilungsregel.
+
+- Jede Zeile, die am Zeilenende einen eigenen Preis trägt, ist eine EIGENE
+  Position. Ohne Ausnahme.
+- Fasse NIEMALS zwei aufeinanderfolgende Zeilen zu einem Artikel zusammen, auch
+  dann nicht, wenn die Namen inhaltlich zusammenzupassen scheinen. Was
+  zusammengehört, entscheidet allein der Preis am Zeilenende — nicht die
+  Bedeutung der Wörter.
+
+  Beispiel:
+
+      VANILLE                    1,99 B
+      MILCHSCHOKOSTR             0,99 B
+
+  Das sind ZWEI Positionen: „VANILLE" für 1,99 EUR und „MILCHSCHOKOSTR" für
+  0,99 EUR. Beide Zeilen tragen einen eigenen Preis, also gehören sie nicht
+  zusammen. Daraus „Vanille-Milchschokolade für 1,99 EUR" zu machen wäre falsch
+  und würde 0,99 EUR verschlucken.
+
+- Umgekehrt gilt: Ein langer Artikelname kann über zwei Zeilen umbrochen sein.
+  Daran erkennst du es: Dann trägt nur EINE der beiden Zeilen einen Preis. Die
+  Zeile ohne Preis ist die Fortsetzung des Namens und keine eigene Position.
+
+- Zeilen ohne eigenen Preis gehören also entweder zum Namen darüber oder sind
+  eine Mengenzeile (siehe unten). Eine dritte Möglichkeit gibt es nicht.
+
+- Zähle zum Schluss nach: So viele Positionen, wie es Zeilen mit eigenem Preis
+  gibt. Nicht weniger.
+
 MENGENZEILEN
 - "2 Stk x 1,29" bedeutet: 2 Stück zu je 1,29 EUR, Zeilensumme 2,58 EUR.
 - "1,120 kg x 1,79 EUR/kg" bedeutet: 1,120 Kilogramm zu 1,79 EUR je Kilogramm,
@@ -120,8 +149,27 @@ MENGENZEILEN
 
 STEUERKENNZEICHEN
 - Am Zeilenende steht häufig ein einzelner Buchstabe: A, B, seltener 1, 2, AW, BW.
-- Das ist der Steuersatz, KEIN Preis und KEINE Menge. Ignoriere ihn vollständig.
-- "MILCH 1,5% 1,29 B" heißt: Preis 1,29 EUR. Das B gehört nicht dazu.
+- Das ist der Steuersatz, KEIN Preis und KEINE Menge. Rechne nie damit.
+- "MILCH 1,5% 1,29 B" heißt: Preis 1,29 EUR, Steuerkennzeichen "B".
+- Gib das Kennzeichen im Feld "steuer" der Position mit zurück, genau so, wie es
+  gedruckt ist. Steht keines da: null.
+
+DER STEUERBLOCK AM FUSS DES BONS
+- Fast jeder Bon schließt mit einer Aufstellung je Steuersatz ab:
+
+      Steuer %      Netto   Steuer   Brutto
+      A= 19,0%       1,34     0,25     1,59
+      B=  7,0%       4,64     0,32     4,96
+      Gesamtbetrag   5,98     0,57     6,55
+
+- Gib je Steuerklasse das Kennzeichen und den BRUTTO-Betrag zurück (die letzte
+  Spalte), im Feld "steuerblock". Aus dem Beispiel werden zwei Einträge:
+  A mit 159 und B mit 496.
+- Die Zeile "Gesamtbetrag" (oder "Summe", "Gesamt") ist KEINE Steuerklasse und
+  gehört NICHT in die Liste.
+- Netto und Steuer werden nicht gebraucht — nur Kennzeichen und Brutto.
+- Fehlt der Block oder ist er nicht lesbar: "steuerblock": []. Nicht ausrechnen,
+  nicht schätzen.
 
 PFAND
 - Pfandzeilen ("PFAND", "PFAND 0,25", "LEERGUT", "EINWEGPFAND") sind eigene
@@ -276,6 +324,10 @@ ANTWORTFORMAT — genau dieses JSON-Objekt, keine zusätzlichen Felder:
   "datum": "2026-08-14",
   "uhrzeit": "17:42",
   "summe_cent": 4217,
+  "steuerblock": [
+    { "kennzeichen": "A", "brutto_cent": 159 },
+    { "kennzeichen": "B", "brutto_cent": 496 }
+  ],
   "positionen": [
     {
       "zeile": 1,
@@ -285,6 +337,7 @@ ANTWORTFORMAT — genau dieses JSON-Objekt, keine zusätzlichen Felder:
       "einheit": "stk",
       "einzelpreis_cent": 129,
       "zeilensumme_cent": 258,
+      "steuer": "B",
       "vorschlag": {
         "name": "H-Milch 1,5 % Fett",
         "kategorie": "dairy",
@@ -299,8 +352,9 @@ ANTWORTFORMAT — genau dieses JSON-Objekt, keine zusätzlichen Felder:
       "art": "pfand",
       "menge": null,
       "einheit": null,
-      "einzelpreis_cent": null,
+      "einzelpreis_cent": 25,
       "zeilensumme_cent": 25,
+      "steuer": "A",
       "vorschlag": null
     },
     {
@@ -311,6 +365,7 @@ ANTWORTFORMAT — genau dieses JSON-Objekt, keine zusätzlichen Felder:
       "einheit": null,
       "einzelpreis_cent": null,
       "zeilensumme_cent": -50,
+      "steuer": "B",
       "vorschlag": null
     }
   ]
@@ -326,11 +381,20 @@ Feldregeln:
 - "art": "artikel", "pfand" oder "rabatt".
 - "zeilensumme_cent": Pflichtfeld, ganze Zahl in Cent. Nur wenn der Betrag
   wirklich nicht lesbar ist: null.
+- "steuer": das Kennzeichen am Zeilenende, so wie gedruckt. Keines da: null.
 - "vorschlag": bei art "pfand" und "rabatt" immer null.
 - "summe_cent": die GEDRUCKTE Gesamtsumme. Nicht selbst addieren. Nicht lesbar
   -> null.
+- "steuerblock": eine Liste aus Kennzeichen und Bruttobetrag je Steuerklasse.
+  Ohne lesbaren Block: [].
 
-Zur Erinnerung, weil es die zwei häufigsten Fehler sind:
+Drei Kontrollen, bevor du antwortest:
+1. Genauso viele Positionen, wie es Zeilen mit eigenem Preis gibt.
+2. Menge × Einzelpreis ergibt die Zeilensumme; ohne Menge ist der Einzelpreis
+   die Zeilensumme.
+3. Die Positionen einer Steuerklasse ergeben zusammen deren Bruttobetrag.
+
+Und zur Erinnerung, weil es die zwei häufigsten Fehler sind:
 NUR das JSON-Objekt, sonst nichts. Und lieber null als geraten.
 `.trim()
 

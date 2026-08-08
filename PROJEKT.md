@@ -392,6 +392,35 @@ Betrag, weil er der unsicherste der drei Werte ist und sich als einziger aus den
 beiden anderen zurückrechnen lässt. Welcher Wert tatsächlich falsch war, weiß
 der Code nicht — und rät deshalb auch nicht.
 
+**Eine Zeile mit eigenem Preis ist eine eigene Position.** Der zweite Fund aus
+demselben Bon: „VANILLE 1,99 B" und „MILCHSCHOKOSTR 0,99 B" sind zwei Artikel,
+das Modell machte daraus „Vanille-Milchschokolade" für 1,99 € und verlor 0,99 €.
+Die Regel im Prompt lautet jetzt: Was zusammengehört, entscheidet allein der
+Preis am Zeilenende, nie die Bedeutung der Wörter. Ein umbrochener Artikelname
+ist daran zu erkennen, dass nur eine der beiden Zeilen einen Preis trägt.
+
+**Abgleich je Steuerklasse statt nur über die Gesamtsumme.** Deutsche Bons
+drucken am Fuß eine Aufstellung je Steuersatz, und dieselben Kennzeichen stehen
+an jeder Position. Beides wird jetzt miterfasst (`steuerblock` je Bon, `steuer`
+je Position), und `checkTaxGroups` rechnet die Positionen je Klasse gegen den
+gedruckten Bruttobetrag.
+
+Das ist die schärfere Probe: Der Gesamtabgleich sagt nur, *dass* etwas fehlt,
+dieser sagt *wo*. Im Fall oben stimmte Klasse A, und in Klasse B fehlten genau
+0,99 € — die Zeile zum Nachsehen ist damit eingegrenzt.
+
+Zwei Tore davor, damit die Probe nicht selbst Unsinn meldet: Ergeben die
+Bruttobeträge zusammen nicht die gedruckte Summe, wurde der Block falsch gelesen
+und taugt nicht als Maßstab. Und fehlt auch nur einer Position ihr Kennzeichen,
+wäre eine Klasse zwangsläufig zu niedrig — dann entfällt der Abgleich, statt
+Warnungen zu erzeugen, die nur ein nicht gelesenes Kennzeichen bedeuten. In
+beiden Fällen bleibt es beim Gesamtabgleich.
+
+*Offen für 4b-2:* `receipt_items` hat keine Spalte für das Steuerkennzeichen.
+Beim Speichern ist zu entscheiden, ob eine dazukommt (nützlich für spätere
+Auswertungen nach Steuersatz) oder ob der Wert nur zur Prüfung dient und danach
+verfällt.
+
 **Ein ungewöhnliches Bon-Datum ist ein Hinweis, kein Fehler.** Liegt das Datum
 mehr als 60 Tage zurück oder in der Zukunft, sagt der Korrektur-Screen in
 neutralem Ton, zu welchem Monat der Einkauf dann zählt. Nichts wird

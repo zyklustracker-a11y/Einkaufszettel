@@ -295,6 +295,133 @@ test('Pfand und Rabatt', async (t) => {
   })
 })
 
+/* --------------------------------------------------------- Der Steuerblock */
+
+test('Abgleich je Steuerklasse', async (t) => {
+  /*
+   * Der Bon, an dem es aufgefallen ist. Fünf Zeilen mit eigenem Preis, das
+   * Modell hat vier daraus gemacht: „VANILLE" (1,99 B) und „MILCHSCHOKOSTR"
+   * (0,99 B) wurden zu einem Artikel zusammengezogen.
+   */
+  const vollstaendig = [
+    { rohtext: 'SPRUEHSAHNE 30%', menge: 2, einheit: 'stk', einzelpreis_cent: 99, zeilensumme_cent: 198, steuer: 'B' },
+    { rohtext: 'VANILLE', einzelpreis_cent: 199, zeilensumme_cent: 199, steuer: 'B' },
+    { rohtext: 'MILCHSCHOKOSTR', einzelpreis_cent: 99, zeilensumme_cent: 99, steuer: 'B' },
+    { rohtext: 'KL.PAPIERTASCHE', einzelpreis_cent: 10, zeilensumme_cent: 10, steuer: 'A' },
+    { rohtext: 'TRINKHALME', einzelpreis_cent: 149, zeilensumme_cent: 149, steuer: 'A' },
+  ]
+
+  const block = [
+    { kennzeichen: 'A', brutto_cent: 159 },
+    { kennzeichen: 'B', brutto_cent: 496 },
+  ]
+
+  await t.test('meldet nichts, wenn jede Klasse aufgeht', () => {
+    const result = receipt(vollstaendig, { summe_cent: 655, steuerblock: block })
+    assert.equal(result.itemsTotalCents, 655)
+    assert.equal(result.warnings.length, 0)
+    assert.deepEqual(
+      result.taxGroups.map((g) => [g.code, g.differenceCents]),
+      [
+        ['A', 0],
+        ['B', 0],
+      ],
+    )
+  })
+
+  await t.test('zeigt, in welcher Klasse etwas fehlt', () => {
+    // Genau der Fehlerfall: die 0,99-Zeile fehlt.
+    const result = receipt(
+      vollstaendig.filter((item) => item.rohtext !== 'MILCHSCHOKOSTR'),
+      { summe_cent: 655, steuerblock: block },
+    )
+
+    const gruppen = new Map(result.taxGroups.map((g) => [g.code, g.differenceCents]))
+    assert.equal(gruppen.get('A'), 0, 'Klasse A stimmt')
+    assert.equal(gruppen.get('B'), 99, 'in Klasse B fehlen 0,99 €')
+
+    const warnung = result.warnings.find((w) => w.code === 'steuerklasse_weicht_ab')
+    assert.ok(warnung)
+    assert.match(warnung.message, /Steuerklasse B/)
+    assert.match(warnung.message, /0,99 €/)
+    // Der Gesamtabgleich meldet weiterhin, *dass* etwas fehlt.
+    assert.ok(result.warnings.some((w) => w.code === 'summe_weicht_ab'))
+  })
+
+  await t.test('lässt den Abgleich aus, wenn ein Kennzeichen fehlt', () => {
+    // Sonst wäre eine Klasse zu niedrig und es hagelte Warnungen, die nur ein
+    // einziges nicht gelesenes Kennzeichen bedeuten.
+    const ohneKennzeichen = vollstaendig.map((item, index) =>
+      index === 0 ? { ...item, steuer: null } : item,
+    )
+    const result = receipt(ohneKennzeichen, { summe_cent: 655, steuerblock: block })
+    assert.deepEqual(result.taxGroups, [])
+    assert.ok(result.warnings.some((w) => w.code === 'steuer_kennzeichen_fehlt'))
+    assert.ok(!result.warnings.some((w) => w.code === 'steuerklasse_weicht_ab'))
+  })
+
+  await t.test('verwirft einen Steuerblock, der nicht zur Gesamtsumme passt', () => {
+    const result = receipt(vollstaendig, {
+      summe_cent: 655,
+      steuerblock: [
+        { kennzeichen: 'A', brutto_cent: 159 },
+        { kennzeichen: 'B', brutto_cent: 400 },
+      ],
+    })
+    assert.deepEqual(result.taxGroups, [])
+    assert.ok(result.warnings.some((w) => w.code === 'steuerblock_unstimmig'))
+    assert.ok(!result.warnings.some((w) => w.code === 'steuerklasse_weicht_ab'))
+  })
+
+  await t.test('übergeht die Gesamtbetrag-Zeile im Block', () => {
+    // Sie ist keine Steuerklasse; „Gesamtbetrag" ist kein gültiges Kennzeichen
+    // und fällt schon beim Einlesen heraus.
+    const result = receipt(vollstaendig, {
+      summe_cent: 655,
+      steuerblock: [...block, { kennzeichen: 'Gesamtbetrag', brutto_cent: 655 }],
+    })
+    assert.equal(result.taxGroups.length, 2)
+    assert.equal(result.warnings.length, 0)
+  })
+
+  await t.test('meldet ein Kennzeichen, das im Block fehlt', () => {
+    const result = receipt(
+      [
+        { rohtext: 'A-WARE', einzelpreis_cent: 159, zeilensumme_cent: 159, steuer: 'A' },
+        { rohtext: 'C-WARE', einzelpreis_cent: 496, zeilensumme_cent: 496, steuer: 'C' },
+      ],
+      { summe_cent: 655, steuerblock: block },
+    )
+    assert.ok(result.warnings.some((w) => w.code === 'steuerklasse_unbekannt'))
+  })
+
+  await t.test('ohne Steuerblock bleibt es beim Gesamtabgleich', () => {
+    const result = receipt(vollstaendig, { summe_cent: 655 })
+    assert.deepEqual(result.taxGroups, [])
+    assert.equal(result.warnings.length, 0)
+  })
+
+  await t.test('liest das Kennzeichen je Position mit', () => {
+    const items = receipt(vollstaendig, { summe_cent: 655, steuerblock: block }).items
+    assert.deepEqual(
+      items.map((item) => item.taxCode),
+      ['B', 'B', 'B', 'A', 'A'],
+    )
+  })
+
+  await t.test('normalisiert Schreibweisen des Kennzeichens', () => {
+    const items = receipt([
+      { rohtext: 'A', zeilensumme_cent: 100, steuer: ' b ' },
+      { rohtext: 'B', zeilensumme_cent: 100, steuer: 'A=' },
+      { rohtext: 'C', zeilensumme_cent: 100, steuer: 'Mehrwertsteuer' },
+    ]).items
+    assert.deepEqual(
+      items.map((item) => item.taxCode),
+      ['B', 'A', null],
+    )
+  })
+})
+
 /* --------------------------------------------------------- Der ganze Bon */
 
 test('Bon als Ganzes', async (t) => {

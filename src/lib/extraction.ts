@@ -50,8 +50,29 @@ export interface ExtractedItem {
   totalCents: number
   depositCents: number
   discountCents: number
+  /**
+   * Das Steuerkennzeichen am Zeilenende — `A`, `B`, gelegentlich `1` oder `2`.
+   * Verbindet die Zeile mit dem Steuerblock am Fuß des Bons.
+   */
+  taxCode: string | null
   /** Null bei Pfand- und Rabattzeilen. */
   suggestion: ExtractedSuggestion | null
+}
+
+/**
+ * Eine Steuerklasse aus dem Block am Fuß des Bons, zusammen mit dem, was die
+ * Positionen dazu ergeben. Der Abgleich zeigt nicht nur, *dass* etwas fehlt,
+ * sondern *wo*.
+ */
+export interface TaxGroup {
+  /** Das Kennzeichen, wie es auf dem Bon steht: `A`, `B`, … */
+  code: string
+  /** Der gedruckte Bruttobetrag dieser Klasse in Cent. */
+  grossCents: number
+  /** Summe der Positionen mit diesem Kennzeichen. */
+  itemsTotalCents: number
+  /** Gedruckt minus gerechnet. 0 heißt: stimmt. */
+  differenceCents: number
 }
 
 /** Eine Auffälligkeit, die den Bon markiert, aber nicht ablehnt. */
@@ -73,6 +94,11 @@ export interface Extraction {
   itemsTotalCents: number
   /** Gedruckte Summe minus Positionssumme. Null ohne gelesene Gesamtsumme. */
   discrepancyCents: number | null
+  /**
+   * Der Abgleich je Steuerklasse. Leer, wenn kein Steuerblock lesbar war —
+   * dann bleibt es beim Gesamtabgleich über `discrepancyCents`.
+   */
+  taxGroups: TaxGroup[]
   warnings: ExtractionWarning[]
 }
 

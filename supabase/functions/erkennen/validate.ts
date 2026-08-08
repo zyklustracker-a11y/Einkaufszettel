@@ -46,6 +46,7 @@ export interface ModelItem {
   einheit?: unknown
   einzelpreis_cent?: unknown
   zeilensumme_cent?: unknown
+  steuer?: unknown
   vorschlag?: {
     name?: unknown
     kategorie?: unknown
@@ -55,6 +56,12 @@ export interface ModelItem {
   } | null
 }
 
+/** Eine Zeile aus dem Steuerblock am Fuß des Bons. */
+export interface ModelTaxGroup {
+  kennzeichen?: unknown
+  brutto_cent?: unknown
+}
+
 export interface ModelReceipt {
   lesbar?: unknown
   haendler?: unknown
@@ -62,6 +69,7 @@ export interface ModelReceipt {
   uhrzeit?: unknown
   summe_cent?: unknown
   positionen?: unknown
+  steuerblock?: unknown
 }
 
 /** Anzeige-Einheit einer Menge. Die Menge selbst ist immer g / ml / Stück. */
@@ -99,8 +107,30 @@ export interface ExtractedItem {
   depositCents: number
   /** Rabattbetrag dieser Zeile, immer positiv. Nur bei `kind: 'rabatt'` gesetzt. */
   discountCents: number
+  /**
+   * Das Steuerkennzeichen am Zeilenende — `A`, `B`, gelegentlich `1` oder `2`.
+   * Kein Preis und keine Menge, sondern der Steuersatz. Es verbindet die Zeile
+   * mit dem Steuerblock am Fuß des Bons und macht damit den Abgleich je
+   * Steuerklasse überhaupt erst möglich.
+   */
+  taxCode: string | null
   /** Null bei Pfand- und Rabattzeilen. */
   suggestion: ExtractedSuggestion | null
+}
+
+/**
+ * Eine Steuerklasse aus dem Block am Fuß des Bons, zusammen mit dem, was die
+ * Positionen dazu ergeben.
+ */
+export interface TaxGroup {
+  /** Das Kennzeichen, wie es auf dem Bon steht: `A`, `B`, … */
+  code: string
+  /** Der gedruckte Bruttobetrag dieser Klasse in Cent. */
+  grossCents: number
+  /** Summe der Positionen mit diesem Kennzeichen — vom Code addiert. */
+  itemsTotalCents: number
+  /** Gedruckt minus gerechnet. 0 heißt: stimmt. */
+  differenceCents: number
 }
 
 /**
@@ -121,6 +151,10 @@ export interface ExtractionWarning {
     | 'kategorie_unbekannt'
     | 'merkmal_verworfen'
     | 'position_unvollstaendig'
+    | 'steuerklasse_weicht_ab'
+    | 'steuerklasse_unbekannt'
+    | 'steuerblock_unstimmig'
+    | 'steuer_kennzeichen_fehlt'
   /** Bereits auf Deutsch und direkt anzeigbar. */
   message: string
   lineNo?: number
@@ -140,6 +174,11 @@ export interface Extraction {
   itemsTotalCents: number
   /** Gedruckte Summe minus Positionssumme. Null, wenn keine Summe gelesen wurde. */
   discrepancyCents: number | null
+  /**
+   * Der Abgleich je Steuerklasse. Leer, wenn kein Steuerblock lesbar war —
+   * dann bleibt es beim Gesamtabgleich über `discrepancyCents`.
+   */
+  taxGroups: TaxGroup[]
   warnings: ExtractionWarning[]
 }
 
@@ -231,6 +270,20 @@ function toUnit(value: unknown): ExtractedUnit | null {
   // "Stk", "stück", "st" meinen alle dasselbe.
   if (raw.startsWith('st')) return 'stk'
   return UNITS.includes(raw as ExtractedUnit) ? (raw as ExtractedUnit) : null
+}
+
+/**
+ * Das Steuerkennzeichen einer Zeile oder einer Steuerblock-Zeile.
+ *
+ * Zugelassen sind ein bis zwei Buchstaben oder Ziffern — `A`, `B`, `1`, `2`,
+ * gelegentlich `AW`. Alles andere ist keins: Damit fällt insbesondere die
+ * `Gesamtbetrag`-Zeile aus dem Steuerblock von selbst heraus, ohne dass es dafür
+ * eine Sonderregel bräuchte.
+ */
+function toTaxCode(value: unknown): string | null {
+  const raw = text(value)?.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  if (!raw) return null
+  return /^[A-Z0-9]{1,2}$/.test(raw) ? raw : null
 }
 
 function toKind(value: unknown): ItemKind {
@@ -422,6 +475,126 @@ function checkUnitPrice(
   }
 }
 
+/* ============================================================ Der Steuerblock */
+
+/**
+ * Abgleich je Steuerklasse — die schärfere Probe.
+ *
+ * Deutsche Bons drucken am Fuß eine Aufstellung je Steuersatz, und dieselben
+ * Kennzeichen stehen an jeder Position:
+ *
+ *     Steuer %      Netto   Steuer   Brutto
+ *     A= 19,0%       1,34     0,25     1,59
+ *     B=  7,0%       4,64     0,32     4,96
+ *     Gesamtbetrag   5,98     0,57     6,55
+ *
+ * **Warum das besser ist als der Gesamtabgleich:** Der sagt nur *dass* etwas
+ * fehlt, dieser sagt *wo*. Als das Modell zwei getrennte Artikel („VANILLE"
+ * 1,99 € und „MILCHSCHOKOSTR" 0,99 €) zu einem zusammenzog, war Klasse A
+ * korrekt und in Klasse B fehlten genau 0,99 € — damit ist die Zeile, an der man
+ * nachsehen muss, sofort eingegrenzt.
+ *
+ * Zwei Tore davor, damit die Probe nicht selbst Unsinn meldet:
+ *
+ *   1. **Der Block muss zu sich selbst passen.** Ergeben die Bruttobeträge
+ *      zusammen nicht die gedruckte Gesamtsumme, wurde der Block falsch
+ *      gelesen. Dann ist er als Maßstab untauglich und es bleibt beim
+ *      Gesamtabgleich.
+ *   2. **Jede Position braucht ein Kennzeichen.** Fehlt eines, wäre jede Klasse
+ *      zu niedrig und es hagelte Warnungen, die nur ein einziges nicht
+ *      gelesenes Kennzeichen bedeuten.
+ *
+ * Ohne Steuerblock passiert hier gar nichts — dann bleibt es beim
+ * Gesamtabgleich, so wie bisher.
+ */
+function checkTaxGroups(
+  items: ExtractedItem[],
+  rawBlock: unknown,
+  printedTotalCents: number | null,
+): { groups: TaxGroup[]; warnings: ExtractionWarning[] } {
+  const warnings: ExtractionWarning[] = []
+  const entries = Array.isArray(rawBlock) ? rawBlock : []
+
+  // Gedruckte Bruttobeträge je Kennzeichen. Das erste Vorkommen gewinnt.
+  const gross = new Map<string, number>()
+  for (const entry of entries) {
+    const row = (entry ?? {}) as ModelTaxGroup
+    const code = toTaxCode(row.kennzeichen)
+    const cents = toCents(row.brutto_cent)
+    if (code === null || cents === null || gross.has(code)) continue
+    gross.set(code, cents)
+  }
+
+  if (gross.size === 0) return { groups: [], warnings }
+
+  // Tor 1: Passt der Block zur gedruckten Gesamtsumme?
+  const blockTotal = [...gross.values()].reduce((sum, cents) => sum + cents, 0)
+  if (printedTotalCents !== null && blockTotal !== printedTotalCents) {
+    warnings.push({
+      code: 'steuerblock_unstimmig',
+      message:
+        `Der Steuerblock ergibt ${euro(blockTotal)}, gedruckt sind ${euro(printedTotalCents)} — ` +
+        'er wurde vermutlich falsch gelesen. Der Abgleich je Steuerklasse entfällt.',
+    })
+    return { groups: [], warnings }
+  }
+
+  // Tor 2: Trägt jede Position ein Kennzeichen?
+  if (items.some((item) => item.taxCode === null)) {
+    warnings.push({
+      code: 'steuer_kennzeichen_fehlt',
+      message:
+        'Nicht jede Position trägt ein Steuerkennzeichen — der genauere Abgleich je ' +
+        'Steuerklasse entfällt. Es bleibt beim Abgleich über die Gesamtsumme.',
+    })
+    return { groups: [], warnings }
+  }
+
+  const sums = new Map<string, number>()
+  for (const item of items) {
+    const code = item.taxCode as string
+    sums.set(code, (sums.get(code) ?? 0) + item.totalCents)
+  }
+
+  // Ein Kennzeichen an einer Position, das im Block fehlt: Dann stimmt eines von
+  // beidem nicht, und diese Positionen tauchen in keiner Klasse auf.
+  for (const code of sums.keys()) {
+    if (gross.has(code)) continue
+    warnings.push({
+      code: 'steuerklasse_unbekannt',
+      message:
+        `Das Steuerkennzeichen „${code}" steht an mindestens einer Position, aber nicht im ` +
+        'Steuerblock. Bitte prüfen.',
+    })
+  }
+
+  const groups: TaxGroup[] = [...gross.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([code, grossCents]) => {
+      const itemsTotalCents = sums.get(code) ?? 0
+      return {
+        code,
+        grossCents,
+        itemsTotalCents,
+        differenceCents: grossCents - itemsTotalCents,
+      }
+    })
+
+  for (const group of groups) {
+    if (group.differenceCents === 0) continue
+    const missing = group.differenceCents > 0
+    warnings.push({
+      code: 'steuerklasse_weicht_ab',
+      message:
+        `Steuerklasse ${group.code}: Die Positionen ergeben ${euro(group.itemsTotalCents)}, ` +
+        `gedruckt sind ${euro(group.grossCents)} — ${euro(Math.abs(group.differenceCents))} ` +
+        `${missing ? 'fehlen' : 'zu viel'}. Dort bitte nachsehen.`,
+    })
+  }
+
+  return { groups, warnings }
+}
+
 /* ============================================================== Der Vorschlag */
 
 /**
@@ -550,6 +723,7 @@ function resolveItem(
     // steht hier der Betrag und im Vorzeichen von totalCents die Richtung.
     depositCents: kind === 'pfand' ? Math.abs(totalCents) : 0,
     discountCents: kind === 'rabatt' ? Math.abs(totalCents) : 0,
+    taxCode: toTaxCode(raw.steuer),
     // Pfand und Rabatt sind keine Produkte: kein Klarname, keine Kategorie.
     suggestion:
       kind === 'artikel'
@@ -617,6 +791,11 @@ export function validateExtraction(model: ModelReceipt, context: ValidationConte
     }
   }
 
+  // Nach dem Gesamtabgleich, nicht davor: Die Warnung „es fehlen 0,99 €" gehört
+  // gelesen, bevor steht, in welcher Steuerklasse sie fehlen.
+  const tax = checkTaxGroups(items, model.steuerblock, printedTotalCents)
+  warnings.push(...tax.warnings)
+
   return {
     merchantName,
     purchasedOn,
@@ -625,6 +804,7 @@ export function validateExtraction(model: ModelReceipt, context: ValidationConte
     items,
     itemsTotalCents,
     discrepancyCents,
+    taxGroups: tax.groups,
     warnings,
   }
 }
