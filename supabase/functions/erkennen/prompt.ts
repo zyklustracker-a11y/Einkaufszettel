@@ -233,8 +233,9 @@ Bei allem, was kein Milchprodukt ist, stehen beide Felder auf "unbekannt".
 /* ----------------------------------------------------------------------------
  * 7. Das Antwortschema
  *
- * Wenn du hier Felder änderst, müssen schema.ts und validate.ts mitgeändert
- * werden — das ist die eine Stelle, an der eine Änderung nicht allein bleibt.
+ * Wenn du hier Felder änderst, muss validate.ts mitgeändert werden — das ist
+ * die eine Stelle, an der eine Änderung nicht allein bleibt. Text innerhalb der
+ * bestehenden Felder darfst du dagegen frei umformulieren.
  * -------------------------------------------------------------------------- */
 
 const SCHEMA = `

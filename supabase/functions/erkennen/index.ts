@@ -23,9 +23,47 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { buildSystemPrompt, USER_PROMPT } from './prompt.ts'
-import type { ErrorBody, ExtractionErrorCode, ExtractionResponse } from './schema.ts'
 import { callMistral } from './mistral.ts'
 import { isUnreadable, parseModelJson, validateExtraction } from './validate.ts'
+import type { Extraction } from './validate.ts'
+
+/* -------------------------------------------------- Was die Funktion liefert */
+
+/** Der Erfolgsfall. Steht wortgleich in `src/lib/extraction.ts`. */
+interface ExtractionResponse {
+  extraction: Extraction
+  /** Das benutzte Modell, für den Aufklappbereich im Korrektur-Screen. */
+  model: string
+  /** Dauer des Modell-Aufrufs in Millisekunden. */
+  durationMs: number
+  /** Die unverarbeitete Antwort des Modells — Grundlage zum Nachschärfen. */
+  raw: string
+}
+
+/**
+ * Warum es nicht geklappt hat. Der Code ist für die App, der Text für den
+ * Nutzer — technische Meldungen erreichen die Oberfläche nie.
+ */
+type ExtractionErrorCode =
+  | 'nicht_angemeldet'
+  | 'kein_haushalt'
+  | 'kein_bild'
+  | 'bild_zu_gross'
+  | 'kein_schluessel'
+  | 'kontingent'
+  | 'zeitueberschreitung'
+  | 'modell_fehler'
+  | 'modell_json'
+  | 'bild_unlesbar'
+  | 'unbekannt'
+
+interface ErrorBody {
+  code: ExtractionErrorCode
+  /** Bereits auf Deutsch und direkt anzeigbar. */
+  message: string
+  /** Die Rohantwort, falls es eine gab — hilft beim Nachschärfen des Prompts. */
+  raw?: string
+}
 
 /**
  * Die App läuft auf einer anderen Adresse als die Funktion, deshalb braucht der

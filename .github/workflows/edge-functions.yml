@@ -1,0 +1,70 @@
+# Rollt die Edge Functions aus, sobald sich etwas an ihnen ändert.
+#
+# Damit entfällt das Kopieren von Hand: Was auf `main` liegt, läuft in Supabase.
+# Das ist vor allem für `supabase/functions/erkennen/prompt.ts` gedacht — der
+# Prompt wird noch öfter nachgeschärft, und jede Änderung soll ohne Klickarbeit
+# beim nächsten Scan wirken.
+#
+# ----------------------------------------------------------------------------
+# EINMALIG EINZURICHTEN: zwei Geheimnisse im GitHub-Repository
+#
+# GitHub → Settings → Secrets and variables → Actions → New repository secret
+#
+#   SUPABASE_ACCESS_TOKEN   Supabase → oben rechts aufs Konto → Account Settings
+#                           → Access Tokens → Generate new token.
+#                           Der Wert wird nur einmal angezeigt.
+#
+#   SUPABASE_PROJECT_ID     Supabase → Project Settings → General → Reference ID.
+#                           Steht auch in der Adresse: /project/DIESER-TEIL
+#
+# Beides sind Geheimnisse, keine Variablen: GitHub zeigt sie nach dem Speichern
+# nie wieder an und schwärzt sie in den Protokollen.
+# ----------------------------------------------------------------------------
+#
+# Kosten: keine. Der Lauf dauert gut eine Minute, und GitHub Actions ist für
+# öffentliche Repositories unbegrenzt und für private mit 2000 Minuten im Monat
+# kostenlos — das reicht für rund 1500 Ausrollungen.
+
+name: Edge Functions ausrollen
+
+on:
+  push:
+    branches: [main]
+    # Nur wenn sich wirklich etwas an den Funktionen geändert hat. Ein neuer
+    # Screen in der App löst kein Ausrollen aus.
+    paths:
+      - 'supabase/functions/**'
+      - '.github/workflows/edge-functions.yml'
+  # Zusätzlich von Hand auslösbar: GitHub → Actions → diesen Workflow → Run workflow.
+  # Praktisch, wenn in Supabase etwas verstellt wurde und der Stand neu drauf soll.
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Erst prüfen, dann ausrollen. Die Tests decken `validate.ts` ab — also
+      # genau die Stelle, an der ein Fehler unbemerkt falsche Beträge erzeugen
+      # würde. Schlagen sie fehl, geht nichts nach Supabase.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # Ohne Namen dahinter: alle Funktionen unter supabase/functions/.
+      # Aktuell ist das nur `erkennen`; kommt später eine dazu, wird sie ohne
+      # Änderung an dieser Datei mit ausgerollt.
+      - name: Funktionen ausrollen
+        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
