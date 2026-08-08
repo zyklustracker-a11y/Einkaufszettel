@@ -47,6 +47,53 @@ Nach ein paar Sekunden sollte unten **Success. No rows returned** stehen.
 
 ---
 
+## 2b. Die zweite Migration: die Auswertungs-Sichten
+
+`migrations/0002_views.sql` legt keine Tabellen an, sondern **fünfzehn Sichten
+(Views)**. Eine Sicht ist eine gespeicherte Abfrage: Sie speichert keine Daten,
+sondern rechnet bei jedem Aufruf aus den Tabellen neu. Damit wandern
+Monatsübersicht, Kategoriensummen, Ausgabenverlauf, Top-Produkte,
+Merkmals-Ausgaben und Bestpreise dorthin, wo sie hingehören — in die Datenbank
+statt in den Browser.
+
+Genauso ausführen wie oben: **SQL Editor → New query → Datei einfügen → Run.**
+Erwartet: **Success. No rows returned.**
+
+Ohne diese Migration zeigt die App auf jedem Screen den Hinweis „Die
+Auswertungs-Sichten fehlen in der Datenbank" — daran erkennst du sofort, dass
+sie noch fehlt.
+
+**Prüfen, ob alle fünfzehn da sind:**
+
+```sql
+select table_name
+from information_schema.views
+where table_schema = 'public'
+order by table_name;
+```
+
+**Und dass keine davon fremde Haushalte durchlässt:**
+
+```sql
+select c.relname as sicht,
+       (c.reloptions::text like '%security_invoker=true%') as haushaltstrennung_aktiv
+from pg_class c
+join pg_namespace n on n.oid = c.relnamespace
+where c.relkind = 'v' and n.nspname = 'public'
+order by c.relname;
+```
+
+Erwartet: fünfzehn Zeilen, **überall `true`**. Dieser Schalter ist der Grund,
+warum eine Sicht nur die eigenen Zeilen zeigt. Stünde irgendwo `false`, liefe
+die Sicht mit den Rechten ihres Eigentümers und umginge die Zugriffsregeln —
+dann bitte melden.
+
+> Die Datei lässt sich gefahrlos erneut ausführen: Alle Sichten stehen als
+> `create or replace`. Nur wenn sich die Spalten einer Sicht ändern, musst du
+> sie vorher einmal mit `drop view … cascade` entfernen.
+
+---
+
 ## 3. Prüfen, ob alles angekommen ist
 
 Öffne eine neue Abfrage und führe diese vier Blöcke nacheinander aus.
@@ -228,13 +275,15 @@ Vercel-Adresse und einmal `http://localhost:5173/` fürs Entwickeln.
 
 ## 8. Was noch nicht dabei ist
 
-Bewusst nicht Teil dieser Migration, das kommt in späteren Schritten:
+Bewusst nicht Teil dieser Migrationen, das kommt in späteren Schritten:
 
 - **Speicherort für die Bon-Fotos.** `receipts.image_path` ist vorbereitet, der
   Storage-Bucket wird in Schritt 4 angelegt.
-- **Abfragen in der App.** Die App liest weiterhin aus `src/mocks/`. Der Umbau
-  auf echte Abfragen ist Schritt 2b.
-- **Auswertungs-Sichten** für Bestpreise und Trends — Schritt 5.
+- **Schreiben von Bons.** Die App liest seit Schritt 2c alles aus der Datenbank
+  und schreibt bislang nur das Monatsbudget. Bons anlegen, korrigieren und
+  löschen kommt in Schritt 4.
+- **Merkmale bearbeiten.** Die Einstellungen zeigen die dreizehn Merkmale, aber
+  schreibgeschützt — das Bearbeiten kommt in Schritt 6.
 
 ---
 

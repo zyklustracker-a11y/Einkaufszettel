@@ -293,11 +293,25 @@ nur die Voreinstellung.
 | Schritt | Inhalt | Status |
 |---|---|---|
 | 1 | React+Vite+TS-Gerüst, Design-Tokens, alle 11 Screens auf Mock-Daten, PWA | erledigt |
-| 2 | Supabase-Schema inkl. `household_id`, Merkmalstabellen und RLS; Mocks gegen echte Queries tauschen | offen |
-| 3 | Google-Login über Supabase Auth | offen |
+| 2a | Supabase-Schema inkl. `household_id`, Merkmalstabellen und RLS | erledigt |
+| 2b | Google-Login über Supabase Auth | erledigt |
+| 2c | Mocks gegen echte Queries tauschen, Aggregationen als SQL-Views, Leerzustände | erledigt |
 | 4 | Kamera im Screen, Edge Function mit Mistral, JSON-Validierung, Speichern aus dem Korrektur-Screen | offen |
-| 5 | Bestpreis- und Analyse-Logik als SQL-Views | offen |
-| 6 | Health-Score, Merkmals-Verwaltung in den Einstellungen, Sparhinweise, Push zum Monatsreport | offen |
+| 5 | Bestpreis- und Analyse-Logik als SQL-Views | mit 2c vorgezogen |
+| 6 | Health-Score, Merkmals-Verwaltung in den Einstellungen, Sparhinweise, Push zum Monatsreport | Score erledigt, Rest offen |
+
+Der ursprüngliche Schritt 3 (Google-Login) wurde als 2b vorgezogen, weil ohne
+Anmeldung keine Abfrage eine Zeile zurückgibt: Die Zugriffsregeln hängen am
+angemeldeten Nutzer. Die Auswertungs-Sichten aus Schritt 5 entstanden mit 2c
+mit, weil die Screens sie ohnehin brauchten, um überhaupt Zahlen zeigen zu
+können.
+
+**Wo der Health-Score lebt — und warum nur dort:** Die Formel samt Gruppenregel
+steht in `src/lib/score.ts` und ist mit 28 Tests festgenagelt. In SQL steht sie
+bewusst **nicht**. Die Datenbank liefert mit `v_score_items` nur die Zutaten
+(Positionsbetrag und Merkmalsschlüssel je Position); gerechnet wird an genau
+einer Stelle. Eine zweite Implementierung in SQL wäre eine zweite Wahrheit, die
+beim nächsten Gewichtungswechsel auseinanderliefe.
 
 Jeder Schritt wird einzeln beauftragt und abgenommen. Nicht vorgreifen.
 

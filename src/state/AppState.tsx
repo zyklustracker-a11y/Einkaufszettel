@@ -1,22 +1,29 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { getDefaultSettings } from '../data'
-import type { Settings } from '../types'
 
 export type Theme = 'light' | 'dark'
 
+/**
+ * Was rein am Gerät hängt.
+ *
+ * Seit Schritt 2c steht hier bewusst **kein** Monatsbudget mehr: das gehört dem
+ * Haushalt und liegt in der Tabelle `budgets`, nicht im Browser-Speicher. Sonst
+ * hätte jedes Familienmitglied ein anderes Budget vor Augen.
+ *
+ * Übrig bleiben zwei Einstellungen, die tatsächlich pro Gerät gelten: das
+ * Erscheinungsbild und ob Bon-Fotos nach der Erkennung gelöscht werden.
+ */
 interface AppState {
   theme: Theme
   toggleTheme: () => void
-  settings: Settings
-  setMonthlyBudgetCents: (value: number) => void
+  deleteReceiptPhotos: boolean
   toggleDeleteReceiptPhotos: () => void
 }
 
 const AppStateContext = createContext<AppState | null>(null)
 
 const THEME_KEY = 'receipt-ai:theme'
-const SETTINGS_KEY = 'receipt-ai:settings'
+const PHOTOS_KEY = 'receipt-ai:deleteReceiptPhotos'
 
 /** Light is the default; a stored choice or the OS preference can override it. */
 function initialTheme(): Theme {
@@ -25,19 +32,14 @@ function initialTheme(): Theme {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
-function initialSettings(): Settings {
-  const stored = localStorage.getItem(SETTINGS_KEY)
-  if (!stored) return getDefaultSettings()
-  try {
-    return { ...getDefaultSettings(), ...(JSON.parse(stored) as Partial<Settings>) }
-  } catch {
-    return getDefaultSettings()
-  }
+function initialDeletePhotos(): boolean {
+  const stored = localStorage.getItem(PHOTOS_KEY)
+  return stored === null ? true : stored === 'true'
 }
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(initialTheme)
-  const [settings, setSettings] = useState<Settings>(initialSettings)
+  const [deleteReceiptPhotos, setDeleteReceiptPhotos] = useState<boolean>(initialDeletePhotos)
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -49,24 +51,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [theme])
 
   useEffect(() => {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
-  }, [settings])
+    localStorage.setItem(PHOTOS_KEY, String(deleteReceiptPhotos))
+  }, [deleteReceiptPhotos])
 
   const toggleTheme = useCallback(() => setTheme((t) => (t === 'dark' ? 'light' : 'dark')), [])
 
-  const setMonthlyBudgetCents = useCallback(
-    (monthlyBudgetCents: number) => setSettings((s) => ({ ...s, monthlyBudgetCents })),
-    [],
-  )
-
-  const toggleDeleteReceiptPhotos = useCallback(
-    () => setSettings((s) => ({ ...s, deleteReceiptPhotos: !s.deleteReceiptPhotos })),
-    [],
-  )
+  const toggleDeleteReceiptPhotos = useCallback(() => setDeleteReceiptPhotos((v) => !v), [])
 
   const value = useMemo(
-    () => ({ theme, toggleTheme, settings, setMonthlyBudgetCents, toggleDeleteReceiptPhotos }),
-    [theme, toggleTheme, settings, setMonthlyBudgetCents, toggleDeleteReceiptPhotos],
+    () => ({ theme, toggleTheme, deleteReceiptPhotos, toggleDeleteReceiptPhotos }),
+    [theme, toggleTheme, deleteReceiptPhotos, toggleDeleteReceiptPhotos],
   )
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>

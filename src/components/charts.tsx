@@ -7,6 +7,10 @@ import styles from './charts.module.css'
 /* ------------------------------------------------------------------- donut */
 
 export function CategoryDonut({ slices, totalCents }: { slices: CategorySlice[]; totalCents: number }) {
+  // Ohne Segmente gäbe `donutGradient` ein leeres `conic-gradient()` zurück —
+  // ungültiges CSS. Den Leerzustand zeigt der Screen darüber.
+  if (slices.length === 0) return null
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
       <div className={styles.donut} style={{ background: donutGradient(slices) }} role="img" aria-label="Ausgaben pro Kategorie">
@@ -48,6 +52,9 @@ export function Sparkline({
   const width = 300
   const baseline = height - 10
   const points = linePoints(values, width, baseline, 10)
+
+  // Ohne Messpunkte gibt es keine Linie zu zeichnen.
+  if (points.length === 0) return null
 
   return (
     <svg
@@ -105,6 +112,9 @@ export interface Bar {
 
 /** Vertical bars. Anything above `overThresholdCents` turns red — the budget breach. */
 export function BarChart({ bars, overThresholdCents }: { bars: Bar[]; overThresholdCents?: number }) {
+  if (bars.length === 0) return null
+  // `|| 1` fängt den Monat ab, in dem noch nichts gekauft wurde: sonst teilte
+  // die Höhenrechnung durch null.
   const max = Math.max(...bars.map((b) => b.amountCents)) || 1
 
   return (
@@ -129,6 +139,7 @@ export function BarChart({ bars, overThresholdCents }: { bars: Bar[]; overThresh
 /* -------------------------------------------------------- horizontal bars */
 
 export function CategoryBars({ slices }: { slices: CategorySlice[] }) {
+  if (slices.length === 0) return null
   const max = Math.max(...slices.map((s) => s.amountCents)) || 1
 
   return (

@@ -1,5 +1,6 @@
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { AppLoading } from './components/AppLoading'
+import { DataGate } from './components/DataGate'
 import { TabBar } from './components/TabBar'
 import { Analytics } from './screens/Analytics'
 import { Dashboard } from './screens/Dashboard'
@@ -56,17 +57,23 @@ export function App() {
           element={status === 'signedIn' ? <Navigate to="/" replace /> : <Login />}
         />
 
+        {/*
+          Erst Zugriffsschutz, dann Stammdaten: Ohne Anmeldung gibt es nichts zu
+          laden, und ohne geladene Stammdaten kann kein Screen etwas anzeigen.
+        */}
         <Route element={<RequireAuth />}>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/scan" element={<ScanCamera />} />
-          <Route path="/scan/verarbeitung" element={<ScanProcessing />} />
-          <Route path="/scan/pruefen" element={<ScanReview />} />
-          <Route path="/bestpreise" element={<Prices />} />
-          <Route path="/bestpreise/:productId" element={<ProductDetail />} />
-          <Route path="/analysen" element={<Analytics />} />
-          <Route path="/gesundheit" element={<Health />} />
-          <Route path="/einkauf/:receiptId" element={<PurchaseDetail />} />
-          <Route path="/einstellungen" element={<SettingsScreen />} />
+          <Route element={<DataGate />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/scan" element={<ScanCamera />} />
+            <Route path="/scan/verarbeitung" element={<ScanProcessing />} />
+            <Route path="/scan/pruefen" element={<ScanReview />} />
+            <Route path="/bestpreise" element={<Prices />} />
+            <Route path="/bestpreise/:productId" element={<ProductDetail />} />
+            <Route path="/analysen" element={<Analytics />} />
+            <Route path="/gesundheit" element={<Health />} />
+            <Route path="/einkauf/:receiptId" element={<PurchaseDetail />} />
+            <Route path="/einstellungen" element={<SettingsScreen />} />
+          </Route>
         </Route>
 
         {/*
