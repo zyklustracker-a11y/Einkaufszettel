@@ -27,6 +27,14 @@ export type { QueryState } from './useQuery'
 
 export { DataError, germanDataError } from './client'
 
+/**
+ * Die Bon-Erkennung. Sie spricht nicht mit der Datenbank, sondern mit der Edge
+ * Function — steht aber aus demselben Grund hier: Screens erreichen den Server
+ * ausschließlich über diese Schicht.
+ */
+export { extractReceipt, ExtractionError } from './extract'
+export type { ExtractionPhase } from './extract'
+
 export {
   getDashboardData,
   getAnalyticsData,

@@ -21,6 +21,20 @@ export const supabaseConfigError: string | null =
     ? 'Die Verbindung zur Datenbank ist noch nicht eingerichtet. In der Datei .env fehlen VITE_SUPABASE_URL oder VITE_SUPABASE_ANON_KEY.'
     : null
 
+/**
+ * Basisadresse der Edge Functions, also `https://….supabase.co/functions/v1`.
+ *
+ * Die Bon-Erkennung wird bewusst mit einem gewöhnlichen `fetch` aufgerufen und
+ * nicht über `supabase.functions.invoke`: Nur so kommen der HTTP-Status und der
+ * Fehlertext der Funktion unverändert in der App an — und genau daraus entsteht
+ * die deutsche Meldung, die der Nutzer sieht. `invoke` verpackt beides in einen
+ * allgemeinen Fehler.
+ */
+export const functionsUrl = url ? `${url.replace(/\/+$/, '')}/functions/v1` : ''
+
+/** Derselbe öffentliche Schlüssel, den auch der Client oben benutzt. */
+export const supabaseAnonKey = anonKey ?? ''
+
 export const supabase = createClient(
   // Platzhalter, damit das Anlegen des Clients nicht wirft, wenn die Werte
   // fehlen. Ohne sie kommt man ohnehin nicht über den Anmelde-Screen hinaus.
