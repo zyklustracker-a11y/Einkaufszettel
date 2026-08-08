@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import type { CapturedImage } from '../lib/camera'
 import { getPendingCapture } from '../lib/capture'
 import styles from './ScanProcessing.module.css'
 
@@ -24,6 +25,21 @@ const STEPS = [
 /** Dateigröße in KB – nur zur Kontrolle, dass das Verkleinern wirkt. */
 function sizeInKb(bytes: number): string {
   return `${Math.round(bytes / 1024)} KB`
+}
+
+/**
+ * Maße als „Quelle → Ergebnis", sobald verkleinert wurde.
+ *
+ * Steht nur eine Zahl da, war das Kamerabild schon klein genug. Das ist der
+ * Unterschied, den man am Gerät sonst nicht sieht: ob ein kleines Bild aus dem
+ * Verkleinern kommt oder aus einer Kamera, die nicht mehr hergibt.
+ */
+function dimensions(capture: CapturedImage): string {
+  const result = `${capture.width} × ${capture.height} px`
+  if (capture.sourceWidth === capture.width && capture.sourceHeight === capture.height) {
+    return result
+  }
+  return `${capture.sourceWidth} × ${capture.sourceHeight} → ${result}`
 }
 
 /**
@@ -73,7 +89,7 @@ export function ScanProcessing() {
             weder hochgeladen noch gespeichert.
           </p>
           <p className={styles.meta}>
-            {capture.width} × {capture.height} px · {sizeInKb(capture.blob.size)} · JPEG
+            {dimensions(capture)} · {sizeInKb(capture.blob.size)} · JPEG
           </p>
         </div>
 

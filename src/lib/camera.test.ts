@@ -38,4 +38,23 @@ describe('fitWithin', () => {
   test('rundet nie auf null – ein extrem schmales Bild behält eine Kante', () => {
     assert.deepEqual(fitWithin(3, 90000), { width: 1, height: 2000 })
   })
+
+  /*
+   * Der Fehler, den ein iPhone-Test zutage gefördert hat: Das Ergebnis war
+   * 2000 × 2000 und der Bon unten abgeschnitten. Schuld war zwar die Anfrage an
+   * die Kamera und nicht diese Funktion – aber ein quadratisches Ergebnis aus
+   * einer nicht quadratischen Quelle darf hier gar nicht erst herauskommen.
+   */
+  test('macht aus einem hochkanten Bild nie ein quadratisches', () => {
+    for (const [width, height] of [
+      [1080, 1920],
+      [1440, 1920],
+      [3024, 4032],
+      [2160, 3840],
+    ]) {
+      const fitted = fitWithin(width, height)
+      assert.notEqual(fitted.width, fitted.height, `${width}×${height} wurde quadratisch`)
+      assert.ok(fitted.height > fitted.width, `${width}×${height} verlor das Hochformat`)
+    }
+  })
 })
