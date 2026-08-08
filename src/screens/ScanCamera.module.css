@@ -135,16 +135,6 @@
   border-radius: 0 0 12px 0;
 }
 
-.scanLine {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 50%;
-  height: 2px;
-  background: #3fbf83;
-  opacity: 0.55;
-}
-
 .placeholder {
   position: absolute;
   left: 0;
@@ -235,12 +225,21 @@
   cursor: pointer;
 }
 
-.sideButton--off {
-  border-color: #232725;
-  background: transparent;
-  color: #5e655f;
-  font-family: ui-monospace, Menlo, monospace;
-  font-weight: 400;
+/* Taschenlampe an: gefüllt statt umrandet, damit der Zustand ablesbar ist. */
+.sideButton--on {
+  border-color: #3fbf83;
+  background: #3fbf83;
+  color: #0b0d0c;
+}
+
+/*
+ * Platzhalter für den Fall, dass das Gerät keine Taschenlampe meldet – auf iOS
+ * der Regelfall. Er hält den Auslöser mittig zwischen den beiden Außenplätzen,
+ * ohne einen Knopf vorzutäuschen.
+ */
+.sideSpacer {
+  width: 56px;
+  height: 56px;
 }
 
 .shutter {
