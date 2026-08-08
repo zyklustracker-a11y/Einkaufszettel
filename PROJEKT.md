@@ -521,3 +521,24 @@ Der Nutzer ist Einsteiger im Web-Development. Konsequenzen:
 - Bei mehrdeutigen Anforderungen nachfragen statt raten.
 - Keine ungefragten Zusatz-Features, keine zusätzlichen Abhängigkeiten ohne Rückfrage.
 - Nach größeren Blöcken anhalten und zeigen, was läuft, bevor es weitergeht.
+
+### Fertig heißt: auf `main`
+
+**Jede Änderung wird nach `main` zusammengeführt, nicht nur als Pull Request
+abgelegt.** Das gehört zur Aufgabe und ist kein zusätzlicher Schritt, um den
+eigens gebeten werden müsste.
+
+Der Grund: Der Nutzer testet ausschließlich in der laufenden App. Erst auf
+`main` rollt GitHub Actions die Edge Function aus und erst von dort baut Vercel
+die Oberfläche. Ein offener Pull Request ist für ihn unsichtbar — Arbeit, die
+dort liegen bleibt, ist so gut wie nicht gemacht.
+
+Der Pull Request bleibt trotzdem der Weg dorthin: Er hält fest, *was* geändert
+wurde und warum, und macht es später nachlesbar. Er ist die Beschreibung, nicht
+das Ziel.
+
+**Geht das Zusammenführen ausnahmsweise nicht** — etwa weil ein Konflikt
+besteht, eine Prüfung fehlschlägt oder die Berechtigung fehlt —, dann wird das
+**ausdrücklich gesagt**, samt Grund und samt dem, was der Nutzer selbst tun
+muss. Stillschweigend einen offenen Pull Request zu hinterlassen und ihn als
+erledigt zu melden, ist der Fehler, den diese Regel verhindert.
