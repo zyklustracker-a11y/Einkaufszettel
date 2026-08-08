@@ -292,6 +292,19 @@ Nur eine 4K-Kamera (2160 × 3840) landet bei 1125 × 2000. Ein quadratisches Erg
 jetzt immer ein Fehler. Der Verarbeitungs-Screen zeigt deshalb `Quelle → Ergebnis`, sobald
 verkleinert wurde, und sonst nur eine Zahl.
 
+**Keine Taschenlampe auf iOS.** Der Blitz-Knopf aus dem Entwurf versucht, die Lampe über
+`track.applyConstraints({ advanced: [{ torch: true }] })` zu schalten, und erscheint nur, wenn
+`track.getCapabilities().torch` sie meldet. WebKit meldet sie nicht und übergeht die Vorgabe
+([WebKit-Bug 243075](https://bugs.webkit.org/show_bug.cgi?id=243075)); weil auf iOS auch jeder
+andere Browser WebKit benutzt, gilt das dort für alle. Auf dem iPhone verschwindet der Knopf
+deshalb, und der Auslöser rückt in die Mitte. Kann Safari es eines Tages, erscheint er von
+selbst – geprüft wird zur Laufzeit, nicht anhand des Browsernamens.
+
+**Keine Scan-Linie.** Die waagerechte Linie in der Bildmitte ist ersatzlos entfernt. Sie sah
+nach Analyse aus, aber das Livebild wird nirgends ausgewertet – erkannt wird erst in 4b, und
+zwar auf dem Server. Die vier grünen Ecken bleiben, die helfen wirklich beim Ausrichten.
+Grundsatz: Solange nichts analysiert wird, deutet die Oberfläche das auch nicht an.
+
 ## Notfallweg ohne Kamera
 
 „Bon-Text einfügen": Der Nutzer kopiert den Text per iOS Live Text aus einem Foto und fügt

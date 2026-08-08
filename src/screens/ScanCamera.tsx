@@ -50,6 +50,22 @@ const CONSTRAINTS: MediaStreamConstraints = {
  */
 const DESIGN_ASPECT = 3 / 4.2
 
+/**
+ * Kann dieses Gerät die Taschenlampe über den Kamerastrom schalten?
+ *
+ * Die Angabe kommt je nach Browser als `true` oder als Liste der möglichen
+ * Werte. Fehlt `getCapabilities` oder das Feld, gilt sie als nicht vorhanden.
+ * Geraten wird hier nichts: Ein Knopf, der nichts tut, ist schlechter als kein
+ * Knopf.
+ *
+ * Der Typ von `torch` steht in `vite-env.d.ts` – die Standardtypen kennen ihn
+ * nicht.
+ */
+function hasTorch(track: MediaStreamTrack): boolean {
+  const torch = track.getCapabilities?.().torch
+  return Array.isArray(torch) ? torch.includes(true) : torch === true
+}
+
 const HINTS: Record<Mode, string> = {
   starting: 'Kamera wird gestartet…',
   live: 'Bon flach und gut beleuchtet fotografieren – gesamte Länge im Rahmen.',
@@ -99,6 +115,18 @@ export function ScanCamera() {
    * erst auf dem fertigen Foto.
    */
   const [aspect, setAspect] = useState(DESIGN_ASPECT)
+  /**
+   * Taschenlampe: erst wenn das Gerät sie meldet, gibt es überhaupt einen Knopf.
+   *
+   * Auf iOS bleibt das nach heutigem Stand aus – WebKit meldet `torch` gar
+   * nicht erst und ignoriert die Vorgabe (WebKit-Bug 243075). Der Knopf
+   * verschwindet dort also, statt untätig herumzustehen. Sollte Safari es
+   * eines Tages können, erscheint er von selbst.
+   */
+  const [torch, setTorch] = useState<{ available: boolean; on: boolean }>({
+    available: false,
+    on: false,
+  })
 
   /*
    * Kamerastrom starten und – das ist der eigentliche Punkt – zuverlässig
@@ -118,6 +146,8 @@ export function ScanCamera() {
       streamRef.current = null
       if (stream) for (const track of stream.getTracks()) track.stop()
       if (videoRef.current) videoRef.current.srcObject = null
+      // Ohne Strom gibt es keine Lampe – und beim nächsten Start wird neu geprüft.
+      setTorch({ available: false, on: false })
     }
 
     const fallBack = () => {
@@ -160,6 +190,9 @@ export function ScanCamera() {
         }
         wantsLiveRef.current = true
         setMode('live')
+
+        const [track] = stream.getVideoTracks()
+        if (track) setTorch({ available: hasTorch(track), on: false })
       } catch {
         fallBack()
       }
@@ -243,6 +276,23 @@ export function ScanCamera() {
     }
   }
 
+  const toggleTorch = async () => {
+    const track = streamRef.current?.getVideoTracks()[0]
+    if (!track) return
+
+    const next = !torch.on
+    try {
+      await track.applyConstraints({ advanced: [{ torch: next }] })
+      setTorch({ available: true, on: next })
+    } catch {
+      /*
+       * Das Gerät hat die Lampe gemeldet, nimmt sie aber doch nicht an. Dann
+       * verschwindet der Knopf, statt weiter etwas zu versprechen.
+       */
+      setTorch({ available: false, on: false })
+    }
+  }
+
   const use = () => {
     if (!shot) return
     setPendingCapture(shot.image)
@@ -300,14 +350,20 @@ export function ScanCamera() {
               />
             )}
 
-            {/* Rahmen-Hilfe: nur beim Ausrichten, nicht über der Vorschau. */}
+            {/*
+              Rahmen-Hilfe: nur beim Ausrichten, nicht über der Vorschau.
+
+              Hier lag einmal zusätzlich eine waagerechte Linie in der Bildmitte.
+              Sie sah aus wie eine Scan-Linie, aber es wird nichts gescannt – das
+              Livebild wird nirgends ausgewertet. Ersatzlos entfernt: Solange
+              nichts analysiert wird, darf die Oberfläche das auch nicht andeuten.
+            */}
             {mode === 'live' && !shot && (
               <>
                 <span className={`${styles.corner} ${styles['corner--tl']}`} />
                 <span className={`${styles.corner} ${styles['corner--tr']}`} />
                 <span className={`${styles.corner} ${styles['corner--bl']}`} />
                 <span className={`${styles.corner} ${styles['corner--br']}`} />
-                <span className={styles.scanLine} />
               </>
             )}
 
@@ -351,9 +407,25 @@ export function ScanCamera() {
               disabled={busy || mode === 'starting'}
               aria-label="Auslösen"
             />
-            <div className={`${styles.sideButton} ${styles['sideButton--off']}`} aria-hidden="true">
-              Blitz
-            </div>
+            {/*
+              Meldet das Gerät keine Taschenlampe, steht hier nur noch ein
+              leerer Platzhalter: Er hält den Auslöser in der Mitte, ohne einen
+              Knopf vorzutäuschen. Auf iOS ist das der Regelfall.
+            */}
+            {torch.available ? (
+              <button
+                type="button"
+                className={
+                  torch.on ? `${styles.sideButton} ${styles['sideButton--on']}` : styles.sideButton
+                }
+                onClick={toggleTorch}
+                aria-pressed={torch.on}
+              >
+                Blitz
+              </button>
+            ) : (
+              <div className={styles.sideSpacer} aria-hidden="true" />
+            )}
           </div>
         </>
       )}

@@ -15,3 +15,21 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+/**
+ * Die Taschenlampe der Kamera fehlt in den Standardtypen: Sie gehört zur
+ * Image-Capture-Erweiterung von Media Capture, die `lib.dom` nicht abdeckt.
+ * Hier nachgetragen, damit der Kamera-Screen ohne `any` auskommt.
+ *
+ * Die Fähigkeit kommt je nach Browser als `true` oder als Liste der möglichen
+ * Werte zurück. Auf iOS meldet WebKit sie derzeit überhaupt nicht und
+ * übergeht die Vorgabe (WebKit-Bug 243075) – deshalb wird sie zur Laufzeit
+ * geprüft und nicht vorausgesetzt.
+ */
+interface MediaTrackCapabilities {
+  torch?: boolean | boolean[]
+}
+
+interface MediaTrackConstraintSet {
+  torch?: ConstrainBoolean
+}
