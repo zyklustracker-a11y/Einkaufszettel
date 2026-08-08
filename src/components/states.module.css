@@ -1,6 +1,8 @@
 /* Lade-, Fehler- und Leerzustände.
    Bewusst dieselben Bausteine wie überall: Kartenradius 20px, 18px Innenabstand,
-   14px zwischen Karten, Farben nur über die Token aus tokens.css. */
+   Farben nur über die Token aus tokens.css. Den Abstand nach oben regelt nicht
+   diese Datei, sondern die globale Klasse `cardLike` — nur dort kann eine Regel
+   auch die gefüllte Karte nebenan treffen. */
 
 /* ------------------------------------------------------------------- laden */
 
@@ -11,9 +13,7 @@
   box-shadow: var(--shadow);
 }
 
-.skeletonCard + .skeletonCard {
-  margin-top: 14px;
-}
+/* Der Abstand zum Vorgänger kommt aus `.cardLike` in global.css. */
 
 .line {
   height: 12px;
@@ -91,11 +91,12 @@
   text-align: center;
 }
 
-.empty + .empty,
-.empty + .card,
-.card + .empty {
-  margin-top: 14px;
-}
+/*
+ * Hier stand einmal `.empty + .card, .card + .empty`. Das konnte nicht
+ * funktionieren: In einer Modul-Datei ist `.card` ein lokaler, gehashter Name
+ * und trifft die globale Karte nie. Der Abstand kommt jetzt aus `.cardLike`
+ * in global.css und gilt in beide Richtungen.
+ */
 
 /* Die schlanke Variante innerhalb einer bestehenden Karte — dort trägt schon
    die Karte den Rahmen, hier bleibt nur der Text. Linksbündig, damit er unter
