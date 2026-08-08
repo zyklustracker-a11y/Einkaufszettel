@@ -41,6 +41,8 @@
   align-items: center;
   justify-content: center;
   padding: 14px 34px;
+  /* Bezugspunkt für Vorschau und Wartehinweis, die den Rahmen überdecken. */
+  position: relative;
 }
 
 .frame {
@@ -50,6 +52,27 @@
   border-radius: 14px;
   background: repeating-linear-gradient(115deg, #1c201e 0 14px, #171b19 14px 28px);
   position: relative;
+}
+
+/* Während der Vorschau bringt das Bild seinen eigenen Grund mit. */
+.frame--shot {
+  background: none;
+}
+
+/*
+ * Das Livebild füllt den Rahmen (`cover`). Aufgenommen wird das *ganze*
+ * Kamerabild, also eher mehr als hier zu sehen ist – so kann am Rand nichts
+ * verloren gehen, was im Rahmen noch sichtbar war.
+ */
+.video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 14px;
+  /* Ein noch leerer Strom soll den Rahmen nicht weiß aufblitzen lassen. */
+  background: transparent;
 }
 
 /* Four L-shaped corner guides that sit just outside the frame. */
@@ -112,6 +135,57 @@
   color: #6c736e;
 }
 
+/*
+ * Die Vorschau legt sich über das Livebild und füllt genau den Rahmen.
+ * `contain` statt `cover`: Zum Beurteilen der Schärfe muss der ganze Bon zu
+ * sehen sein; beschneiden würde ausgerechnet die Ränder verstecken, an denen
+ * ein zu knapper Ausschnitt auffällt. Die eigene Hintergrundfarbe deckt dabei
+ * das Schraffurmuster des leeren Rahmens ab.
+ */
+.shot {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 14px;
+  background: #0b0d0c;
+}
+
+.busy {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(11, 13, 12, 0.82);
+  border: 1px solid #333835;
+  color: #d9ded9;
+  font-size: 12.5px;
+}
+
+/* Rückfallweg: kein Livebild, deshalb auch kein Rahmen zum Ausrichten. */
+.fallback {
+  max-width: 300px;
+  text-align: center;
+}
+
+.fallbackTitle {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.fallbackText {
+  color: #a7aea9;
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0;
+  text-wrap: pretty;
+}
+
 .hint {
   color: #d9ded9;
   font-size: 14.5px;
@@ -155,4 +229,51 @@
   border: 5px solid #fff;
   background: #3fbf83;
   cursor: pointer;
+}
+
+.shutter:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Entscheidung nach der Aufnahme; steht an der Stelle der Auslöser-Reihe. */
+.decision {
+  display: flex;
+  gap: 12px;
+  padding: 0 34px calc(env(safe-area-inset-bottom, 0px) + 32px);
+}
+
+.secondary,
+.primary {
+  flex: 1;
+  height: 52px;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.secondary {
+  border: 1px solid #333835;
+  background: #191d1b;
+  color: #fff;
+}
+
+.primary {
+  border: none;
+  background: #3fbf83;
+  color: #fff;
+}
+
+/*
+ * Die beiden Datei-Felder werden nur über `click()` bedient. Sie sind deshalb
+ * unsichtbar, aber nicht `display: none` – ausgeblendete Felder lassen sich
+ * auf iOS nicht zuverlässig programmatisch öffnen.
+ */
+.fileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
