@@ -18,10 +18,10 @@ import styles from './states.module.css'
 /** Platzhalter in Kartenform. Kein Spinner: das Gerüst bleibt so ruhig stehen. */
 export function LoadingCards({ count = 3, chart = true }: { count?: number; chart?: boolean }) {
   return (
-    <div role="status" aria-live="polite">
+    <div className="cardLike" role="status" aria-live="polite">
       <span className="visuallyHidden">Daten werden geladen…</span>
       {Array.from({ length: count }, (_, index) => (
-        <div key={index} className={styles.skeletonCard} aria-hidden="true">
+        <div key={index} className={`cardLike ${styles.skeletonCard}`} aria-hidden="true">
           <div className={`${styles.line} ${styles['line--title']}`} />
           <div className={`${styles.line} ${styles['line--wide']}`} />
           <div className={`${styles.line} ${styles['line--half']}`} />
@@ -36,7 +36,7 @@ export function LoadingCards({ count = 3, chart = true }: { count?: number; char
 
 export function ErrorCard({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <section className={styles.errorCard} role="alert">
+    <section className={`cardLike ${styles.errorCard}`} role="alert">
       <div className={styles.errorTitle}>Das hat nicht geklappt</div>
       <p className={styles.errorText}>{message}</p>
       {onRetry && (
@@ -70,7 +70,12 @@ export function EmptyState({
   inline?: boolean
 }) {
   return (
-    <section className={inline ? styles.inline : styles.empty}>
+    /*
+     * `cardLike` nur für die eigenständige Karte. Die schlanke Variante steht
+     * *innerhalb* einer Karte und ist dort kein eigener Block — sie bekäme
+     * sonst einen Kartenabstand zu ihren Nachbarn im Karteninneren.
+     */
+    <section className={inline ? styles.inline : `cardLike ${styles.empty}`}>
       {!inline && (
         <div className={styles.mark} aria-hidden="true">
           <ScanIcon />

@@ -127,7 +127,26 @@ button {
   box-shadow: var(--shadow);
 }
 
-.card + .card {
+/*
+ * Senkrechter Abstand zwischen den Blöcken eines Screens.
+ *
+ * `.card` ist die gefüllte Karte. `.cardLike` markiert alles, was an ihrer
+ * Stelle stehen kann, ohne eine zu sein: Leerzustand, Fehlerkarte,
+ * Ladeplatzhalter. Beide gehören in dieselbe Regel, sonst hinge der Abstand
+ * daran, ob eine Karte gerade gefüllt ist oder einen Leerzustand zeigt —
+ * genau das fehlte auf dem Dashboard zwischen „Noch keine Einkäufe" und
+ * „Monatsbudget".
+ *
+ * Warum die Regel hier steht und nicht in `states.module.css`: Dort ist
+ * `.card` ein lokaler, gehashter Name (`._card_1a1da_95`) und trifft die
+ * globale Karte nie. Eine frühere Fassung hatte dort `.empty + .card` stehen —
+ * die Regel war da, griff aber nicht und war deshalb nicht zu sehen.
+ *
+ * Karten mit eigenem `margin-top`/`margin-bottom` (etwa `listCard` in den
+ * Screen-Modulen) bleiben bewusst außen vor: Sie regeln ihren Abstand
+ * unabhängig von den Nachbarn und bekämen hier einen zweiten dazu.
+ */
+:is(.card, .cardLike) + :is(.card, .cardLike) {
   margin-top: 14px;
 }
 

@@ -179,7 +179,7 @@ function DashboardBody({ data }: { data: DashboardData }) {
       </section>
 
       {currentScore === null ? (
-        <section className="card" style={{ marginTop: 14 }}>
+        <section className="card">
           <div className="cardTitle">Gesundheits-Score</div>
           <EmptyState inline title="Noch kein Score">
             Der Score entsteht aus den Merkmalen deiner Lebensmittel, gewichtet nach ihrem
