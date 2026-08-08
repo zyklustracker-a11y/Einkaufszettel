@@ -328,6 +328,53 @@ unauffälliger Link auf dem Kamera-Screen.
 
 Die Modellantwort wird **nie ungeprüft gespeichert.**
 
+### Ergänzt mit Schritt 4b-1 (Erkennung, noch ohne Speichern)
+
+**Schritt 4b wurde geteilt.** 4b-1 ist die Erkennung bis zum Korrektur-Screen,
+4b-2 das Speichern. Grund: Der Prompt sitzt beim ersten Mal nicht. Solange nichts
+geschrieben wird, lässt sich beliebig oft testen, ohne hinterher in der Datenbank
+aufzuräumen. Die Punkte 5 und 7 der Liste oben (`product_mappings` auflösen,
+zurückschreiben) sind deshalb noch offen.
+
+**Wo was liegt:** `supabase/functions/erkennen/`. Die Aufteilung ist Absicht —
+`prompt.ts` ist die eine Datei, an der ohne Codeverständnis nachgeschärft wird;
+`index.ts` (Ablauf), `mistral.ts` (Netz), `validate.ts` (Prüfung) und `schema.ts`
+(Formen) bleiben davon unberührt. Anleitung: `supabase/functions/README.md`.
+
+**Die Funktion arbeitet mit dem Token des Nutzers, nicht mit einem
+Dienstschlüssel.** Sie prüft die Anmeldung als Allererstes — sonst könnte jeder
+Fremde das freie Kontingent verbrennen — und liest Merkmale und Kategorien unter
+denselben Zugriffsregeln wie die App. Auf einen fremden Haushalt kann sie damit
+gar nicht sehen; das verhindert die Datenbank und nicht der Code.
+
+**Der Prompt entsteht bei jedem Aufruf neu** aus den *aktiven* Merkmalen des
+Haushalts (`key` plus `description`) und den Kategorien. Ein neues Merkmal wirkt
+ab dem nächsten Scan, ohne Ausrollen. Merkmalsschlüssel, die das Modell erfindet,
+verwirft `validate.ts`; dasselbe gilt für unbekannte Kategorien, die dann als
+„offen" stehen bleiben statt geraten zu werden.
+
+**Umgerechnet wird im Code, nicht im Modell.** Verlangt sind ganze Cent und ganze
+Basiseinheiten. Kommt etwas anderes an, rechnet `validate.ts` um — und zwar nur,
+wo es belegbar ist: Eine Kommazahl kann keine Cent-Angabe sein, also war Euro
+gemeint. Eine Menge in der falschen Einheit wird nur dann umgestellt, wenn
+Menge × Einzelpreis mit der einen Lesart die gedruckte Zeilensumme ergibt und mit
+der anderen nicht. Geht keine Lesart auf, bleibt der Wert stehen und die Zeile
+bekommt eine Warnung. **Raten ist auch dem Code verboten.**
+
+**Markieren statt ablehnen.** Abweichende Summe, unlesbarer Betrag, verworfenes
+Merkmal: alles wird zur Warnung, der Bon kommt trotzdem durch. Zurückgewiesen
+wird nur, was gar nicht lesbar ist — dann sagt das Modell selbst `lesbar: false`.
+
+**Die Rohantwort ist einsehbar**, als Aufklappbereich unten im Korrektur-Screen.
+Ohne sie lässt sich nicht sehen, *warum* eine Zeile falsch gelesen wurde, und
+damit auch der Prompt nicht nachschärfen. Sie wird nirgends gespeichert.
+
+**Das Ergebnis reist im Speicher**, wie schon das Foto (`src/lib/scanResult.ts`
+neben `capture.ts`). Es gibt in 4b-1 keinen Bon in der Datenbank, den der
+Korrektur-Screen abfragen könnte. Mit 4b-2 fällt dieser Umweg weg: Dann entsteht
+ein Bon mit Status `extracted`, und der Screen lädt ihn wie jeder andere Screen.
+Der Abfrageweg über `getScannedReceipt` bleibt deshalb stehen.
+
 ## Datenmodell-Grundsätze
 
 - **Haushalt statt Einzelnutzer.** Alle Familienmitglieder sehen dieselben Daten. Jede
@@ -364,7 +411,8 @@ nur die Voreinstellung.
 | 2b | Google-Login über Supabase Auth | erledigt |
 | 2c | Mocks gegen echte Queries tauschen, Aggregationen als SQL-Views, Leerzustände | erledigt |
 | 4a | Kamera im Screen: Livebild, Rückfallweg, Galerie, Verkleinern, Vorschau | erledigt |
-| 4b | Edge Function mit Mistral, JSON-Validierung, Speichern aus dem Korrektur-Screen | offen |
+| 4b-1 | Edge Function mit Mistral, Prompt aus den Merkmalen, JSON-Validierung, Anzeige im Korrektur-Screen | erledigt |
+| 4b-2 | Speichern aus dem Korrektur-Screen: `product_mappings`, `canonical_products`, Bon und Positionen | offen |
 | 5 | Bestpreis- und Analyse-Logik als SQL-Views | mit 2c vorgezogen |
 | 6 | Health-Score, Merkmals-Verwaltung in den Einstellungen, Sparhinweise, Push zum Monatsreport | Score erledigt, Rest offen |
 

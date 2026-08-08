@@ -29,8 +29,8 @@ wenn sich das Logo ändert).
 | `/anmelden` | Login mit Google-Button |
 | `/` | Dashboard: Monatsstand, Budget, Kategorien, Score, letzte Einkäufe |
 | `/scan` | Kamera mit Rahmenhilfe |
-| `/scan/verarbeitung` | „KI liest deinen Bon…" – läuft automatisch weiter |
-| `/scan/pruefen` | Korrektur der erkannten Positionen inkl. Bottom-Sheet |
+| `/scan/verarbeitung` | „KI liest deinen Bon…" – ruft die Edge Function auf |
+| `/scan/pruefen` | Das Erkannte prüfen, inkl. Summenabgleich und Rohantwort |
 | `/bestpreise` | Durchsuchbare Produktliste mit Bestpreis je Produkt |
 | `/bestpreise/:productId` | Preisverlauf und alle Käufe eines Produkts |
 | `/analysen` | Zeitraum-Umschalter, Verlauf, Kategorien, Sparpotenzial, Top 10 |
@@ -54,7 +54,22 @@ src/
   components/       Tab-Bar, Bottom-Sheet, Charts, kleine UI-Bausteine
   screens/          Eine Datei pro Screen plus CSS-Modul
   styles/tokens.css Design-Tokens für Light und Dark
+
+supabase/
+  migrations/       Schema und Auswertungs-Sichten
+  functions/erkennen/  Edge Function: Bon-Foto → geprüfte Bon-Daten (Mistral)
 ```
+
+### Bon-Erkennung
+
+Das Foto geht an die Edge Function `erkennen`, nie direkt an Mistral — der
+API-Schlüssel liegt ausschließlich dort. Die Funktion baut den Prompt zur
+Laufzeit aus den aktiven Merkmalen des Haushalts, prüft die Antwort (Schema,
+Beträge in Cent, Mengen in Basiseinheiten, Summenabgleich, bekannte Schlüssel)
+und gibt sie zusammen mit der Rohantwort zurück.
+
+Nachschärfen des Prompts: `supabase/functions/erkennen/prompt.ts`.
+Einrichtung: [`supabase/functions/README.md`](supabase/functions/README.md).
 
 ### Anschluss an Supabase
 

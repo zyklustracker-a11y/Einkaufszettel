@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { captureFrame, fileToJpeg } from '../lib/camera'
 import type { CapturedImage } from '../lib/camera'
 import { clearPendingCapture, setPendingCapture } from '../lib/capture'
+import { clearPendingExtraction } from '../lib/scanResult'
 import styles from './ScanCamera.module.css'
 
 /**
@@ -136,8 +137,10 @@ export function ScanCamera() {
    * abbaut), beim Wechsel in den Hintergrund und beim Schließen des Tabs.
    */
   useEffect(() => {
-    // Ein alter Bon aus einem früheren Durchlauf hat hier nichts zu suchen.
+    // Ein alter Bon aus einem früheren Durchlauf hat hier nichts zu suchen —
+    // weder das Foto noch ein Erkennungs-Ergebnis dazu.
     clearPendingCapture()
+    clearPendingExtraction()
 
     let cancelled = false
 

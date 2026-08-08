@@ -125,6 +125,103 @@
   padding: 12px 4px 8px;
 }
 
+/* ------------------------------------------- Hinweise aus der Prüfung */
+
+/*
+ * Was die Prüfung angemerkt hat, ohne den Bon abzulehnen: umgerechnete Mengen,
+ * verworfene Merkmale, fehlende Beträge. Bewusst unauffällig — es sind
+ * Anmerkungen, keine Fehler.
+ */
+.notes {
+  margin-top: 14px;
+  background: var(--card);
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+}
+
+.notesTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.notesList {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* --------------------------------------------- Rohantwort des Modells */
+
+/*
+ * Zugeklappt und ohne Farbe: Der Bereich dient dem Nachschärfen des Prompts und
+ * soll im Alltag nicht ablenken.
+ */
+.raw {
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.rawSummary {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.rawSummary::before {
+  content: '›';
+  display: inline-block;
+  margin-right: 6px;
+  transition: transform 0.15s ease;
+}
+
+.raw[open] .rawSummary::before {
+  transform: rotate(90deg);
+}
+
+.rawMeta {
+  margin-top: 10px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.rawCopy {
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  background: var(--card2);
+  color: var(--muted);
+  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.rawText {
+  margin: 8px 0 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--card2);
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text);
+  /* Lange JSON-Zeilen dürfen umbrechen statt den Screen breit zu ziehen. */
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 50vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* ------------------------------------------------------------------ footer */
 
 .footer {
@@ -144,6 +241,24 @@
   font-size: 17px;
   font-weight: 700;
   cursor: pointer;
+}
+
+/*
+ * Abgeschaltet, aber sichtbar: In Schritt 4b-1 wird ausdrücklich noch nichts
+ * gespeichert. Der Knopf zeigt trotzdem, wo es hingehört.
+ */
+.save:disabled {
+  background: var(--chip);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.saveHint {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--muted);
+  text-align: center;
 }
 
 /* --------------------------------------------------------------- edit form */

@@ -273,15 +273,31 @@ Vercel-Adresse und einmal `http://localhost:5173/` fürs Entwickeln.
 
 ---
 
-## 8. Was noch nicht dabei ist
+## 8. Die Bon-Erkennung
+
+Seit Schritt 4b-1 gibt es eine Edge Function, die das Bon-Foto an Mistral gibt
+und geprüfte Daten zurückliefert. Sie braucht **ein** Secret in Supabase und
+sonst nichts — keine Migration, keine Änderung an den Zugriffsregeln.
+
+Die Einrichtung steht Schritt für Schritt in
+[`functions/README.md`](functions/README.md).
+
+Was die Funktion mit der Datenbank macht: Sie **liest** `household_members`,
+`traits` und `categories`, um daraus den Prompt zu bauen. Geschrieben wird
+nichts — das kommt in 4b-2.
+
+---
+
+## 9. Was noch nicht dabei ist
 
 Bewusst nicht Teil dieser Migrationen, das kommt in späteren Schritten:
 
 - **Speicherort für die Bon-Fotos.** `receipts.image_path` ist vorbereitet, der
-  Storage-Bucket wird in Schritt 4 angelegt.
+  Storage-Bucket wird in Schritt 4b-2 angelegt — falls die Fotos überhaupt
+  aufgehoben werden sollen.
 - **Schreiben von Bons.** Die App liest seit Schritt 2c alles aus der Datenbank
   und schreibt bislang nur das Monatsbudget. Bons anlegen, korrigieren und
-  löschen kommt in Schritt 4.
+  löschen kommt in Schritt 4b-2.
 - **Merkmale bearbeiten.** Die Einstellungen zeigen die dreizehn Merkmale, aber
   schreibgeschützt — das Bearbeiten kommt in Schritt 6.
 

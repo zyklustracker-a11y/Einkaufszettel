@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "node --test \"src/**/*.test.ts\"",
+    "test": "node --test \"src/**/*.test.ts\" \"supabase/functions/**/*.test.ts\"",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {

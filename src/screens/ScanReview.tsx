@@ -5,7 +5,9 @@ import { ReceiptItemList, TraitLegend } from '../components/ReceiptItemList'
 import { Async, EmptyState } from '../components/states'
 import { getCategories, getMerchantName, getScannedReceipt, useQuery } from '../data'
 import { receiptItemsTotal } from '../lib/derive'
+import type { ExtractedItem, ExtractionResponse } from '../lib/extraction'
 import { formatDate, formatEuro, roundCents } from '../lib/format'
+import { getPendingExtraction } from '../lib/scanResult'
 import type { CategoryId, Quantity, Receipt, ReceiptItem } from '../types'
 import styles from './ScanReview.module.css'
 
@@ -51,26 +53,268 @@ function pricingFields(item: ReceiptItem): { amount: number; priceCents: number 
 /**
  * Der Korrektur-Screen.
  *
- * Gezeigt wird der zuletzt erkannte, noch nicht bestätigte Bon. Solange es
- * keinen gibt — und nach dem Umbau auf die leere Datenbank gibt es keinen —
- * steht hier eine Erklärung statt einer leeren Liste. Die Fußleiste mit dem
- * Speichern-Knopf erscheint nur dann, wenn es auch etwas zu speichern gibt;
- * sie ist im Layout ein Geschwister des Scrollbereichs und darf deshalb nicht
- * in ihn hineinrutschen.
+ * Er hat seit Schritt 4b-1 zwei Quellen, und die Reihenfolge ist Absicht:
+ *
+ *   1. **Das frisch Erkannte**, das der Verarbeitungs-Screen im Speicher
+ *      hinterlegt hat. In diesem Schritt wird ausdrücklich noch nichts
+ *      gespeichert — es gäbe also gar nichts abzufragen.
+ *   2. **Ein Bon aus der Datenbank** mit Status `extracted`. Diesen Weg gibt es
+ *      noch nicht zu sehen (es schreibt ja niemand), er bleibt aber stehen: Mit
+ *      4b-2 wird er der Regelfall, und der Umweg über den Speicher entfällt.
+ *
+ * Ohne beides steht hier eine Erklärung statt einer leeren Liste.
  */
 export function ScanReview() {
+  const extraction = getPendingExtraction()
+
+  return (
+    <div className={styles.screen}>
+      {extraction ? <ExtractionReview result={extraction} /> : <StoredReview />}
+    </div>
+  )
+}
+
+/* ========================================================= frisch erkannt */
+
+/**
+ * Aus einer erkannten Position wird eine Position, wie die Anzeige sie kennt.
+ *
+ * Damit zeigen Positionsliste, Badges und Legende das Erkannte mit denselben
+ * Bausteinen wie einen gespeicherten Bon — nichts wird für diesen Schritt
+ * nachgebaut.
+ */
+function toReceiptItem(item: ExtractedItem): ReceiptItem {
+  const suggestion = item.suggestion
+  return {
+    id: String(item.lineNo),
+    // Der Klarname ist ein Vorschlag; ohne ihn steht da, was auf dem Bon stand.
+    name: suggestion?.name ?? item.rawText,
+    categoryId: categoryLabel(item),
+    quantity: toQuantity(item),
+    totalCents: item.totalCents,
+    traitIds: suggestion?.traitKeys ?? [],
+    ...(suggestion && suggestion.milkHeat !== 'unbekannt' ? { milkHeat: suggestion.milkHeat } : {}),
+    ...(suggestion && suggestion.milkHomogenized !== 'unbekannt'
+      ? { milkHomogenized: suggestion.milkHomogenized }
+      : {}),
+  }
+}
+
+/**
+ * Was im Kategorie-Chip steht.
+ *
+ * Die Positionsliste schlägt den Schlüssel in den Stammdaten nach und zeigt
+ * sonst den Schlüssel selbst. Genau das wird hier ausgenutzt: Pfand, Rabatt und
+ * „noch offen" sind keine Kategorien und sollen auch nicht so aussehen, als
+ * hätte das Modell sich für eine entschieden.
+ */
+function categoryLabel(item: ExtractedItem): CategoryId {
+  if (item.kind === 'pfand') return 'Pfand' as CategoryId
+  if (item.kind === 'rabatt') return 'Rabatt' as CategoryId
+  return (item.suggestion?.categoryKey ?? 'Kategorie offen') as CategoryId
+}
+
+/**
+ * Menge und Einzelpreis in die Anzeigeform bringen.
+ *
+ * Wortgleich zu `toQuantity` in `src/data/queries.ts`, und aus demselben Grund:
+ * Intern ist eine Menge eine ganze Zahl in der kleinsten Einheit (Gramm,
+ * Milliliter, Stück), angezeigt wird in Kilo, Liter oder Stück.
+ */
+function toQuantity(item: ExtractedItem): Quantity {
+  if (item.quantityBase === null || item.quantityUnit === null) return { kind: 'unknown' }
+
+  if (item.quantityUnit === 'stk') {
+    const count = item.quantityBase
+    const unitPriceCents =
+      item.unitPriceCents ?? (count > 0 ? Math.round(item.totalCents / count) : item.totalCents)
+    return { kind: 'count', count, unitPriceCents }
+  }
+
+  const perThousand = item.quantityUnit === 'kg' || item.quantityUnit === 'l'
+  const unit = item.quantityUnit === 'kg' || item.quantityUnit === 'g' ? 'kg' : 'l'
+  const amount = item.quantityBase / 1000
+  const factor = perThousand ? 1 : 1000
+  const pricePerUnitCents =
+    item.unitPriceCents !== null
+      ? item.unitPriceCents * factor
+      : amount > 0
+        ? Math.round(item.totalCents / amount)
+        : item.totalCents
+
+  return { kind: 'weight', amount, unit, pricePerUnitCents }
+}
+
+function ExtractionReview({ result }: { result: ExtractionResponse }) {
+  const { extraction } = result
+  const items = extraction.items.map(toReceiptItem)
+
+  // Der Abgleich kommt aus der Funktion; sie hat ihn beim Prüfen gerechnet.
+  const printed = extraction.printedTotalCents
+  const reconciles = printed !== null && extraction.discrepancyCents === 0
+
+  /* Warnungen, die nicht schon im Summen-Banner stehen. */
+  const notes = extraction.warnings.filter(
+    (warning) => warning.code !== 'summe_weicht_ab' && warning.code !== 'summe_fehlt',
+  )
+
+  return (
+    <>
+      <div className={styles.scroll}>
+        <Head />
+
+        <div className={styles.summary}>
+          <div className={styles.summaryTop}>
+            <div style={{ flex: 1 }}>
+              <div className={styles.merchant}>
+                {extraction.merchantName ?? 'Händler nicht erkannt'}
+              </div>
+              <div className={styles.date}>
+                {extraction.purchasedOn ? formatDate(extraction.purchasedOn) : 'Datum nicht erkannt'}
+                {extraction.purchasedAt ? ` · ${extraction.purchasedAt} Uhr` : ''} · {items.length}{' '}
+                {items.length === 1 ? 'Position' : 'Positionen'}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div className={styles.totalLabel}>Bon-Summe</div>
+              <div className={styles.total}>{printed === null ? '—' : formatEuro(printed)}</div>
+            </div>
+          </div>
+
+          <div className={reconciles ? `${styles.banner} ${styles['banner--ok']}` : styles.banner}>
+            <div className={styles.bannerIcon} aria-hidden="true">
+              {reconciles ? '✓' : '!'}
+            </div>
+            <div className={styles.bannerText}>
+              {printed === null
+                ? `Keine gedruckte Gesamtsumme gelesen – die Positionen ergeben ${formatEuro(extraction.itemsTotalCents)}.`
+                : reconciles
+                  ? `Positionssumme ${formatEuro(extraction.itemsTotalCents)} stimmt mit dem Bon-Total überein.`
+                  : `Positionssumme ${formatEuro(extraction.itemsTotalCents)} weicht um ${formatEuro(Math.abs(extraction.discrepancyCents ?? 0))} ab – bitte prüfen.`}
+            </div>
+          </div>
+        </div>
+
+        {items.length === 0 ? (
+          <EmptyState inline title="Keine Positionen erkannt">
+            Die Erkennung hat auf diesem Bon keine einzelne Zeile gefunden. Scanne ihn noch einmal –
+            flach, gut beleuchtet und in ganzer Länge im Rahmen.
+          </EmptyState>
+        ) : (
+          <>
+            <div className={styles.hint}>
+              Korrigieren und Speichern kommen in Schritt 4b-2. Bis dahin ist das hier reine Anzeige.
+            </div>
+            <ReceiptItemList items={items} />
+            <TraitLegend items={items} />
+          </>
+        )}
+
+        {notes.length > 0 && (
+          <div className={styles.notes}>
+            <div className={styles.notesTitle}>Hinweise der Prüfung</div>
+            <ul className={styles.notesList}>
+              {notes.map((warning, index) => (
+                <li key={`${warning.code}-${warning.lineNo ?? index}`}>{warning.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <RawAnswer result={result} />
+      </div>
+
+      <DisabledSaveBar totalCents={printed ?? extraction.itemsTotalCents} />
+    </>
+  )
+}
+
+/**
+ * Die unverarbeitete Antwort des Modells.
+ *
+ * Ohne sie lässt sich der Prompt nicht nachschärfen: Erst der Rohtext zeigt, ob
+ * das Modell eine Zeile übersehen, den Steuerbuchstaben als Preis gelesen oder
+ * schlicht kein sauberes JSON geliefert hat. Zugeklappt, damit sie im Alltag
+ * nicht stört — die Datei `supabase/functions/erkennen/prompt.ts` ist die
+ * Stelle, an der die Erkenntnis dann landet.
+ */
+function RawAnswer({ result }: { result: ExtractionResponse }) {
+  const [copied, setCopied] = useState(false)
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(result.raw)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Ohne Zwischenablage-Berechtigung bleibt der Text zum Markieren stehen.
+      setCopied(false)
+    }
+  }
+
+  return (
+    <details className={styles.raw}>
+      <summary className={styles.rawSummary}>Rohantwort des Modells</summary>
+      <div className={styles.rawMeta}>
+        {result.model} · {(result.durationMs / 1000).toFixed(1)} s · {result.raw.length} Zeichen
+      </div>
+      <button type="button" className={styles.rawCopy} onClick={copy}>
+        {copied ? 'Kopiert' : 'Text kopieren'}
+      </button>
+      <pre className={styles.rawText}>{result.raw}</pre>
+    </details>
+  )
+}
+
+/**
+ * Der Speichern-Knopf ist da, aber abgeschaltet.
+ *
+ * Absicht aus Schritt 4b-1: Der Prompt sitzt beim ersten Mal nicht, und es soll
+ * sich beliebig oft testen lassen, ohne hinterher in der Datenbank aufzuräumen.
+ * Der Knopf steht trotzdem hier, damit sichtbar bleibt, wo das Speichern
+ * hingehört.
+ */
+function DisabledSaveBar({ totalCents }: { totalCents: number }) {
+  return (
+    <div className={styles.footer}>
+      <button type="button" className={styles.save} disabled aria-disabled="true">
+        Speichern · {formatEuro(totalCents)}
+      </button>
+      <p className={styles.saveHint}>
+        Speichern kommt in Schritt 4b-2. Dieser Bon wird noch nicht in die Datenbank geschrieben.
+      </p>
+    </div>
+  )
+}
+
+/* ==================================================== aus der Datenbank */
+
+function Head() {
+  return (
+    <div className={styles.head}>
+      <Link to="/scan" replace className={styles.rescan}>
+        Erneut scannen
+      </Link>
+      <div className={styles.headTitle}>Prüfen &amp; korrigieren</div>
+    </div>
+  )
+}
+
+/**
+ * Der Weg über die Datenbank: der zuletzt erkannte, noch nicht bestätigte Bon.
+ *
+ * Solange nichts geschrieben wird, führt er verlässlich in den Leerzustand.
+ * Genau das ist der Fall, den ein Neuladen des Korrektur-Screens auslöst — das
+ * Ergebnis im Speicher überlebt es nicht.
+ */
+function StoredReview() {
   const state = useQuery(getScannedReceipt, [])
   const receipt = state.data ?? null
 
   return (
-    <div className={styles.screen}>
+    <>
       <div className={styles.scroll}>
-        <div className={styles.head}>
-          <Link to="/scan" replace className={styles.rescan}>
-            Erneut scannen
-          </Link>
-          <div className={styles.headTitle}>Prüfen &amp; korrigieren</div>
-        </div>
+        <Head />
 
         <Async state={state} loading={<LoadingNote />}>
           {(loaded) =>
@@ -87,7 +331,7 @@ export function ScanReview() {
       </div>
 
       {receipt && <SaveBar totalCents={receipt.printedTotalCents} />}
-    </div>
+    </>
   )
 }
 
@@ -103,7 +347,7 @@ function SaveBar({ totalCents }: { totalCents: number }) {
   const navigate = useNavigate()
   return (
     <div className={styles.footer}>
-      {/* Das Speichern selbst kommt in Schritt 4. */}
+      {/* Das Speichern selbst kommt in Schritt 4b-2. */}
       <button type="button" className={styles.save} onClick={() => navigate('/', { replace: true })}>
         Speichern · {formatEuro(totalCents)}
       </button>
@@ -112,7 +356,7 @@ function SaveBar({ totalCents }: { totalCents: number }) {
 }
 
 function ReviewBody({ receipt }: { receipt: Receipt }) {
-  // Corrections live here until "Speichern"; Schritt 4 posts them.
+  // Corrections live here until "Speichern"; Schritt 4b-2 posts them.
   const [items, setItems] = useState<ReceiptItem[]>(receipt.items)
   const [editing, setEditing] = useState<ReceiptItem | null>(null)
 
