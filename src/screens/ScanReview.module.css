@@ -119,6 +119,68 @@
   color: var(--green);
 }
 
+/*
+ * Das Datumsfeld sieht aus wie der Text daneben und ist trotzdem ein echtes
+ * Eingabefeld — auf dem iPhone öffnet es den Systemauswähler. Ohne das
+ * Zurücksetzen der Standarddarstellung setzt Safari einen eigenen Rahmen und
+ * eine eigene Schrift, und die Zeile springt.
+ */
+.dateInput {
+  -webkit-appearance: none;
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  min-height: 0;
+}
+
+.dateInput:focus {
+  outline: none;
+  color: var(--green);
+}
+
+/* -------------------------------------------------- neutraler Hinweis */
+
+/*
+ * Für Auskünfte, nicht für Mängel: ungewöhnliches Bon-Datum etwa. Bewusst in
+ * denselben ruhigen Farben wie der Rest der Karte — wer hier Gelb oder Rot
+ * sähe, suchte einen Fehler, den es nicht gibt.
+ */
+.notice {
+  margin-top: 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 13px;
+  border-radius: 13px;
+  background: var(--card2);
+  border: 1px solid var(--line);
+}
+
+.noticeIcon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border-radius: 50%;
+  background: var(--chip);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.noticeText {
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .hint {
   font-size: 12px;
   color: var(--muted);
