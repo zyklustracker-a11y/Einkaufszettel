@@ -15,7 +15,7 @@ Kassenzettel fotografieren → Positionen erfassen → Lebensmittelausgaben ausw
 Nutzerkreis: eine Familie, ca. 3 Personen. Keine Veröffentlichung, kein App Store, keine Fremdnutzer.
 
 Referenzen im Repo:
-- `receipt-ai-designsystem/project/Receipt AI.dc.html` – das verbindliche Design (11 Screens)
+- `design/project/Receipt AI.dc.html` – das verbindliche Design (11 Screens)
 - Konzeptdokument und Design-Prompt des Nutzers
 
 ## Harte Rahmenbedingung: das Projekt muss kostenlos bleiben
@@ -292,7 +292,7 @@ nur die Voreinstellung.
 
 | Schritt | Inhalt | Status |
 |---|---|---|
-| 1 | React+Vite+TS-Gerüst, Design-Tokens, alle 11 Screens auf Mock-Daten, PWA | offen |
+| 1 | React+Vite+TS-Gerüst, Design-Tokens, alle 11 Screens auf Mock-Daten, PWA | erledigt |
 | 2 | Supabase-Schema inkl. `household_id`, Merkmalstabellen und RLS; Mocks gegen echte Queries tauschen | offen |
 | 3 | Google-Login über Supabase Auth | offen |
 | 4 | Kamera im Screen, Edge Function mit Mistral, JSON-Validierung, Speichern aus dem Korrektur-Screen | offen |
