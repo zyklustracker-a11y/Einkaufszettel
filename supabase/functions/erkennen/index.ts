@@ -61,6 +61,8 @@ import type {
 import { applyKnownProducts, mappingKey } from './mappings.ts'
 import type { KnownProducts } from './mappings.ts'
 import { validateAssignments } from './assign.ts'
+import { resolveExchangeRate } from './rates.ts'
+import type { EcbObservation, ExchangeRate, RateStore } from './rates.ts'
 
 /* -------------------------------------------------- Was die Funktion liefert */
 
@@ -95,6 +97,25 @@ interface StructureResponse {
    * erfüllt, ohne den empfindlichsten Teil der Erkennung anzufassen.
    */
   merchantKind: 'retail' | 'gastro'
+  /**
+   * Der EZB-Kurs zum Bon-Datum — nur bei einem Bon in Fremdwährung, sonst null.
+   * Bei einem Euro-Bon, dem Normalfall, wird gar nichts abgerufen.
+   */
+  exchangeRate: ExchangeRate | null
+  /**
+   * Warum kein Kurs da ist, als fertiger deutscher Satz. Null heißt: Es gab
+   * nichts zu holen (Euro-Bon) oder es hat geklappt.
+   *
+   * **Ein Fehlschlag reißt den Scan nicht mit.** Der Korrektur-Screen zeigt dann
+   * ein Kursfeld für diesen einen Bon — markieren statt ablehnen, wie überall.
+   */
+  rateError: string | null
+}
+
+/** Die Antwort auf eine reine Kursanfrage (weder Bild noch Rohtexte). */
+interface RateResponse {
+  exchangeRate: ExchangeRate | null
+  rateError: string | null
 }
 
 /** Eine geprüfte Zuordnung, wie Durchgang 2 sie zurückgibt. */
@@ -363,6 +384,75 @@ async function loadMerchantKind(
   return data === 'gastro' ? 'gastro' : 'retail'
 }
 
+/* ------------------------------------------------------- Der Kurs-Speicher */
+
+/**
+ * `exchange_rates` als Zwischenspeicher, wie `rates.ts` ihn erwartet.
+ *
+ * Die Tabelle hängt an keinem Haushalt — ein Wechselkurs ist eine öffentliche
+ * Tatsache. Geschrieben wird mit `ignoreDuplicates`: Ein einmal gespeicherter
+ * Tag wird nie überschrieben, auch nicht von einem späteren Abruf.
+ *
+ * Schlägt das Lesen oder Schreiben fehl, kostet das höchstens eine zusätzliche
+ * Anfrage bei der EZB. Deshalb wird hier nichts geworfen — der Scan hängt nicht
+ * am Zwischenspeicher.
+ */
+function rateStore(supabase: Client): RateStore {
+  return {
+    async read(currency: string, onDate: string): Promise<number | null> {
+      const { data, error } = await supabase
+        .from('exchange_rates')
+        .select('rate')
+        .eq('currency', currency)
+        .eq('rate_date', onDate)
+        .maybeSingle()
+
+      if (error || !data) return null
+      const rate = Number((data as { rate: unknown }).rate)
+      return Number.isFinite(rate) && rate > 0 ? rate : null
+    },
+
+    async write(currency: string, observations: EcbObservation[]): Promise<void> {
+      const { error } = await supabase.from('exchange_rates').upsert(
+        observations.map((observation) => ({
+          rate_date: observation.date,
+          currency,
+          // Gespeichert wird die Form, in der gerechnet wird: Betrag × rate =
+          // Euro. Die Umkehrung macht `toEuroRate` in rates.ts.
+          rate: Math.round((1 / observation.perEuro) * 1_000_000) / 1_000_000,
+        })),
+        { onConflict: 'rate_date,currency', ignoreDuplicates: true },
+      )
+      if (error) console.error('Kurse konnten nicht abgelegt werden:', error.message)
+    },
+  }
+}
+
+/**
+ * Kurs zu Währung und Datum — oder ein Satz, warum es nicht ging.
+ *
+ * Bei Euro (oder ohne gelesene Währung) passiert nichts: Der Normalfall ist ein
+ * deutscher Bon, und für den gibt es nichts abzurufen.
+ */
+async function resolveRate(
+  supabase: Client,
+  currency: string | null,
+  onDate: string | null,
+): Promise<RateResponse> {
+  if (currency === null || currency === 'EUR') {
+    return { exchangeRate: null, rateError: null }
+  }
+
+  // Ohne gelesenes Bon-Datum gilt heute. Der Nutzer kann das Datum im
+  // Korrektur-Screen ändern; dann wird der Kurs neu geholt.
+  const date = onDate ?? new Date().toISOString().slice(0, 10)
+
+  const outcome = await resolveExchangeRate(rateStore(supabase), currency, date)
+  return outcome.ok
+    ? { exchangeRate: outcome.value, rateError: null }
+    : { exchangeRate: null, rateError: outcome.failure.message }
+}
+
 interface RequestBody {
   /** Das JPEG als Base64, ohne den `data:`-Vorspann. Durchgang 1. */
   image?: unknown
@@ -370,6 +460,17 @@ interface RequestBody {
   mimeType?: unknown
   /** Die zuzuordnenden Rohtexte. Ihre Anwesenheit macht daraus Durchgang 2. */
   rohtexte?: unknown
+  /**
+   * Eine reine Kursanfrage: Währung plus Stichtag, ohne Bild und ohne Modell.
+   *
+   * Gebraucht, sobald der Nutzer im Korrektur-Screen das Bon-Datum oder die
+   * Währung ändert — der Kurs richtet sich nach dem Bon-Datum, und ein
+   * korrigiertes Datum muss deshalb einen neuen Kurs nach sich ziehen. Ohne
+   * diesen Weg müsste der Nutzer ihn von Hand nachschlagen, obwohl die App ihn
+   * holen kann.
+   */
+  waehrung?: unknown
+  datum?: unknown
 }
 
 /* ================================================================= Durchgang 1 */
@@ -446,16 +547,26 @@ async function handleStructure(
     offeneRohtexte.push(item.rawText)
   }
 
+  /*
+   * Händlerart und Kurs. Beides hängt an der Modellantwort — den Händlernamen
+   * und die Währung kennt man vorher nicht —, deshalb erst hier. Nebeneinander,
+   * weil sie nichts voneinander wissen: Bei einem deutschen Bon kostet der
+   * Kursteil ohnehin nichts, er wird gar nicht erst abgerufen.
+   */
+  const [merchantKind, rate] = await Promise.all([
+    loadMerchantKind(supabase, extraction.merchantName),
+    resolveRate(supabase, extraction.currency, extraction.purchasedOn),
+  ])
+
   const response: StructureResponse = {
     extraction,
     model: outcome.model,
     durationMs: outcome.durationMs,
     raw: outcome.text,
     offeneRohtexte,
-    // Erst hier, weil der Händlername aus der Modellantwort kommt. Eine
-    // Abfrage über einen Namen, den man noch nicht kennt, gibt es nicht — und
-    // der Modellaufruf davor dauert ohnehin vierzehn Sekunden.
-    merchantKind: await loadMerchantKind(supabase, extraction.merchantName),
+    merchantKind,
+    exchangeRate: rate.exchangeRate,
+    rateError: rate.rateError,
   }
 
   return json(response, 200)
@@ -594,6 +705,20 @@ Deno.serve(async (request: Request): Promise<Response> => {
     body = (await request.json()) as RequestBody
   } catch {
     return fail('kein_bild', 'Die Anfrage war unvollständig. Bitte noch einmal scannen.', 400)
+  }
+
+  /*
+   * Währung statt Bild: Das ist eine reine Kursanfrage. Sie kostet weder einen
+   * Modellaufruf noch Kontingent und steht deshalb ganz vorn — bevor irgendetwas
+   * Teures geprüft wird.
+   */
+  if (typeof body.waehrung === 'string') {
+    const rate: RateResponse = await resolveRate(
+      supabase,
+      body.waehrung.trim().toUpperCase(),
+      typeof body.datum === 'string' ? body.datum.trim() : null,
+    )
+    return json(rate, 200)
   }
 
   // Rohtexte statt Bild: Das ist die Zuordnung.

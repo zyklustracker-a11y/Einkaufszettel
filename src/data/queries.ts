@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase'
 import { toISO } from '../lib/format'
 import { healthScore } from '../lib/score'
 import type { TraitSpending } from '../lib/score'
+import type { SavedItem } from '../lib/draft'
 import { DataError, unwrap, unwrapMaybe } from './client'
 import { reference } from './reference'
 import type {
@@ -10,6 +11,7 @@ import type {
   HealthMonth,
   ItemSearchResult,
   MerchantId,
+  MerchantKind,
   MonthSummary,
   PricePoint,
   ProductPriceDetail,
@@ -117,16 +119,19 @@ interface ReceiptRow {
   purchased_on: string
   printed_total_cents: number
   tip_cents: number
+  currency: string
+  original_total_cents: number | null
+  exchange_rate: number | string | null
+  rate_date: string | null
   receipt_items: Array<{ count: number }>
 }
 
 /**
- * Die Spaltenliste für einen Bon-Kopf. Sie steht an drei Stellen und muss
- * überall gleich sein — `supabase-js` liest sie zur Übersetzungszeit aus und
- * braucht dafür ein Literal, deshalb eine Konstante statt einer Verkettung.
+ * Die Spaltenliste für einen Bon-Kopf. Sie steht an zwei Stellen und muss
+ * überall gleich sein — deshalb einmal hier statt zweimal abgetippt.
  */
 const RECEIPT_COLUMNS =
-  'id, merchant_id, purchased_on, printed_total_cents, tip_cents, receipt_items(count)'
+  'id, merchant_id, purchased_on, printed_total_cents, tip_cents, currency, original_total_cents, exchange_rate, rate_date, receipt_items(count)'
 
 interface ItemRow {
   id: string
@@ -627,6 +632,50 @@ export async function getReceipt(receiptId: string): Promise<Receipt | null> {
  * Speichern, vollständig, über `save_receipt`.
  */
 
+/**
+ * Kategorie, Merkmale und Milch-Eigenschaften zu einer Menge von Produkten.
+ *
+ * Zwei flache Abfragen statt eines verschachtelten Selects — die Verknüpfungen
+ * laufen über zusammengesetzte Fremdschlüssel, denen PostgREST nicht
+ * zuverlässig folgt. Geteilt zwischen der Anzeige eines Bons und dem Laden zum
+ * Bearbeiten: Beide brauchen dasselbe, und zwei Fassungen wären zwei
+ * Wahrheiten.
+ */
+async function loadProductFacts(productIds: string[]): Promise<{
+  productById: Map<string, ProductRow>
+  traitsByProduct: Map<string, string[]>
+}> {
+  if (productIds.length === 0) {
+    return { productById: new Map(), traitsByProduct: new Map() }
+  }
+
+  const [productRows, traitLinks] = await Promise.all([
+    supabase
+      .from('canonical_products')
+      .select('id, category_key, milk_heat, milk_homogenized')
+      .in('id', productIds)
+      .then((r) => unwrap<ProductRow[]>(r)),
+    supabase
+      .from('canonical_product_traits')
+      .select('canonical_product_id, trait_id')
+      .in('canonical_product_id', productIds)
+      .then((r) => unwrap<Array<{ canonical_product_id: string; trait_id: string }>>(r)),
+  ])
+
+  const { traitKeyByUuid } = reference()
+  const traitsByProduct = new Map<string, string[]>()
+  for (const link of traitLinks) {
+    const key = traitKeyByUuid[link.trait_id]
+    // Ein Merkmal, das es nicht mehr gibt, wird übergangen statt geraten.
+    if (!key) continue
+    const list = traitsByProduct.get(link.canonical_product_id) ?? []
+    list.push(key)
+    traitsByProduct.set(link.canonical_product_id, list)
+  }
+
+  return { productById: new Map(productRows.map((row) => [row.id, row])), traitsByProduct }
+}
+
 async function buildReceipt(head: ReceiptRow): Promise<Receipt> {
   const itemRows = unwrap<ItemRow[]>(
     await supabase
@@ -637,35 +686,7 @@ async function buildReceipt(head: ReceiptRow): Promise<Receipt> {
   )
 
   const productIds = [...new Set(itemRows.map((i) => i.canonical_product_id).filter(isString))]
-
-  const [productRows, traitLinks] = await Promise.all([
-    productIds.length === 0
-      ? Promise.resolve([] as ProductRow[])
-      : supabase
-          .from('canonical_products')
-          .select('id, category_key, milk_heat, milk_homogenized')
-          .in('id', productIds)
-          .then((r) => unwrap<ProductRow[]>(r)),
-    productIds.length === 0
-      ? Promise.resolve([] as Array<{ canonical_product_id: string; trait_id: string }>)
-      : supabase
-          .from('canonical_product_traits')
-          .select('canonical_product_id, trait_id')
-          .in('canonical_product_id', productIds)
-          .then((r) => unwrap<Array<{ canonical_product_id: string; trait_id: string }>>(r)),
-  ])
-
-  const productById = new Map(productRows.map((row) => [row.id, row]))
-  const { traitKeyByUuid } = reference()
-
-  const traitsByProduct = new Map<string, string[]>()
-  for (const link of traitLinks) {
-    const key = traitKeyByUuid[link.trait_id]
-    if (!key) continue
-    const list = traitsByProduct.get(link.canonical_product_id) ?? []
-    list.push(key)
-    traitsByProduct.set(link.canonical_product_id, list)
-  }
+  const { productById, traitsByProduct } = await loadProductFacts(productIds)
 
   const items: ReceiptItem[] = itemRows.map((row) => {
     const product = row.canonical_product_id ? productById.get(row.canonical_product_id) : undefined
@@ -700,12 +721,153 @@ async function buildReceipt(head: ReceiptRow): Promise<Receipt> {
     date: head.purchased_on,
     printedTotalCents: head.printed_total_cents,
     tipCents: head.tip_cents,
+    currency: head.currency,
+    originalTotalCents: head.original_total_cents,
+    // `numeric` kommt über PostgREST als Zeichenkette an — sonst verlöre eine
+    // Zahl mit sechs Nachkommastellen unterwegs an Genauigkeit.
+    exchangeRate: head.exchange_rate === null ? null : Number(head.exchange_rate),
+    rateDate: head.rate_date,
     items,
   }
 }
 
 function isString(value: string | null): value is string {
   return value !== null
+}
+
+/* ------------------------------------------------ Einen Bon zum Bearbeiten */
+
+/**
+ * Ein gespeicherter Bon in der Form, mit der der Korrektur-Screen arbeitet.
+ *
+ * Das ist die ganze Zutat für „Bearbeiten": Der Screen bringt seine
+ * Bearbeitungslogik längst mit (`src/lib/draft.ts`), es fehlte nur der Weg
+ * zurück aus der Datenbank — und ein Speichern, das aktualisiert statt anlegt.
+ *
+ * **Die Beträge stehen in Euro**, so wie sie gespeichert sind. Bei einem
+ * Fremdwährungsbon wird ausdrücklich nicht zurückgerechnet: Ein Rundgang Euro →
+ * Franken → Euro verschöbe bei jedem Bearbeiten einzelne Zeilen um einen Cent,
+ * ohne dass jemand etwas geändert hätte.
+ */
+export interface ReceiptDraftData {
+  receiptId: string
+  merchantName: string | null
+  merchantKind: MerchantKind
+  purchasedOn: string
+  /** In Euro-Cent. */
+  printedTotalCents: number
+  tipCents: number
+  currency: string
+  /** Der Betrag in der Bonwährung. Null bei einem Euro-Bon. */
+  originalTotalCents: number | null
+  exchangeRate: number | null
+  rateDate: string | null
+  /**
+   * Die Steuerkennzeichen, die an den Positionen stehen.
+   *
+   * Der gedruckte Steuerblock wird nicht gespeichert — er beschreibt einen
+   * Zeitpunkt der Erkennung, nicht den Bon. Zur Auswahl stehen deshalb die
+   * Kennzeichen, die tatsächlich vorkommen; damit lässt sich eine Zeile
+   * umhängen, aber kein Klassenabgleich mehr rechnen.
+   */
+  taxCodes: string[]
+  items: SavedItem[]
+}
+
+interface DraftHeadRow {
+  id: string
+  merchant_id: string | null
+  purchased_on: string
+  printed_total_cents: number
+  tip_cents: number
+  currency: string
+  original_total_cents: number | null
+  exchange_rate: number | string | null
+  rate_date: string | null
+}
+
+interface DraftItemRow {
+  raw_text: string
+  name: string
+  total_cents: number
+  discount_cents: number
+  deposit_cents: number
+  quantity_base: number | null
+  quantity_unit: string | null
+  unit_price_cents: number | null
+  tax_code: string | null
+  canonical_product_id: string | null
+}
+
+export async function getReceiptDraft(receiptId: string): Promise<ReceiptDraftData | null> {
+  const head = unwrapMaybe(
+    await supabase
+      .from('receipts')
+      .select('id, merchant_id, purchased_on, printed_total_cents, tip_cents, currency, original_total_cents, exchange_rate, rate_date')
+      .eq('id', receiptId)
+      .maybeSingle(),
+  ) as DraftHeadRow | null
+
+  if (!head) return null
+
+  const itemRows = unwrap<DraftItemRow[]>(
+    await supabase
+      .from('receipt_items')
+      .select('raw_text, name, total_cents, discount_cents, deposit_cents, quantity_base, quantity_unit, unit_price_cents, tax_code, canonical_product_id')
+      .eq('receipt_id', head.id)
+      .order('line_no'),
+  )
+
+  const productIds = [...new Set(itemRows.map((row) => row.canonical_product_id).filter(isString))]
+  const { productById, traitsByProduct } = await loadProductFacts(productIds)
+
+  /*
+   * Der Händler kommt aus dem Zwischenlager und nicht aus einer weiteren
+   * Abfrage — dort liegt er ohnehin, samt seiner Art. Nachgeschlagen wird hier
+   * und nicht über `./index`, weil das eine Ringabhängigkeit ergäbe.
+   */
+  const merchant = head.merchant_id
+    ? reference().merchants.find((entry) => entry.id === head.merchant_id)
+    : undefined
+
+  const items: SavedItem[] = itemRows.map((row) => {
+    const product = row.canonical_product_id ? productById.get(row.canonical_product_id) : undefined
+    return {
+      rawText: row.raw_text,
+      name: row.name,
+      categoryKey: (product?.category_key ?? null) as CategoryId | null,
+      traitKeys: row.canonical_product_id
+        ? (traitsByProduct.get(row.canonical_product_id) ?? [])
+        : [],
+      milkHeat: (product?.milk_heat ?? 'unbekannt') as SavedItem['milkHeat'],
+      milkHomogenized: (product?.milk_homogenized ?? 'unbekannt') as SavedItem['milkHomogenized'],
+      quantityBase: row.quantity_base,
+      quantityUnit: row.quantity_unit as SavedItem['quantityUnit'],
+      unitPriceCents: row.unit_price_cents,
+      totalCents: row.total_cents,
+      discountCents: row.discount_cents,
+      depositCents: row.deposit_cents,
+      taxCode: row.tax_code,
+      canonicalProductId: row.canonical_product_id,
+    }
+  })
+
+  return {
+    receiptId: head.id,
+    merchantName: merchant?.name ?? null,
+    merchantKind: merchant?.kind ?? 'retail',
+    purchasedOn: head.purchased_on,
+    printedTotalCents: head.printed_total_cents,
+    tipCents: head.tip_cents,
+    currency: head.currency,
+    originalTotalCents: head.original_total_cents,
+    // `numeric` kommt über PostgREST als Zeichenkette an — sonst verlöre eine
+    // Zahl mit sechs Nachkommastellen unterwegs an Genauigkeit.
+    exchangeRate: head.exchange_rate === null ? null : Number(head.exchange_rate),
+    rateDate: head.rate_date,
+    taxCodes: [...new Set(itemRows.map((row) => row.tax_code).filter(isString))].sort(),
+    items,
+  }
 }
 
 /* ============================================================ Einstellungen */

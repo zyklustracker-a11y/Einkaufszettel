@@ -13,6 +13,7 @@ import {
   taxReconciliation,
   tipFromPercent,
   toDrafts,
+  toDraftsFromSaved,
   withoutCategory,
 } from './draft.ts'
 import type { DraftItem } from './draft.ts'
@@ -62,6 +63,8 @@ function extraction(items: ExtractedItem[]): Extraction {
     merchantName: 'REWE',
     purchasedOn: '2026-08-14',
     purchasedAt: null,
+    // Kein Währungszeichen gelesen: der Normalfall auf einem deutschen Bon.
+    currency: null,
     printedTotalCents: draftsTotal(items),
     items,
     itemsTotalCents: draftsTotal(items),
@@ -330,6 +333,189 @@ test('buildSavePayload', async (t) => {
     const payload = buildSavePayload({ ...base, drafts: [added] })
     assert.equal(payload.positionen[0].rohtext, '')
     assert.equal(payload.positionen[0].quelle, 'user')
+  })
+})
+
+/* ---------------------------------------------------------- Fremdwährung */
+
+test('buildSavePayload rechnet Fremdwährung um', async (t) => {
+  const base = {
+    merchantName: 'Migros',
+    merchantKind: 'retail' as const,
+    merchantKindEdited: false,
+    purchasedOn: '2026-08-07',
+    tipCents: 0,
+  }
+
+  // 1 CHF = 1,069862 € — der Kehrwert des EZB-Kurses 0,9347 vom 07.08.2026.
+  const conversion = {
+    currency: 'CHF',
+    rate: 1.069862,
+    rateDate: '2026-08-07',
+    amountsIn: 'bon' as const,
+  }
+
+  await t.test('legt Euro in die Cent-Felder und den Originalbetrag daneben', () => {
+    const payload = buildSavePayload({
+      ...base,
+      printedTotalCents: 4500,
+      drafts: [draft({ totalCents: 4500, unitPriceCents: 4500 })],
+      conversion,
+    })
+
+    // 45,00 CHF werden zu 48,14 €.
+    assert.equal(payload.summe_cent, 4814)
+    assert.equal(payload.positionen[0].zeilensumme_cent, 4814)
+    assert.equal(payload.positionen[0].einzelpreis_cent, 4814)
+    assert.equal(payload.waehrung, 'CHF')
+    assert.equal(payload.original_summe_cent, 4500)
+    assert.equal(payload.kurs, 1.069862)
+    assert.equal(payload.kurs_datum, '2026-08-07')
+  })
+
+  await t.test('erfindet keine Abweichung, wenn der Bon in Franken aufging', () => {
+    /*
+     * Der eigentliche Fallstrick beim Umrechnen: Jede Zeile wird einzeln
+     * gerundet. 3 × 3,33 CHF ergeben einzeln umgerechnet 356+356+356 = 1068
+     * Cent, die Summe 9,99 CHF dagegen 1069. Ohne Sonderregel stünde im
+     * gespeicherten Bon eine Abweichung von einem Cent, obwohl der
+     * Korrektur-Screen „stimmt" gesagt hatte.
+     */
+    const drafts = [
+      draft({ key: 'z1', totalCents: 333 }),
+      draft({ key: 'z2', totalCents: 333 }),
+      draft({ key: 'z3', totalCents: 333 }),
+    ]
+    const payload = buildSavePayload({ ...base, printedTotalCents: 999, drafts, conversion })
+
+    const zeilensumme = payload.positionen.reduce((sum, p) => sum + p.zeilensumme_cent, 0)
+    assert.equal(payload.summe_cent, zeilensumme)
+    // Und der Betrag vom Papier bleibt unangetastet.
+    assert.equal(payload.original_summe_cent, 999)
+  })
+
+  await t.test('lässt eine echte Abweichung stehen', () => {
+    // Ging der Bon schon in Franken nicht auf, muss das auch in Euro sichtbar
+    // bleiben — sonst verschwiege das Umrechnen einen Lesefehler.
+    const payload = buildSavePayload({
+      ...base,
+      printedTotalCents: 1000,
+      drafts: [draft({ totalCents: 900 })],
+      conversion,
+    })
+    assert.notEqual(payload.summe_cent, payload.positionen[0].zeilensumme_cent)
+  })
+
+  await t.test('rechnet auch das Trinkgeld um', () => {
+    // Trinkgeld gibt man in Franken, nicht in Euro.
+    const payload = buildSavePayload({
+      ...base,
+      merchantKind: 'gastro',
+      printedTotalCents: 4500,
+      tipCents: 500,
+      drafts: [draft({ totalCents: 4500 })],
+      conversion,
+    })
+    assert.equal(payload.trinkgeld_cent, 535)
+  })
+
+  await t.test('lässt bei einem Euro-Bon jeden Betrag unberührt', () => {
+    const payload = buildSavePayload({
+      ...base,
+      printedTotalCents: 4500,
+      drafts: [draft({ totalCents: 4500 })],
+      conversion: null,
+    })
+    assert.equal(payload.summe_cent, 4500)
+    assert.equal(payload.waehrung, 'EUR')
+    assert.equal(payload.original_summe_cent, null)
+    assert.equal(payload.kurs, null)
+  })
+
+  await t.test('rechnet beim Bearbeiten nicht zurück und wieder hin', () => {
+    /*
+     * Ein gespeicherter Bon steht in der Datenbank bereits in Euro. Ein Rundgang
+     * Euro → Franken → Euro verschöbe einzelne Zeilen um einen Cent, ohne dass
+     * jemand etwas geändert hätte. Umgerechnet wird deshalb nur der
+     * Originalbetrag — eine Zusatzangabe, an der keine Auswertung hängt.
+     */
+    const payload = buildSavePayload({
+      ...base,
+      receiptId: 'bon-1',
+      printedTotalCents: 4814,
+      drafts: [draft({ totalCents: 4814 })],
+      conversion: { ...conversion, amountsIn: 'euro' },
+    })
+
+    assert.equal(payload.bon_id, 'bon-1')
+    assert.equal(payload.summe_cent, 4814)
+    assert.equal(payload.positionen[0].zeilensumme_cent, 4814)
+    // 48,14 € / 1,069862 sind wieder 45,00 CHF.
+    assert.equal(payload.original_summe_cent, 4500)
+  })
+})
+
+test('toDraftsFromSaved', async (t) => {
+  const saved = {
+    rawText: 'G&G H-MILCH',
+    name: 'H-Milch 1,5 %',
+    categoryKey: 'dairy',
+    traitKeys: ['milch'],
+    milkHeat: 'uht' as const,
+    milkHomogenized: 'unbekannt' as const,
+    quantityBase: 2,
+    quantityUnit: 'stk' as const,
+    unitPriceCents: 129,
+    totalCents: 258,
+    discountCents: 0,
+    depositCents: 0,
+    taxCode: 'B',
+    canonicalProductId: 'p-1',
+  }
+
+  await t.test('macht aus einer gespeicherten Zeile einen Entwurf', () => {
+    const [item] = toDraftsFromSaved([saved])
+    assert.equal(item.name, 'H-Milch 1,5 %')
+    assert.equal(item.categoryKey, 'dairy')
+    assert.equal(item.kind, 'artikel')
+    assert.equal(item.canonicalProductId, 'p-1')
+    assert.equal(item.known, true)
+  })
+
+  await t.test('gewinnt Pfand und Rabatt aus den beiden Betragsfeldern zurück', () => {
+    // `receipt_items` hat keine Spalte für die Art — sie steckt in
+    // `deposit_cents` und `discount_cents`, und genau daraus ist die Zeile beim
+    // Speichern entstanden.
+    const items = toDraftsFromSaved([
+      { ...saved, depositCents: 25, totalCents: 25 },
+      { ...saved, discountCents: 50, totalCents: -50 },
+    ])
+    assert.equal(items[0].kind, 'pfand')
+    assert.equal(items[1].kind, 'rabatt')
+  })
+
+  await t.test('gilt nicht als bearbeitet, solange nichts geändert wurde', () => {
+    // Sonst würde jede unveränderte Zeile beim erneuten Speichern als
+    // Nutzerkorrektur durchgehen und einen Modellvorschlag zur Entscheidung
+    // befördern.
+    const [item] = toDraftsFromSaved([saved])
+    assert.equal(item.edited, false)
+    assert.equal(item.added, false)
+    assert.equal(differs(item, item), false)
+  })
+
+  await t.test('führt abgeleitete Milch-Merkmale nicht doppelt', () => {
+    const [item] = toDraftsFromSaved([{ ...saved, traitKeys: ['milch', 'uht'] }])
+    assert.deepEqual(item.traitKeys, ['milch'])
+    assert.equal(item.milkHeat, 'uht')
+  })
+
+  await t.test('vergibt Schlüssel, die sich nicht mit ergänzten Zeilen beißen', () => {
+    const items = toDraftsFromSaved([saved, saved])
+    assert.deepEqual(
+      items.map((item) => item.key),
+      ['b1', 'b2'],
+    )
   })
 })
 

@@ -1,10 +1,18 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { BottomSheet } from '../components/BottomSheet'
 import { ReceiptItemList, TraitLegend } from '../components/ReceiptItemList'
-import { EmptyState } from '../components/states'
-import { getActiveCategories, getActiveTraits, saveReceipt } from '../data'
+import { Async, EmptyState } from '../components/states'
+import {
+  fetchExchangeRate,
+  getActiveCategories,
+  getActiveTraits,
+  getReceiptDraft,
+  saveReceipt,
+  useQuery,
+} from '../data'
+import type { ReceiptDraftData } from '../data'
 import {
   DAIRY_CATEGORY,
   DERIVED_TRAIT_KEYS,
@@ -20,12 +28,21 @@ import {
   taxReconciliation,
   tipFromPercent,
   toDrafts,
+  toDraftsFromSaved,
   withoutCategory,
 } from '../lib/draft'
-import type { DraftItem } from '../lib/draft'
+import type { Conversion, DraftItem } from '../lib/draft'
 import { clearPendingCapture } from '../lib/capture'
-import type { ExtractedUnit, ExtractionResponse } from '../lib/extraction'
-import { daysBetween, formatDate, formatEuro, formatMonth, roundCents, todayISO } from '../lib/format'
+import type { ExtractedUnit, ExtractionResponse, PrintedTaxGroup } from '../lib/extraction'
+import {
+  daysBetween,
+  formatDate,
+  formatEuro,
+  formatMonth,
+  formatMoney,
+  roundCents,
+  todayISO,
+} from '../lib/format'
 import { clearPendingExtraction, getPendingExtraction } from '../lib/scanResult'
 import type {
   CategoryId,
@@ -37,34 +54,167 @@ import type {
 import styles from './ScanReview.module.css'
 
 /**
- * Der Korrektur-Screen.
+ * Der Korrektur-Screen — für einen frisch erkannten **und** für einen
+ * gespeicherten Bon.
  *
- * Er arbeitet auf dem, was der Verarbeitungs-Screen im Speicher hinterlegt hat
- * (`src/lib/scanResult.ts`). Einen Bon in der Datenbank gibt es an dieser Stelle
- * bewusst noch nicht: Geschrieben wird genau einmal, beim Speichern, vollständig
- * — sonst bliebe jeder abgebrochene Scan als halber Bon liegen.
+ * Nach dem Scan arbeitet er auf dem, was der Verarbeitungs-Screen im Speicher
+ * hinterlegt hat (`src/lib/scanResult.ts`). Einen Bon in der Datenbank gibt es
+ * an dieser Stelle bewusst noch nicht: Geschrieben wird genau einmal, beim
+ * Speichern, vollständig — sonst bliebe jeder abgebrochene Scan als halber Bon
+ * liegen.
  *
- * Alles, was hier bearbeitet wird, lebt bis dahin in `drafts`. Erst „Speichern"
- * macht daraus einen Datensatz, und zwar in einer einzigen Transaktion
- * (`supabase/migrations/0003_speichern.sql`).
+ * Seit Schritt 5b führt auch „Bearbeiten" im Einkaufs-Detail hierher. Das war
+ * überraschend wenig Arbeit, weil die ganze Bearbeitungslogik längst in
+ * `src/lib/draft.ts` steckt: Es fehlte das Laden eines gespeicherten Bons in
+ * diese Form und ein Speichern, das aktualisiert statt anlegt. Beides ist eine
+ * andere **Vorlage**, kein anderer Screen — und ein zweiter Screen mit
+ * denselben vierzig Feldern wäre die Sorte Verdopplung, die irgendwann
+ * auseinanderläuft.
+ *
+ * Alles, was hier bearbeitet wird, lebt bis zum Speichern in `drafts`.
  */
 export function ScanReview() {
-  const extraction = getPendingExtraction()
+  const { receiptId } = useParams()
 
   return (
     <div className={styles.screen}>
-      {extraction ? <ExtractionReview result={extraction} /> : <NothingToReview />}
+      {receiptId ? <EditSavedReceipt receiptId={receiptId} /> : <ReviewScan />}
     </div>
   )
 }
 
-function Head() {
+/* ------------------------------------------------- Vorlage: frischer Scan */
+
+function ReviewScan() {
+  const result = getPendingExtraction()
+  if (!result) return <NothingToReview />
+
+  return <ReviewBody source={fromScan(result)} />
+}
+
+/* --------------------------------------------- Vorlage: gespeicherter Bon */
+
+function EditSavedReceipt({ receiptId }: { receiptId: string }) {
+  const state = useQuery(() => getReceiptDraft(receiptId), [receiptId])
+
+  return (
+    <Async state={state}>
+      {(data) =>
+        data === null ? (
+          <div className={styles.scroll}>
+            <Head backTo="/" backLabel="Zur Übersicht" title="Einkauf nicht gefunden" />
+            <EmptyState title="Einkauf nicht gefunden" link={{ to: '/', label: 'Zur Übersicht' }}>
+              Diesen Einkauf gibt es nicht mehr. Möglicherweise wurde er auf einem anderen Gerät
+              gelöscht.
+            </EmptyState>
+          </div>
+        ) : (
+          <ReviewBody source={fromSaved(data)} />
+        )
+      }
+    </Async>
+  )
+}
+
+/* ================================================================ Vorlage */
+
+/**
+ * Woran der Screen arbeitet — dieselbe Form, egal woher der Bon kommt.
+ *
+ * Alles, was **nur** ein frischer Scan mitbringt (abgetippte Zeilen,
+ * Steuerblock, Warnungen der Prüfung, Rohantworten des Modells), hängt an
+ * `scan`. Ist das null, wird ein gespeicherter Bon bearbeitet, und die
+ * betreffenden Blöcke erscheinen gar nicht erst — sie beschreiben einen
+ * Zeitpunkt der Erkennung und nicht den Bon.
+ */
+interface ReviewSource {
+  /** Gesetzt: bestehenden Bon aktualisieren statt einen zweiten anzulegen. */
+  receiptId: string | null
+  merchantName: string | null
+  merchantKind: MerchantKind
+  purchasedOn: string
+  purchasedAt: string | null
+  /** In der Währung, in der die Entwürfe stehen. */
+  printedTotalCents: number | null
+  tipCents: number
+  drafts: DraftItem[]
+  printedTaxGroups: PrintedTaxGroup[]
+  /** Die Kennzeichen zur Auswahl im Bearbeiten-Blatt. */
+  taxCodes: string[]
+  currency: string
+  /** Stehen die Beträge in der Bonwährung oder schon in Euro? */
+  amountsIn: 'bon' | 'euro'
+  exchangeRate: number | null
+  rateDate: string | null
+  rateError: string | null
+  scan: ExtractionResponse | null
+}
+
+function fromScan(result: ExtractionResponse): ReviewSource {
+  const { extraction } = result
+  return {
+    receiptId: null,
+    merchantName: extraction.merchantName,
+    merchantKind: result.merchantKind,
+    purchasedOn: extraction.purchasedOn ?? todayISO(),
+    purchasedAt: extraction.purchasedAt,
+    printedTotalCents: extraction.printedTotalCents,
+    // Vorbelegung immer „Nein" — auch bei einem bekannten Gastro-Händler.
+    tipCents: 0,
+    drafts: toDrafts(extraction),
+    printedTaxGroups: extraction.printedTaxGroups,
+    taxCodes: extraction.printedTaxGroups.map((group) => group.code),
+    // Ohne gelesenes Währungszeichen gilt Euro. Das ist der Normalfall und
+    // ausdrücklich keine Vermutung: Auf einem deutschen Bon steht keines.
+    currency: extraction.currency ?? 'EUR',
+    amountsIn: 'bon',
+    exchangeRate: result.exchangeRate?.rate ?? null,
+    rateDate: result.exchangeRate?.rateDate ?? null,
+    rateError: result.rateError,
+    scan: result,
+  }
+}
+
+function fromSaved(data: ReceiptDraftData): ReviewSource {
+  return {
+    receiptId: data.receiptId,
+    merchantName: data.merchantName,
+    merchantKind: data.merchantKind,
+    purchasedOn: data.purchasedOn,
+    purchasedAt: null,
+    printedTotalCents: data.printedTotalCents,
+    tipCents: data.tipCents,
+    drafts: toDraftsFromSaved(data.items),
+    // Der gedruckte Steuerblock wird nicht gespeichert — er beschreibt einen
+    // Zeitpunkt der Erkennung. Der Klassenabgleich entfällt damit; umhängen
+    // lässt sich eine Zeile trotzdem.
+    printedTaxGroups: [],
+    taxCodes: data.taxCodes,
+    currency: data.currency,
+    // In der Datenbank stehen bereits Euro, und zurückgerechnet wird nicht.
+    amountsIn: 'euro',
+    exchangeRate: data.exchangeRate,
+    rateDate: data.rateDate,
+    rateError: null,
+    scan: null,
+  }
+}
+
+function Head({
+  backTo,
+  backLabel,
+  title,
+}: {
+  backTo: string
+  backLabel: string
+  title: string
+}) {
   return (
     <div className={styles.head}>
-      <Link to="/scan" replace className={styles.rescan}>
-        Erneut scannen
+      <Link to={backTo} replace className={styles.rescan}>
+        {backLabel}
       </Link>
-      <div className={styles.headTitle}>Prüfen &amp; korrigieren</div>
+      <div className={styles.headTitle}>{title}</div>
     </div>
   )
 }
@@ -76,7 +226,7 @@ function Head() {
 function NothingToReview() {
   return (
     <div className={styles.scroll}>
-      <Head />
+      <Head backTo="/scan" backLabel="Erneut scannen" title="Prüfen & korrigieren" />
       <EmptyState title="Kein Bon zum Prüfen" link={{ to: '/scan', label: 'Bon scannen' }}>
         Hier erscheint gleich nach dem Scannen, was die Erkennung gelesen hat: Händler, Datum und
         alle Positionen – jede Zeile antippbar, falls etwas nicht stimmt.
@@ -175,18 +325,135 @@ const SUPERSEDED_WARNINGS = [
   'steuer_kennzeichen_fehlt',
 ]
 
-function ExtractionReview({ result }: { result: ExtractionResponse }) {
+/* ============================================================ Fremdwährung */
+
+/**
+ * Die Währungen zur Auswahl.
+ *
+ * Der Mechanismus ist auf keine Währung festgelegt — jede, für die die EZB
+ * einen Kurs veröffentlicht, funktioniert. Die **Auswahl** ist es schon: Der
+ * Nutzer wohnt an der deutsch-schweizerischen Grenze. Erkennt das Modell etwas
+ * anderes, kommt es als dritter Knopf dazu.
+ */
+const CURRENCIES = ['EUR', 'CHF']
+
+interface CurrencyState {
+  currency: string
+  /** Euro je eine Einheit. Null: noch keiner da. */
+  rate: number | null
+  rateDate: string | null
+  /** Warum keiner da ist, als fertiger deutscher Satz. */
+  error: string | null
+  /** Läuft gerade ein Abruf? */
+  loading: boolean
+  setCurrency: (currency: string) => void
+  setRate: (rate: number | null) => void
+  /** Was an `buildSavePayload` geht. Null bei einem Euro-Bon. */
+  conversion: Conversion | null
+  /** Fehlt noch etwas, ohne das nicht gespeichert werden darf? */
+  blocked: boolean
+}
+
+/**
+ * Währung und Kurs im Korrektur-Screen.
+ *
+ * Zwei Dinge lösen einen neuen Abruf aus: eine andere Währung und **ein anderes
+ * Bon-Datum**. Das zweite ist der Grund, warum das hier ein Haken ist und keine
+ * einfache Zustandsvariable: Der Kurs richtet sich nach dem Bon-Datum
+ * (KONZEPT-ERWEITERUNGEN.md, Abschnitt 5), und ein vertipptes Jahr, das der
+ * Nutzer oben korrigiert, muss den Kurs mitziehen.
+ *
+ * Ein Kurs, den der Nutzer von Hand eingetragen hat, wird dabei **nicht**
+ * überschrieben — sonst wäre die Handeingabe beim nächsten Tastendruck im
+ * Datumsfeld wieder weg.
+ *
+ * Beim Bearbeiten eines gespeicherten Bons wird gar nichts abgerufen: Der Kurs
+ * ist eingefroren, und ihn nachzuführen würde eine Monatssumme der
+ * Vergangenheit rückwirkend ändern.
+ */
+function useCurrency(source: ReviewSource, purchasedOn: string): CurrencyState {
+  const frozen = source.receiptId !== null
+
+  const [currency, setCurrencyRaw] = useState(source.currency)
+  const [rate, setRateRaw] = useState<number | null>(source.exchangeRate)
+  const [rateDate, setRateDate] = useState<string | null>(source.rateDate)
+  const [error, setError] = useState<string | null>(source.rateError)
+  const [manual, setManual] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (frozen || currency === 'EUR' || manual) return
+
+    // Für das Datum, das schon beim Öffnen einen Kurs geliefert hat, wurde
+    // bereits gefragt — der Abruf in der Edge Function lief mit demselben Wert.
+    if (rate !== null && rateDate !== null && purchasedOn === source.purchasedOn) return
+
+    let cancelled = false
+    setLoading(true)
+    void fetchExchangeRate(currency, purchasedOn).then((result) => {
+      if (cancelled) return
+      setRateRaw(result.exchangeRate?.rate ?? null)
+      setRateDate(result.exchangeRate?.rateDate ?? null)
+      setError(result.rateError)
+      setLoading(false)
+    })
+
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currency, purchasedOn, frozen, manual])
+
+  const setCurrency = (next: string) => {
+    setCurrencyRaw(next)
+    // Ein Kurs gehört zu genau einer Währung. Beim Wechsel ist der alte falsch,
+    // und ihn stehen zu lassen wäre schlimmer als ein leeres Feld.
+    setManual(false)
+    setRateRaw(null)
+    setRateDate(null)
+    setError(null)
+  }
+
+  const setRate = (next: number | null) => {
+    setManual(true)
+    setRateRaw(next)
+    // Von Hand eingetragen heißt: kein Stichtag. Einen zu erfinden wäre eine
+    // Behauptung über eine Veröffentlichung, die es nicht gab.
+    setRateDate(null)
+    setError(null)
+  }
+
+  const usable = currency !== 'EUR' && rate !== null && rate > 0
+
+  return {
+    currency,
+    rate,
+    rateDate,
+    error,
+    loading,
+    setCurrency,
+    setRate,
+    conversion: usable
+      ? { currency, rate: rate as number, rateDate, amountsIn: source.amountsIn }
+      : null,
+    // Ohne Kurs dürfen Franken-Beträge nicht als Euro in der Datenbank landen —
+    // das verschöbe jede Monatssumme, ohne dass es jemandem auffiele.
+    blocked: currency !== 'EUR' && !usable,
+  }
+}
+
+function ReviewBody({ source }: { source: ReviewSource }) {
   const navigate = useNavigate()
-  const { extraction } = result
+  const editingSaved = source.receiptId !== null
 
   /*
-   * Alles Bearbeitete lebt hier, bis gespeichert wird. `toDrafts` läuft nur
-   * einmal — mit `useState`-Initialisierer und nicht in einem Effekt, sonst
-   * würde jede Neuzeichnung die Korrekturen des Nutzers überschreiben.
+   * Alles Bearbeitete lebt hier, bis gespeichert wird. Die Vorlage wird nur
+   * einmal gelesen — mit `useState`-Initialisierer und nicht in einem Effekt,
+   * sonst würde jede Neuzeichnung die Korrekturen des Nutzers überschreiben.
    */
-  const [drafts, setDrafts] = useState<DraftItem[]>(() => toDrafts(extraction))
+  const [drafts, setDrafts] = useState<DraftItem[]>(() => source.drafts)
   const [editing, setEditing] = useState<string | null>(null)
-  const [purchasedOn, setPurchasedOn] = useState(extraction.purchasedOn ?? todayISO())
+  const [purchasedOn, setPurchasedOn] = useState(source.purchasedOn)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -196,33 +463,36 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
    * Nutzer sie angefasst hat — nur dann stellt das Speichern einen bekannten
    * Händler um (siehe `buildSavePayload`).
    */
-  const [merchantKind, setMerchantKind] = useState<MerchantKind>(result.merchantKind)
+  const [merchantKind, setMerchantKind] = useState<MerchantKind>(source.merchantKind)
   const [kindEdited, setKindEdited] = useState(false)
 
   /*
-   * Trinkgeld, in Cent. **Vorbelegung immer „Nein"**, auch bei einem bekannten
-   * Gastro-Händler: Niemand soll versehentlich Trinkgeld erfassen, das er nicht
-   * gegeben hat (KONZEPT-ERWEITERUNGEN.md, Abschnitt 1).
+   * Trinkgeld, in Cent. Beim frischen Scan ist die **Vorbelegung immer „Nein"**,
+   * auch bei einem bekannten Gastro-Händler: Niemand soll versehentlich
+   * Trinkgeld erfassen, das er nicht gegeben hat (KONZEPT-ERWEITERUNGEN.md,
+   * Abschnitt 1). Beim Bearbeiten steht da, was gespeichert ist.
    */
-  const [tipCents, setTipCents] = useState(0)
+  const [tipCents, setTipCents] = useState(source.tipCents)
+
+  const currencyState = useCurrency(source, purchasedOn)
 
   const notice = dateNotice(purchasedOn, todayISO())
 
   /* Beides rechnet aus dem aktuellen Stand, nicht aus dem der Erkennung. */
   const itemsTotalCents = draftsTotalCents(drafts)
-  const printed = extraction.printedTotalCents
+  const printed = source.printedTotalCents
   const differenceCents = printed === null ? null : printed - itemsTotalCents
   const reconciles = differenceCents === 0
 
   const tax = useMemo(
-    () => taxReconciliation(drafts, extraction.printedTaxGroups),
-    [drafts, extraction.printedTaxGroups],
+    () => taxReconciliation(drafts, source.printedTaxGroups),
+    [drafts, source.printedTaxGroups],
   )
 
   const openCategories = withoutCategory(drafts)
   const learned = drafts.filter((draft) => draft.known).map((draft) => draft.key)
 
-  const notes = extraction.warnings.filter(
+  const notes = (source.scan?.extraction.warnings ?? []).filter(
     (warning) => !SUPERSEDED_WARNINGS.includes(warning.code),
   )
 
@@ -251,13 +521,18 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
     setEditing(key)
   }
 
+  /** Die Währung, in der die Beträge auf diesem Screen stehen. */
+  const shownIn = source.amountsIn === 'euro' ? 'EUR' : currencyState.currency
+  const money = (cents: number): string => formatMoney(cents, shownIn)
+
   const save = async () => {
     setSaving(true)
     setSaveError(null)
     try {
-      const receiptId = await saveReceipt(
+      const savedId = await saveReceipt(
         buildSavePayload({
-          merchantName: extraction.merchantName,
+          receiptId: source.receiptId,
+          merchantName: source.merchantName,
           merchantKind,
           merchantKindEdited: kindEdited,
           purchasedOn: purchasedOn || todayISO(),
@@ -266,6 +541,7 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
           // danach auf „Laden" zurückgestellt hat, soll sie nicht mitspeichern.
           tipCents: merchantKind === 'gastro' ? tipCents : 0,
           drafts,
+          conversion: currencyState.conversion,
         }),
       )
 
@@ -276,7 +552,10 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
        */
       clearPendingCapture()
       clearPendingExtraction()
-      navigate(`/einkauf/${receiptId}`, { replace: true, state: { justSaved: true } })
+      navigate(`/einkauf/${savedId}`, {
+        replace: true,
+        state: { justSaved: true, updated: editingSaved },
+      })
     } catch (cause) {
       setSaveError(
         cause instanceof Error
@@ -290,13 +569,21 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
   return (
     <>
       <div className={styles.scroll}>
-        <Head />
+        {editingSaved ? (
+          <Head
+            backTo={`/einkauf/${source.receiptId}`}
+            backLabel="Abbrechen"
+            title="Einkauf bearbeiten"
+          />
+        ) : (
+          <Head backTo="/scan" backLabel="Erneut scannen" title="Prüfen & korrigieren" />
+        )}
 
         <div className={styles.summary}>
           <div className={styles.summaryTop}>
             <div style={{ flex: 1 }}>
               <div className={styles.merchant}>
-                {extraction.merchantName ?? 'Händler nicht erkannt'}
+                {source.merchantName ?? 'Händler nicht erkannt'}
               </div>
               <div className={styles.date}>
                 {/*
@@ -311,13 +598,13 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
                   onChange={(event) => setPurchasedOn(event.target.value)}
                   aria-label="Bon-Datum"
                 />
-                {extraction.purchasedAt ? ` · ${extraction.purchasedAt} Uhr` : ''} · {items.length}{' '}
+                {source.purchasedAt ? ` · ${source.purchasedAt} Uhr` : ''} · {items.length}{' '}
                 {items.length === 1 ? 'Position' : 'Positionen'}
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
               <div className={styles.totalLabel}>Bon-Summe</div>
-              <div className={styles.total}>{printed === null ? '—' : formatEuro(printed)}</div>
+              <div className={styles.total}>{printed === null ? '—' : money(printed)}</div>
             </div>
           </div>
 
@@ -327,10 +614,10 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
             </div>
             <div className={styles.bannerText}>
               {differenceCents === null
-                ? `Keine gedruckte Gesamtsumme gelesen – die Positionen ergeben ${formatEuro(itemsTotalCents)}.`
+                ? `Keine gedruckte Gesamtsumme gelesen – die Positionen ergeben ${money(itemsTotalCents)}.`
                 : reconciles
-                  ? `Positionssumme ${formatEuro(itemsTotalCents)} stimmt mit dem Bon-Total überein.`
-                  : `Positionssumme ${formatEuro(itemsTotalCents)} weicht um ${formatEuro(Math.abs(differenceCents))} ab – bitte prüfen.`}
+                  ? `Positionssumme ${money(itemsTotalCents)} stimmt mit dem Bon-Total überein.`
+                  : `Positionssumme ${money(itemsTotalCents)} weicht um ${money(Math.abs(differenceCents))} ab – bitte prüfen.`}
             </div>
           </div>
 
@@ -381,9 +668,16 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
           )}
         </div>
 
+        <CurrencyBlock
+          state={currencyState}
+          detected={source.currency}
+          frozen={editingSaved}
+          totalCents={printed ?? itemsTotalCents}
+        />
+
         <TaxBlock tax={tax} />
 
-        <Transcript extraction={extraction} />
+        {source.scan && <Transcript extraction={source.scan.extraction} />}
 
         {/*
           Direkt unter der Zusammenfassung und nicht unter der Positionsliste:
@@ -403,15 +697,18 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
 
         {items.length === 0 ? (
           <EmptyState inline title="Keine Positionen">
-            Auf diesem Bon steht keine Zeile mehr. Scanne ihn noch einmal – flach, gut beleuchtet
-            und in ganzer Länge im Rahmen – oder ergänze die Positionen von Hand.
+            {editingSaved
+              ? 'Zu diesem Einkauf steht keine Zeile mehr. Ergänze die Positionen von Hand oder brich ab.'
+              : 'Auf diesem Bon steht keine Zeile mehr. Scanne ihn noch einmal – flach, gut beleuchtet und in ganzer Länge im Rahmen – oder ergänze die Positionen von Hand.'}
           </EmptyState>
         ) : (
           <>
             <div className={styles.hint}>
               Zeile antippen zum Bearbeiten oder Löschen.
               {learned.length > 0 &&
-                ` ${learned.length} ${learned.length === 1 ? 'Zeile war' : 'Zeilen waren'} schon bekannt.`}
+                (editingSaved
+                  ? ` ${learned.length} ${learned.length === 1 ? 'Zeile ist' : 'Zeilen sind'} einem Produkt zugeordnet – eine Korrektur hier gilt rückwirkend für alle Käufe.`
+                  : ` ${learned.length} ${learned.length === 1 ? 'Zeile war' : 'Zeilen waren'} schon bekannt.`)}
             </div>
             <ReceiptItemList items={items} onEdit={(item) => setEditing(item.id)} learnedIds={learned} />
             <TraitLegend items={items} />
@@ -431,11 +728,12 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
           <TipBlock
             tipCents={tipCents}
             baseCents={printed ?? itemsTotalCents}
+            currency={shownIn}
             onChange={setTipCents}
           />
         )}
 
-        <RawAnswer result={result} />
+        {source.scan && <RawAnswer result={source.scan} />}
       </div>
 
       {editingDraft && (
@@ -444,7 +742,8 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
           // stünden im Formular noch die Eingaben der vorigen Position.
           key={editingDraft.key}
           draft={editingDraft}
-          taxCodes={extraction.printedTaxGroups.map((group) => group.code)}
+          currency={shownIn}
+          taxCodes={source.taxCodes}
           onCancel={() => setEditing(null)}
           onSave={applyEdit}
           onDelete={() => removeDraft(editingDraft.key)}
@@ -464,20 +763,193 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
               : `${openCategories} Positionen haben noch keine Kategorie und werden ohne Produkt gespeichert – dann lernt die App für diese Zeilen nichts.`}
           </p>
         )}
+        {/*
+          Der eine Fall, in dem nicht gespeichert werden darf: Fremdwährung ohne
+          Kurs. Die Cent-Felder halten Euro — Franken hineinzuschreiben verschöbe
+          jede Monatssumme, ohne dass es jemandem auffiele. Es fehlt genau eine
+          Zahl, und das Feld dafür steht oben.
+        */}
+        {currencyState.blocked && (
+          <p className={styles.saveHint}>
+            Für diesen Bon in {currencyState.currency} fehlt noch der Kurs. Trag ihn oben ein –
+            danach lässt sich speichern.
+          </p>
+        )}
         <button
           type="button"
           className={styles.save}
-          disabled={saving || drafts.length === 0}
+          disabled={saving || drafts.length === 0 || currencyState.blocked}
           onClick={save}
         >
           {saving
             ? 'Wird gespeichert…'
-            : // Mit Trinkgeld: Auf dem Knopf steht, was der Abend gekostet hat,
+            : // Mit Trinkgeld: Auf dem Knopf steht, was der Einkauf gekostet hat,
               // nicht was auf dem Zettel gedruckt war.
-              `Speichern · ${formatEuro((printed ?? itemsTotalCents) + (merchantKind === 'gastro' ? tipCents : 0))}`}
+              `${editingSaved ? 'Änderungen sichern' : 'Speichern'} · ${money(
+                (printed ?? itemsTotalCents) + (merchantKind === 'gastro' ? tipCents : 0),
+              )}`}
         </button>
       </div>
     </>
+  )
+}
+
+/* ============================================================ Fremdwährung */
+
+/**
+ * Währung, Kurs und der Euro-Betrag, der daraus wird.
+ *
+ * Der Block erscheint nur, wenn es etwas zu sagen gibt: bei einem Bon in
+ * fremder Währung, oder wenn das Modell zwar etwas gelesen hat, der Kurs aber
+ * nicht zu beschaffen war. Bei einem deutschen Bon — dem Normalfall — steht
+ * hier gar nichts.
+ *
+ * **Ein Einstellungsfeld für den Wechselkurs gibt es ausdrücklich nicht**
+ * (KONZEPT-ERWEITERUNGEN.md, Abschnitt 5). Die App holt ihn selbst; das Feld
+ * hier gilt für genau diesen einen Bon und erscheint nur, wenn der Abruf
+ * scheitert oder der Nutzer den Kurs ändern will.
+ */
+function CurrencyBlock({
+  state,
+  detected,
+  frozen,
+  totalCents,
+}: {
+  state: CurrencyState
+  /** Was die Erkennung gelesen hat — für den dritten Knopf, falls es einen gibt. */
+  detected: string
+  /** Ein gespeicherter Bon: Währung und Kurs sind eingefroren. */
+  frozen: boolean
+  /** Die Bon-Summe, in der Währung, in der die Beträge stehen. */
+  totalCents: number
+}) {
+  const [editing, setEditing] = useState(false)
+  const foreign = state.currency !== 'EUR'
+
+  /*
+   * Beim Bearbeiten eines gespeicherten Bons ist hier nichts zu wählen — der
+   * Kurs ist eingefroren, und die Beträge unten stehen bereits in Euro. Ihn
+   * nachzuführen würde eine Monatssumme der Vergangenheit rückwirkend ändern.
+   * Statt Knöpfen, die nichts tun, steht deshalb nur der Sachverhalt da.
+   */
+  if (frozen) {
+    if (!foreign || state.rate === null) return null
+    return (
+      <section className={styles.currency}>
+        <div className={styles.notesTitle}>Währung</div>
+        <p className={styles.currencyLine}>
+          Dieser Einkauf wurde in {state.currency} erfasst, zum Kurs{' '}
+          {state.rate.toFixed(6).replace('.', ',')}
+          {state.rateDate ? ` vom ${formatDate(state.rateDate)}` : ''}. Die Beträge unten stehen in
+          Euro.
+          <span className={styles.currencyDetail}>
+            Währung und Kurs bleiben, wie sie sind – sonst änderten sich alte Monatssummen
+            rückwirkend.
+          </span>
+        </p>
+      </section>
+    )
+  }
+
+  const rateField = editing || (foreign && state.rate === null)
+  const chips = (
+    <div className={styles.chips} style={{ marginTop: 10 }}>
+      {[...new Set([...CURRENCIES, detected])].map((code) => (
+        <Chip
+          key={code}
+          selected={state.currency === code}
+          onClick={() => {
+            state.setCurrency(code)
+            setEditing(false)
+          }}
+        >
+          {code}
+        </Chip>
+      ))}
+    </div>
+  )
+
+  /*
+   * Bei einem Euro-Bon gibt es nichts zu klären, und ein Block über etwas, das
+   * nicht zutrifft, ist auf einem Telefon teurer als anderswo. Ganz verschwinden
+   * darf er trotzdem nicht: Hat das Modell das Währungszeichen übersehen — auf
+   * einem Schweizer Bon steht es meist deutlich, aber eben nicht immer —, hätte
+   * der Nutzer sonst keinen Weg mehr, das zu berichtigen.
+   *
+   * Deshalb zugeklappt, wie die abgetippten Zeilen darunter: da, aber leise.
+   */
+  if (!foreign && detected === 'EUR' && state.error === null) {
+    return (
+      <details className={styles.currency}>
+        <summary className={styles.rawSummary}>Bon in einer anderen Währung?</summary>
+        <p className={styles.taxNote}>
+          Die Erkennung hat kein anderes Währungszeichen gelesen – bei einem deutschen Bon ist das
+          der Normalfall. Stimmt das nicht, wähl die Währung hier; den Kurs holt die App dann selbst
+          zum Bon-Datum.
+        </p>
+        {chips}
+      </details>
+    )
+  }
+
+  return (
+    <section className={styles.currency}>
+      <div className={styles.notesTitle}>Währung</div>
+
+      {chips}
+
+      {foreign && (
+        <>
+          {/*
+            Genau die Zeile aus dem Konzept: Originalbetrag, Kurs, Euro-Betrag.
+            Sie ist der ganze Zweck des Blocks — man muss sehen können, wie aus
+            45,00 CHF 48,14 € wurden.
+          */}
+          {state.rate !== null && (
+            <p className={styles.currencyLine}>
+              Dieser Bon ist in {state.currency}. Umgerechnet
+              {state.rateDate ? ` zum EZB-Kurs vom ${formatDate(state.rateDate)}` : ' zum Kurs'}:{' '}
+              <strong>{formatEuro(roundCents(totalCents * state.rate))}</strong>
+              <span className={styles.currencyDetail}>
+                ({formatMoney(totalCents, state.currency)} · Kurs{' '}
+                {state.rate.toFixed(6).replace('.', ',')})
+              </span>
+            </p>
+          )}
+
+          {state.loading && <p className={styles.taxNote}>EZB-Kurs wird geholt…</p>}
+
+          {state.error && (
+            <p className={styles.currencyError} role="status">
+              {state.error}
+            </p>
+          )}
+
+          {rateField ? (
+            <div className={styles.tipField}>
+              <span className={styles.fieldLabel}>1 {state.currency} in Euro</span>
+              <input
+                className={`${styles.input} ${styles['input--number']}`}
+                type="text"
+                inputMode="decimal"
+                autoFocus={editing}
+                defaultValue={state.rate === null ? '' : state.rate.toFixed(6).replace('.', ',')}
+                placeholder="z. B. 1,069862"
+                aria-label={`Kurs: 1 ${state.currency} in Euro`}
+                onChange={(event) => {
+                  const value = Number(event.target.value.replace(',', '.'))
+                  state.setRate(Number.isFinite(value) && value > 0 ? value : null)
+                }}
+              />
+            </div>
+          ) : (
+            <button type="button" className={styles.rawCopy} onClick={() => setEditing(true)}>
+              Kurs ändern
+            </button>
+          )}
+        </>
+      )}
+    </section>
   )
 }
 
@@ -500,11 +972,14 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
 function TipBlock({
   tipCents,
   baseCents,
+  currency,
   onChange,
 }: {
   tipCents: number
   /** Grundlage der Prozentrechnung: die gedruckte Summe ohne Trinkgeld. */
   baseCents: number
+  /** Die Währung, in der der Bon dasteht — Trinkgeld gibt man in Franken. */
+  currency: string
   onChange: (cents: number) => void
 }) {
   /*
@@ -531,7 +1006,7 @@ function TipBlock({
           const cents = tipFromPercent(baseCents, percent)
           return (
             <Chip key={percent} selected={tipCents !== 0 && tipCents === cents} onClick={() => set(cents)}>
-              {percent} % · {formatEuro(cents)}
+              {percent} % · {formatMoney(cents, currency)}
             </Chip>
           )
         })}
@@ -545,7 +1020,7 @@ function TipBlock({
           inputMode="decimal"
           value={field}
           placeholder="0,00"
-          aria-label="Trinkgeld in Euro"
+          aria-label={`Trinkgeld in ${currency}`}
           onChange={(event) => {
             setField(event.target.value)
             onChange(event.target.value.trim() === '' ? 0 : Math.max(0, parsePrice(event.target.value)))
@@ -804,13 +1279,20 @@ function toPriceField(cents: number | null): string {
 
 function EditSheet({
   draft,
+  currency,
   taxCodes,
   onCancel,
   onSave,
   onDelete,
 }: {
   draft: DraftItem
-  /** Die Kennzeichen aus dem gedruckten Steuerblock. Leer: kein Block gelesen. */
+  /** Die Währung, in der die Beträge dieses Bons stehen. */
+  currency: string
+  /**
+   * Die Kennzeichen zur Auswahl. Beim frischen Scan die des gedruckten
+   * Steuerblocks, beim Bearbeiten die, die an den Positionen stehen. Leer:
+   * nichts zu wählen.
+   */
   taxCodes: string[]
   onCancel: () => void
   onSave: (draft: DraftItem) => void
@@ -943,8 +1425,8 @@ function EditSheet({
         */}
         {mismatch && expected !== null && (
           <div className={styles.mismatch}>
-            Menge × Einzelpreis ergibt {formatEuro(expected)}, in der Zeilensumme stehen{' '}
-            {formatEuro(current)}.
+            Menge × Einzelpreis ergibt {formatMoney(expected, currency)}, in der Zeilensumme
+            stehen {formatMoney(current, currency)}.
           </div>
         )}
 

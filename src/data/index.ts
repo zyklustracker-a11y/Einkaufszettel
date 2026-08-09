@@ -49,7 +49,7 @@ export { DataError, germanDataError } from './client'
  * Function — steht aber aus demselben Grund hier: Screens erreichen den Server
  * ausschließlich über diese Schicht.
  */
-export { extractReceipt, ExtractionError } from './extract'
+export { extractReceipt, fetchExchangeRate, ExtractionError } from './extract'
 export type { ExtractionPhase } from './extract'
 
 /**
@@ -65,11 +65,18 @@ export {
   getPriceOverview,
   getProductPriceDetail,
   getReceipt,
+  getReceiptDraft,
   getMonthlyBudgetCents,
   saveMonthlyBudgetCents,
   searchItemSpending,
 } from './queries'
-export type { AnalyticsData, DashboardData, HealthData, RecentReceipt } from './queries'
+export type {
+  AnalyticsData,
+  DashboardData,
+  HealthData,
+  ReceiptDraftData,
+  RecentReceipt,
+} from './queries'
 
 /* ------------------------------------------------- Stammdaten, synchron */
 

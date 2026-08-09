@@ -36,6 +36,8 @@ function extraction(items: ExtractedItem[]): Extraction {
     merchantName: 'REWE',
     purchasedOn: '2026-08-14',
     purchasedAt: null,
+    // Kein Währungszeichen gelesen: der Normalfall auf einem deutschen Bon.
+    currency: null,
     printedTotalCents: 298,
     items,
     itemsTotalCents: 298,

@@ -33,6 +33,38 @@ export function formatEuroSigned(cents: number): string {
   return sign + euro.format(Math.abs(cents) / 100)
 }
 
+/**
+ * `45,00 CHF` — ein Betrag in irgendeiner Währung.
+ *
+ * Gebraucht an genau einer Stelle: im Korrektur-Screen, solange ein Bon noch in
+ * seiner eigenen Währung dasteht. **Überall sonst gilt weiterhin `formatEuro`**,
+ * denn in der Datenbank stehen Euro — das ist die Zusicherung, auf der alle
+ * Auswertungen ruhen (KONZEPT-ERWEITERUNGEN.md, Abschnitt 5).
+ *
+ * Die Formatierer werden zwischengespeichert: `Intl.NumberFormat` neu zu bauen
+ * ist teuer, und diese Funktion läuft in einer Positionsliste je Zeile.
+ */
+const moneyFormats = new Map<string, Intl.NumberFormat>()
+
+export function formatMoney(cents: number, currency: string): string {
+  if (currency === 'EUR') return formatEuro(cents)
+
+  let format = moneyFormats.get(currency)
+  if (!format) {
+    try {
+      format = new Intl.NumberFormat('de-DE', { style: 'currency', currency })
+    } catch {
+      // Ein Code, den `Intl` nicht kennt, darf die Anzeige nicht sprengen:
+      // dann eben die Zahl und der Code dahinter.
+      format = decimal
+    }
+    moneyFormats.set(currency, format)
+  }
+
+  const value = format.format(cents / 100)
+  return format === decimal ? `${value} ${currency}` : value
+}
+
 /** `1,12 kg` */
 export function formatAmount(value: number, unit: string): string {
   return `${decimal.format(value)} ${unit}`

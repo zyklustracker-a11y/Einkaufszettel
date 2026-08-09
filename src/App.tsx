@@ -72,6 +72,14 @@ export function App() {
             <Route path="/analysen" element={<Analytics />} />
             <Route path="/gesundheit" element={<Health />} />
             <Route path="/einkauf/:receiptId" element={<PurchaseDetail />} />
+            {/*
+              Bearbeiten führt in denselben Screen wie das Korrigieren nach dem
+              Scan — er bringt die ganze Bearbeitungslogik ohnehin mit. Der
+              Unterschied liegt allein in der Vorlage: hier ein gespeicherter
+              Bon statt eines frisch erkannten, und beim Speichern wird
+              aktualisiert statt angelegt.
+            */}
+            <Route path="/einkauf/:receiptId/bearbeiten" element={<ScanReview />} />
             <Route path="/einstellungen" element={<SettingsScreen />} />
           </Route>
         </Route>

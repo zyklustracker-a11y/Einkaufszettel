@@ -4,8 +4,10 @@ import type { CapturedImage } from '../lib/camera'
 import type { MerchantKind } from '../types'
 import type {
   AssignmentResponse,
+  ExchangeRate,
   ExtractionPhase,
   ExtractionResponse,
+  RateResponse,
   StructureResponse,
 } from '../lib/extraction'
 
@@ -63,6 +65,13 @@ const TIMEOUT_MS = 90_000
  * Zuordnung als ausgefallen — und der Bon kommt trotzdem durch.
  */
 const ASSIGNMENT_TIMEOUT_MS = 30_000
+
+/**
+ * Zeitlimit für eine reine Kursanfrage. Knapp, weil dahinter kein Modell steht,
+ * sondern eine CSV-Datei bei der EZB — und weil das Kursfeld daneben ohnehin
+ * bereitsteht, falls es nicht klappt.
+ */
+const RATE_TIMEOUT_MS = 12_000
 
 /**
  * Ein `Blob` als Base64, ohne den `data:`-Vorspann.
@@ -149,6 +158,56 @@ async function call(token: string, body: unknown, timeoutMs: number): Promise<un
   return await response.json().catch(() => null)
 }
 
+/**
+ * Den EZB-Kurs für eine Währung und einen Stichtag holen.
+ *
+ * Gebraucht im Korrektur-Screen, sobald der Nutzer das Bon-Datum oder die
+ * Währung ändert: **Der Kurs richtet sich nach dem Bon-Datum**, ein
+ * korrigiertes Datum muss also einen neuen Kurs nach sich ziehen. Ohne diesen
+ * Weg müsste der Nutzer ihn von Hand nachschlagen, obwohl die App ihn holen
+ * kann.
+ *
+ * Der Abruf läuft über dieselbe Edge Function wie die Erkennung, kostet aber
+ * weder einen Modellaufruf noch Kontingent — sie fragt nur die EZB und ihren
+ * Zwischenspeicher.
+ *
+ * **Wirft nie.** Ein Fehlschlag ist hier kein Ausnahmefall, sondern der
+ * vorgesehene zweite Weg: Dann erscheint das Kursfeld, und der Nutzer trägt ihn
+ * für diesen einen Bon ein.
+ */
+export async function fetchExchangeRate(
+  currency: string,
+  onDate: string,
+): Promise<RateResponse> {
+  const offline: RateResponse = {
+    exchangeRate: null,
+    rateError:
+      'Der EZB-Kurs war gerade nicht abrufbar. Trag den Kurs für diesen Bon von Hand ein.',
+  }
+
+  if (!functionsUrl) return offline
+
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (!token) return offline
+
+  try {
+    const response = (await call(
+      token,
+      { waehrung: currency, datum: onDate },
+      RATE_TIMEOUT_MS,
+    )) as RateResponse | null
+
+    if (!response) return offline
+    return {
+      exchangeRate: (response.exchangeRate as ExchangeRate | null) ?? null,
+      rateError: typeof response.rateError === 'string' ? response.rateError : null,
+    }
+  } catch {
+    return offline
+  }
+}
+
 export async function extractReceipt(
   capture: CapturedImage,
   onPhase?: (phase: ExtractionPhase) => void,
@@ -199,6 +258,14 @@ export async function extractReceipt(
    */
   const merchantKind: MerchantKind = structure.merchantKind === 'gastro' ? 'gastro' : 'retail'
 
+  /*
+   * Der Kurs. Er reist unverändert weiter — geholt hat ihn die Funktion, weil
+   * dort die Netzwerkrechte liegen und das Ergebnis gleich in `exchange_rates`
+   * abgelegt werden kann.
+   */
+  const exchangeRate = structure.exchangeRate ?? null
+  const rateError = typeof structure.rateError === 'string' ? structure.rateError : null
+
   /* --------------------------------------------- Durchgang 2: zuordnen */
 
   if (open.length === 0) {
@@ -212,6 +279,8 @@ export async function extractReceipt(
       raw: structure.raw,
       assignment: null,
       merchantKind,
+      exchangeRate,
+      rateError,
     }
   }
 
@@ -242,6 +311,8 @@ export async function extractReceipt(
       raw: structure.raw,
       assignment: null,
       merchantKind,
+      exchangeRate,
+      rateError,
     }
   }
 
@@ -259,5 +330,7 @@ export async function extractReceipt(
       raw: assignment.raw,
     },
     merchantKind,
+    exchangeRate,
+    rateError,
   }
 }

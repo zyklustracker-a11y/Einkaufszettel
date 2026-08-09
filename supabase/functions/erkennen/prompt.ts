@@ -215,6 +215,16 @@ GESAMTSUMME "summe_cent" als GANZE ZAHL IN CENT.
 DATUM als "JJJJ-MM-TT", UHRZEIT als "HH:MM" (24 Stunden). Steht auf dem Bon
 "23.06.17", ist das der 23. Juni 2017. Nicht lesbar -> null.
 
+WÄHRUNG "waehrung" als Drei-Buchstaben-Code, zum Beispiel "EUR" oder "CHF".
+- Das ist ebenfalls Abschreiben und kein Deuten: Du gibst zurück, welches
+  Währungszeichen auf dem Bon GEDRUCKT steht — bei "CHF", "Fr." oder "SFr."
+  also "CHF", bei "EUR" oder "€" also "EUR".
+- Steht gar kein Zeichen da, ist die Antwort null. Schließe NICHT aus der
+  Anschrift, der Sprache oder dem Ladennamen auf die Währung. Ein deutscher
+  Bon ohne Zeichen ist der Normalfall, und dort ist null genau richtig.
+- Die Beträge selbst bleiben unverändert, so wie sie gedruckt sind. Rechne
+  nichts um — das macht die App.
+
 DER STEUERBLOCK AM FUSS DES BONS
 - Fast jeder Bon schließt mit einer Aufstellung je Steuersatz ab:
 
@@ -239,6 +249,7 @@ ANTWORTFORMAT — genau dieses JSON-Objekt, keine zusätzlichen Felder:
   "haendler": "REWE CITY",
   "datum": "2017-06-23",
   "uhrzeit": "14:25",
+  "waehrung": "EUR",
   "summe_cent": 655,
   "steuerblock": [
     { "kennzeichen": "A", "brutto_cent": 159 },
@@ -261,6 +272,7 @@ Feldregeln:
 - "zeilen": eine Liste von Zeichenketten. Eine gedruckte Zeile, ein Eintrag.
   Keine Objekte, keine Nummerierung, keine Zusatzfelder.
 - "haendler": der Name des Ladens aus dem Bonkopf.
+- "waehrung": nur, wenn ein Währungszeichen dasteht. Sonst null.
 
 Es gibt KEIN Feld für Positionen, Produktnamen, Kategorien oder Eigenschaften.
 Wenn du versucht bist, eines hinzuzufügen: nicht tun. Die Zeilen werden auf der
