@@ -7,6 +7,20 @@ import { formatAge, formatBasePrice, formatDate, formatEuro, todayISO } from '..
 import type { ProductPriceOverview } from '../types'
 import styles from './Prices.module.css'
 
+/**
+ * Wie der Preis heißen darf, den die Karte zeigt.
+ *
+ * „Bestpreis" ist eine Aussage über einen **Vergleich**. Bei einem einzigen Kauf
+ * gibt es keinen, und bei einem einzigen Laden auch nicht — dann wäre das Wort
+ * eine Behauptung, die die Daten nicht hergeben. Die Zahl darunter stimmt in
+ * allen drei Fällen; nur ihre Bezeichnung ändert sich.
+ */
+function priceLabel(product: ProductPriceOverview): string {
+  if (product.purchaseCount === 1) return 'Einmal bezahlt'
+  if (product.merchantCount < 2) return 'Günstigster Preis'
+  return 'Bestpreis'
+}
+
 export function Prices() {
   const state = useQuery(getPriceOverview, [])
 
@@ -60,10 +74,23 @@ function PricesBody({ products }: { products: ProductPriceOverview[] }) {
           </span>
 
           <span className={styles.best}>
-            <span className={styles.bestLabel}>Bestpreis</span>
+            <span className={styles.bestLabel}>{priceLabel(product)}</span>
             <span className={styles.bestMerchant}>{getMerchantName(product.best.merchantId)}</span>
             <span className={styles.bestPrice}>{formatEuro(product.best.priceCents)}</span>
           </span>
+
+          {/*
+            Bei einem einzigen Laden gibt es nichts zu vergleichen — dann steht
+            hier, was noch fehlt, statt einer leeren Fläche. Ein Preisvergleich
+            entsteht erst mit dem zweiten Laden, und das ist ein Satz wert.
+          */}
+          {product.merchantCount < 2 && (
+            <span className={styles.hint}>
+              {product.purchaseCount === 1
+                ? 'Erst einmal gekauft. Ab dem zweiten Kauf zeigt die App den Verlauf, ab dem zweiten Laden den Vergleich.'
+                : 'Bisher nur bei einem Laden gekauft – für einen Vergleich fehlt der zweite.'}
+            </span>
+          )}
 
           {product.others.length > 0 && (
             <span className={styles.others}>

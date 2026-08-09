@@ -15,7 +15,7 @@ import {
   formatPricePerLitre,
 } from '../lib/format'
 import { rangeLabel, trendPoints } from '../lib/trend'
-import type { FuelMonth, RangeId } from '../types'
+import type { FuelMonth, HouseholdStats, RangeId } from '../types'
 import styles from './Analytics.module.css'
 
 const RANGE_IDS: RangeId[] = ['week', 'month', 'year', 'custom']
@@ -50,6 +50,8 @@ function AnalyticsBody({ data }: { data: AnalyticsData }) {
 
   return (
     <>
+      <DataBasis stats={data.stats} />
+
       <div className={styles.ranges} role="tablist" aria-label="Zeitraum">
         {RANGE_IDS.map((id) => (
           <button
@@ -109,8 +111,10 @@ function AnalyticsBody({ data }: { data: AnalyticsData }) {
         <div className="cardTitle">Sparpotenzial</div>
         {data.savings.length === 0 ? (
           <EmptyState inline title="Noch kein Vergleich möglich">
-            Sobald du dasselbe Produkt in mehreren Läden gekauft hast, rechnet die App hier aus, wie
-            viel du im Monat mehr bezahlt hast als beim günstigsten bekannten Preis.
+            Verglichen wird erst, wenn du dasselbe Produkt in <strong>mindestens zwei Läden</strong>{' '}
+            gekauft hast – sonst wäre „woanders günstiger“ in Wahrheit „derselbe Laden, anderer
+            Tag“, also eine Aktion und keine Ladenwahl. Es zählen Preise der letzten sechs Monate
+            und Mehrkosten ab 20 Cent.
           </EmptyState>
         ) : (
           <>
@@ -160,7 +164,66 @@ function AnalyticsBody({ data }: { data: AnalyticsData }) {
           ))
         )}
       </section>
+
+      {/*
+        „Häufigste Käufe" ist eine andere Frage als „teuerste Produkte" — und für
+        einen Haushalt die nützlichere: Sie sagt, wofür sich ein Preisvergleich
+        überhaupt lohnt. Sie erscheint erst, wenn ein Produkt zweimal gekauft
+        wurde; eine Liste, in der alles genau einmal vorkommt, wäre keine
+        Häufigkeit.
+      */}
+      {data.frequentProducts.length > 0 && (
+        <section className={styles.listCard}>
+          <div className={styles.listTitle}>Häufigste Käufe · letzte 6 Monate</div>
+          {data.frequentProducts.map((product, index) => (
+            <div key={product.name} className={styles.topRow}>
+              <span className={styles.rank}>{index + 1}</span>
+              <span className={styles.topName}>{product.name}</span>
+              <span className={styles.topCount}>{product.purchaseCount} ×</span>
+              <span className={styles.topAmount}>{formatEuro(product.amountCents)}</span>
+            </div>
+          ))}
+        </section>
+      )}
     </>
+  )
+}
+
+/**
+ * Wie viel Grundlage hinter diesen Zahlen steht.
+ *
+ * Die Auswertungen sind erst mit Daten aussagekräftig, und mit drei Bons sind
+ * sie es nicht. Statt das zu verschweigen, steht es oben — mit den beiden
+ * Zahlen, an denen man es ablesen kann. Ab einer brauchbaren Grundlage
+ * verschwindet der Hinweis wieder; ein Dauerbanner läse irgendwann niemand mehr.
+ *
+ * Die Schwelle ist dieselbe wie beim Einkaufszettel: vier Einkäufe und vierzehn
+ * Tage. Zwei Schwellen für dieselbe Frage („reicht das schon?") wären zwei
+ * Wahrheiten.
+ */
+const ENOUGH_RECEIPTS = 4
+const ENOUGH_DAYS = 14
+
+function DataBasis({ stats }: { stats: HouseholdStats }) {
+  if (stats.receiptCount >= ENOUGH_RECEIPTS && stats.daySpan >= ENOUGH_DAYS) return null
+
+  if (stats.receiptCount === 0) {
+    return (
+      <EmptyState title="Noch nichts auszuwerten" scanHint>
+        Die Analysen entstehen aus deinen Bons: Ausgabenverlauf, Kategorien, Sparpotenzial und die
+        häufigsten Käufe. Nach dem ersten Scan wächst hier alles von selbst.
+      </EmptyState>
+    )
+  }
+
+  return (
+    <p className={styles.basis} role="status">
+      <strong>Noch wenig Grundlage.</strong> {stats.receiptCount}{' '}
+      {stats.receiptCount === 1 ? 'Einkauf' : 'Einkäufe'} über {stats.daySpan}{' '}
+      {stats.daySpan === 1 ? 'Tag' : 'Tage'} – die Zahlen unten stimmen, sie sagen nur noch wenig
+      über deine Gewohnheiten. Ab {ENOUGH_RECEIPTS} Einkäufen und {ENOUGH_DAYS} Tagen wird es
+      belastbar.
+    </p>
   )
 }
 
@@ -262,25 +325,46 @@ function ProductSearch({ month }: { month: string }) {
   const [query, setQuery] = useState('')
   const state = useQuery(() => searchItemSpending(query, month), [query, month])
 
-  const result = state.data ?? { purchaseCount: 0, amountCents: 0 }
+  const empty = { purchaseCount: 0, amountCents: 0 }
+  const result = state.data ?? { inMonth: empty, allTime: empty }
+  const searching = query.trim() !== ''
 
   return (
     <section className="card">
       <div className="cardTitle" style={{ marginBottom: 12 }}>
-        Produktsuche im Zeitraum
+        Produktsuche
       </div>
       <SearchField value={query} onChange={setQuery} placeholder="z. B. Käse" />
       {state.error ? (
         <p className={styles.footnote}>{state.error}</p>
       ) : (
-        <div className={styles.searchResult}>
-          <div className={styles.searchCount}>
-            {query.trim() === ''
-              ? `Suchbegriff eingeben · ${formatMonth(month)}`
-              : `${result.purchaseCount} ${result.purchaseCount === 1 ? 'Kauf' : 'Käufe'} · ${formatMonth(month)}`}
+        <>
+          <div className={styles.searchResult}>
+            <div className={styles.searchCount}>
+              {searching
+                ? `${result.inMonth.purchaseCount} ${result.inMonth.purchaseCount === 1 ? 'Kauf' : 'Käufe'} · ${formatMonth(month)}`
+                : `Suchbegriff eingeben · ${formatMonth(month)}`}
+            </div>
+            <div className={styles.searchAmount}>{formatEuro(result.inMonth.amountCents)}</div>
           </div>
-          <div className={styles.searchAmount}>{formatEuro(result.amountCents)}</div>
-        </div>
+          {/*
+            Die zweite Zeile ist der eigentliche Gewinn, solange wenig erfasst
+            ist: Ein leerer laufender Monat sieht sonst aus, als hätte die Suche
+            nichts gefunden — obwohl das Produkt im Vormonat dreimal gekauft
+            wurde.
+          */}
+          {searching && (
+            <div className={styles.searchResult} style={{ marginTop: 4 }}>
+              <div className={styles.searchCount}>
+                {result.allTime.purchaseCount}{' '}
+                {result.allTime.purchaseCount === 1 ? 'Kauf' : 'Käufe'} · insgesamt
+              </div>
+              <div className={styles.searchCount} style={{ textAlign: 'right' }}>
+                {formatEuro(result.allTime.amountCents)}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </section>
   )

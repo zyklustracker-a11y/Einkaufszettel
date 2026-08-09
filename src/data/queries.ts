@@ -8,8 +8,11 @@ import { reference } from './reference'
 import type {
   CategoryId,
   CategoryTotal,
+  FrequentProduct,
   FuelMonth,
   HealthMonth,
+  HouseholdStats,
+  ItemSearch,
   ItemSearchResult,
   MerchantId,
   MerchantKind,
@@ -163,7 +166,12 @@ interface ProductPriceRow {
   first_purchased_on: string
   base_price_cents: number | null
   base_unit: string | null
+  merchant_count: number
 }
+
+/** Steht an drei Stellen und muss überall gleich sein. */
+const PRODUCT_PRICE_COLUMNS =
+  'product_id, product_name, category_key, min_cents, max_cents, avg_cents, purchase_count, first_purchased_on, base_price_cents, base_unit, merchant_count'
 
 interface PricePointRow {
   product_id: string
@@ -387,6 +395,51 @@ export interface AnalyticsData {
   topProducts: TopProduct[]
   /** Leer, solange kein Tankbeleg erfasst ist — dann fehlt die Karte ganz. */
   fuelMonths: FuelMonth[]
+  frequentProducts: FrequentProduct[]
+  /** Wie viel Grundlage da ist — die Analysen sagen es selbst dazu. */
+  stats: HouseholdStats
+}
+
+interface StatsRow {
+  receipt_count: number
+  first_purchased_on: string | null
+  last_purchased_on: string | null
+  day_span: number
+  product_count: number
+  merchant_count: number
+}
+
+/**
+ * Wie viel Datengrundlage der Haushalt hat.
+ *
+ * Gebraucht an zwei Stellen, und beide sind derselbe Gedanke: Die Analysen
+ * sagen damit, wie belastbar ihre eigenen Zahlen sind, und der Einkaufszettel
+ * misst daran seine Schwelle (14 Tage, 4 Einkäufe).
+ */
+export async function getHouseholdStats(): Promise<HouseholdStats> {
+  const row = unwrapMaybe(
+    await supabase
+      .from('v_household_stats')
+      .select('receipt_count, first_purchased_on, last_purchased_on, day_span, product_count, merchant_count')
+      .maybeSingle(),
+  ) as StatsRow | null
+
+  return {
+    receiptCount: row?.receipt_count ?? 0,
+    firstPurchasedOn: row?.first_purchased_on ?? null,
+    lastPurchasedOn: row?.last_purchased_on ?? null,
+    daySpan: row?.day_span ?? 0,
+    productCount: row?.product_count ?? 0,
+    merchantCount: row?.merchant_count ?? 0,
+  }
+}
+
+interface FrequentProductRow {
+  name: string
+  purchase_count: number
+  amount_cents: number
+  first_purchased_on: string
+  last_purchased_on: string
 }
 
 interface FuelMonthRow {
@@ -431,29 +484,37 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
   const summary = await loadCurrentMonth()
   const month = summary.month
 
-  const [buckets, categoryTotals, savings, topProducts, fuelMonths] = await Promise.all([
-    supabase
-      .from('v_spending_trend')
-      .select('range_id, bucket_index, bucket_start, bucket_end, iso_week, amount_cents')
-      .order('bucket_index')
-      .then((r) => unwrap<TrendRow[]>(r)),
-    loadCategoryTotals(month),
-    supabase
-      .from('v_savings_current_month')
-      // Eine Zeile, keine Verkettung: supabase-js liest die Spaltenliste zur
-      // Übersetzungszeit aus und braucht dafür ein Literal.
-      .select('product_id, product_name, best_merchant_id, best_price_cents, best_purchased_on, worst_merchant_id, worst_price_cents, worst_purchased_on, overpaid_count, excess_cents')
-      .order('excess_cents', { ascending: false })
-      .then((r) => unwrap<SavingsRowRaw[]>(r)),
-    supabase
-      .from('v_top_products')
-      .select('name, purchase_count, amount_cents')
-      .eq('month', month)
-      .lte('rank', 10)
-      .order('rank')
-      .then((r) => unwrap<TopProductRow[]>(r)),
-    loadFuelMonths(),
-  ])
+  const [buckets, categoryTotals, savings, topProducts, fuelMonths, frequentProducts, stats] =
+    await Promise.all([
+      supabase
+        .from('v_spending_trend')
+        .select('range_id, bucket_index, bucket_start, bucket_end, iso_week, amount_cents')
+        .order('bucket_index')
+        .then((r) => unwrap<TrendRow[]>(r)),
+      loadCategoryTotals(month),
+      supabase
+        .from('v_savings_current_month')
+        // Eine Zeile, keine Verkettung: supabase-js liest die Spaltenliste zur
+        // Übersetzungszeit aus und braucht dafür ein Literal.
+        .select('product_id, product_name, best_merchant_id, best_price_cents, best_purchased_on, worst_merchant_id, worst_price_cents, worst_purchased_on, overpaid_count, excess_cents')
+        .order('excess_cents', { ascending: false })
+        .then((r) => unwrap<SavingsRowRaw[]>(r)),
+      supabase
+        .from('v_top_products')
+        .select('name, purchase_count, amount_cents')
+        .eq('month', month)
+        .lte('rank', 10)
+        .order('rank')
+        .then((r) => unwrap<TopProductRow[]>(r)),
+      loadFuelMonths(),
+      supabase
+        .from('v_frequent_products')
+        .select('name, purchase_count, amount_cents, first_purchased_on, last_purchased_on')
+        .lte('rank', 8)
+        .order('rank')
+        .then((r) => unwrap<FrequentProductRow[]>(r)),
+      getHouseholdStats(),
+    ])
 
   return {
     month: summary.month,
@@ -489,6 +550,14 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
       amountCents: row.amount_cents,
     })),
     fuelMonths,
+    frequentProducts: frequentProducts.map((row) => ({
+      name: row.name,
+      purchaseCount: row.purchase_count,
+      amountCents: row.amount_cents,
+      firstPurchasedOn: row.first_purchased_on,
+      lastPurchasedOn: row.last_purchased_on,
+    })),
+    stats,
   }
 }
 
@@ -499,23 +568,33 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
  * kein Vorrechnen im Browser, sondern das Ergebnis einer Suche, die es als
  * feste Sicht nicht geben kann: der Suchbegriff wechselt mit jeder Eingabe.
  */
-export async function searchItemSpending(term: string, month: string): Promise<ItemSearchResult> {
+export async function searchItemSpending(term: string, month: string): Promise<ItemSearch> {
+  const empty: ItemSearchResult = { purchaseCount: 0, amountCents: 0 }
   const needle = term.trim()
-  if (!needle) return { purchaseCount: 0, amountCents: 0 }
+  if (!needle) return { inMonth: empty, allTime: empty }
 
-  const rows = unwrap<Array<{ total_cents: number }>>(
+  /*
+   * Eine Abfrage über alles, danach im Browser geteilt. Zwei Abfragen wären
+   * zwei Wege über die Leitung für dieselben Zeilen — und die Zahl der Treffer
+   * ist von Natur aus klein, es geht um die Käufe eines Haushalts.
+   */
+  const rows = unwrap<Array<{ total_cents: number; month: string }>>(
     await supabase
       .from('v_items')
-      .select('total_cents')
-      .eq('month', month)
+      .select('total_cents, month')
       // Prozentzeichen und Unterstrich sind in `ilike` Platzhalter und werden
       // deshalb aus der Nutzereingabe entfernt.
       .ilike('product_name', `%${needle.replace(/[%_]/g, '')}%`),
   )
 
+  const sum = (subset: Array<{ total_cents: number }>): ItemSearchResult => ({
+    purchaseCount: subset.length,
+    amountCents: subset.reduce((total, row) => total + row.total_cents, 0),
+  })
+
   return {
-    purchaseCount: rows.length,
-    amountCents: rows.reduce((sum, row) => sum + row.total_cents, 0),
+    inMonth: sum(rows.filter((row) => row.month === month)),
+    allTime: sum(rows),
   }
 }
 
@@ -564,7 +643,7 @@ export async function getPriceOverview(): Promise<ProductPriceOverview[]> {
   const [products, best, latest] = await Promise.all([
     supabase
       .from('v_product_prices')
-      .select('product_id, product_name, category_key, min_cents, max_cents, avg_cents, purchase_count, first_purchased_on, base_price_cents, base_unit')
+      .select(PRODUCT_PRICE_COLUMNS)
       .order('product_name')
       .then((r) => unwrap<ProductPriceRow[]>(r)),
     supabase
@@ -594,6 +673,7 @@ export async function getPriceOverview(): Promise<ProductPriceOverview[]> {
         basePriceCents: row.base_price_cents,
         baseUnit: row.base_unit,
         purchaseCount: row.purchase_count,
+        merchantCount: row.merchant_count,
         best: bestPoint,
         others: latest
           .filter((p) => p.product_id === row.product_id && p.merchant_id !== bestPoint.merchantId)
@@ -609,7 +689,7 @@ export async function getProductPriceDetail(
   const row = unwrapMaybe(
     await supabase
       .from('v_product_prices')
-      .select('product_id, product_name, category_key, min_cents, max_cents, avg_cents, purchase_count, first_purchased_on, base_price_cents, base_unit')
+      .select(PRODUCT_PRICE_COLUMNS)
       .eq('product_id', productId)
       .maybeSingle(),
   ) as ProductPriceRow | null

@@ -277,9 +277,43 @@ export interface ProductPriceOverview {
   basePriceCents: number | null
   baseUnit: string | null
   purchaseCount: number
+  /**
+   * Bei wie vielen Läden es dieses Produkt schon gab.
+   *
+   * Entscheidet, ob „Bestpreis" überhaupt das richtige Wort ist: Bei einem
+   * einzigen Laden gibt es nichts zu vergleichen, und der Screen sagt dann
+   * „Günstigster Preis" statt einen Vergleich zu behaupten, den es nicht gab.
+   */
+  merchantCount: number
   best: PricePoint
   /** Jüngster Preis je anderem Händler, günstigster zuerst. */
   others: PricePoint[]
+}
+
+/**
+ * Wie viel Grundlage überhaupt da ist.
+ *
+ * Die Auswertungen sagen damit selbst, wie belastbar ihre Zahlen sind — und der
+ * Einkaufszettel weiß, ob seine Schwelle (14 Tage, 4 Einkäufe) erreicht ist.
+ */
+export interface HouseholdStats {
+  receiptCount: number
+  /** ISO-Datum des ersten Einkaufs, oder null. */
+  firstPurchasedOn: string | null
+  lastPurchasedOn: string | null
+  /** Tage seit dem ersten Einkauf. 0, solange keiner erfasst ist. */
+  daySpan: number
+  productCount: number
+  merchantCount: number
+}
+
+/** Eine Zeile unter „Häufigste Käufe". */
+export interface FrequentProduct {
+  name: string
+  purchaseCount: number
+  amountCents: number
+  firstPurchasedOn: string
+  lastPurchasedOn: string
 }
 
 /** Der Produkt-Detailschirm: Kennzahlen plus die vollständige Kaufhistorie. */
@@ -329,8 +363,20 @@ export interface FuelMonth {
   pricePerLitreCents: number
 }
 
-/** Ergebnis der Produktsuche im Zeitraum. */
+/** Ergebnis der Produktsuche. */
 export interface ItemSearchResult {
   purchaseCount: number
   amountCents: number
+}
+
+/**
+ * Die Produktsuche liefert zwei Zahlen: den laufenden Monat und alles.
+ *
+ * Mit wenigen Bons ist der laufende Monat oft leer, und „0 Käufe" sieht aus, als
+ * hätte die Suche nichts gefunden — obwohl das Produkt im Vormonat dreimal
+ * gekauft wurde. Die zweite Zahl beantwortet genau diese Frage.
+ */
+export interface ItemSearch {
+  inMonth: ItemSearchResult
+  allTime: ItemSearchResult
 }

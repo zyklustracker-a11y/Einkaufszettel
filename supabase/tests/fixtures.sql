@@ -90,9 +90,12 @@ begin
         'kategorie', 'produce', 'merkmale', jsonb_build_array(),
         'menge_basis', 1000, 'menge_einheit', 'kg', 'einzelpreis_cent', 169,
         'zeilensumme_cent', 169, 'steuer', 'B', 'quelle', 'user'),
+      -- 500 g zu 2,66 EUR/kg: Die Menge steht in Gramm (Basiseinheit), die
+      -- Anzeigeeinheit ist `kg`, und der Einzelpreis gilt je Kilo. Genau daraus
+      -- entsteht seit Schritt 8 der Grundpreis.
       jsonb_build_object('rohtext', 'KAFFEE GEMAHLEN', 'art', 'artikel', 'name', 'Kaffee gemahlen',
         'kategorie', 'drinks', 'merkmale', jsonb_build_array(),
-        'menge_basis', 500, 'menge_einheit', 'g', 'einzelpreis_cent', 266,
+        'menge_basis', 500, 'menge_einheit', 'kg', 'einzelpreis_cent', 266,
         'zeilensumme_cent', 133, 'steuer', 'B', 'quelle', 'user')
     )
   ));
@@ -124,7 +127,7 @@ begin
         'zeilensumme_cent', 189, 'steuer', 'B', 'quelle', 'model'),
       jsonb_build_object('rohtext', 'BROT 500G', 'art', 'artikel', 'name', 'Bauernbrot',
         'kategorie', 'bakery', 'merkmale', jsonb_build_array('gluten', 'weizen'),
-        'menge_basis', 500, 'menge_einheit', 'g', 'einzelpreis_cent', 566,
+        'menge_basis', 500, 'menge_einheit', 'kg', 'einzelpreis_cent', 566,
         'zeilensumme_cent', 283, 'steuer', 'B', 'quelle', 'model')
     )
   ));

@@ -113,6 +113,25 @@ begin
   assert r.min_cents = 99 and r.max_cents = 139,
     format('H-Milch min/max: 99/139 erwartet, %s/%s', r.min_cents, r.max_cents);
 
+  /* ========================================================= Grundpreis */
+
+  -- Bananen werden nach Gewicht verkauft: Der Einzelpreis IST der Grundpreis.
+  -- Bis Schritt 8 stand hier immer null, weil `size_base` nie gefüllt wird.
+  select * into r from public.v_product_prices p
+  join public.canonical_products cp on cp.id = p.product_id
+  where cp.name = 'Bananen';
+  assert r.base_price_cents = 169, format('Grundpreis Bananen: 169 erwartet, %s', r.base_price_cents);
+  assert r.base_unit = 'kg', format('Grundpreis-Einheit Bananen: kg erwartet, %s', r.base_unit);
+  assert r.merchant_count = 2, format('Bananen bei 2 Läden erwartet, %s', r.merchant_count);
+
+  -- Stückware hat keinen Grundpreis. „Ohne Mengenangabe" ist ein echter
+  -- Zustand und kein Fehler — geraten wird auch hier nicht.
+  select * into r from public.v_product_prices p
+  join public.canonical_products cp on cp.id = p.product_id
+  where cp.name = 'H-Milch 1,5 %';
+  assert r.base_price_cents is null, format('Grundpreis H-Milch: null erwartet, %s', r.base_price_cents);
+  assert r.base_unit is null, 'Grundpreis-Einheit H-Milch: null erwartet';
+
   /* ====================================================== Sparpotenzial */
 
   select count(*) into n from public.v_savings_current_month;
@@ -120,6 +139,34 @@ begin
 
   select sum(excess_cents) into n from public.v_savings_current_month;
   assert n = 60, format('Sparpotenzial gesamt: 60 erwartet, %s', n);
+
+  -- Die Schwelle „mindestens zwei Läden": Sprit gab es nur bei Shell, also
+  -- taucht er nie im Sparpotenzial auf — auch dann nicht, wenn eine Füllung
+  -- teurer war als die andere. Das wäre eine Aussage über den Ölpreis und
+  -- nicht über die Wahl der Tankstelle.
+  select count(*) into n from public.v_savings_current_month where product_name = 'Super E10';
+  assert n = 0, 'Sparpotenzial: Produkt mit nur einem Laden nicht ausgeschlossen';
+
+  /* ==================================================== Häufigste Käufe */
+
+  select count(*) into n from public.v_frequent_products;
+  -- Nur Produkte mit mindestens zwei Käufen: H-Milch (3), Bananen (3),
+  -- Super E10 (2). Alles Einmalige fällt heraus.
+  assert n = 3, format('Häufigste Käufe: 3 Zeilen erwartet, %s', n);
+
+  select * into r from public.v_frequent_products where rank = 1;
+  assert r.name = 'H-Milch 1,5 %', format('Häufigster Kauf: H-Milch erwartet, %s', r.name);
+  assert r.purchase_count = 3, format('H-Milch: 3 Käufe erwartet, %s', r.purchase_count);
+
+  /* ==================================================== Datengrundlage */
+
+  select * into r from public.v_household_stats;
+  assert r.receipt_count = 6, format('Einkäufe: 6 erwartet, %s', r.receipt_count);
+  assert r.merchant_count = 4, format('Läden: 4 erwartet, %s', r.merchant_count);
+  assert r.product_count = 8, format('Produkte: 8 erwartet, %s', r.product_count);
+  -- Der erste Einkauf liegt drei Monate zurück; auf den Tag genau hängt das vom
+  -- Prüftag ab, mindestens zwei Monate sind es immer.
+  assert r.day_span >= 59, format('Zeitraum: mindestens 59 Tage erwartet, %s', r.day_span);
 
   /* ========================================================= Gesundheit */
 

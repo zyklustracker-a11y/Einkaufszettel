@@ -291,6 +291,48 @@ Einkaufs-Detail auf „Bearbeiten" und die Menge nachtragen.
 
 ---
 
+## 2g. Die siebte Migration: Bestpreise und Analysen
+
+`migrations/0007_auswertungen.sql` gehört zu Schritt 8. Sie legt keine Tabelle
+an, sondern schärft die Auswertungen — und repariert den Grundpreis, der bis
+dahin immer leer war.
+
+| Was | Wofür |
+|---|---|
+| `v_price_observations` | Grundpreis (€/kg, €/l) je Beobachtung |
+| `v_product_prices` | Grundpreis und Zahl der Läden je Produkt |
+| `v_savings_current_month` | drei Schwellen: 2 Läden, 20 Cent, 6 Monate |
+| `v_frequent_products` | die häufigsten Käufe statt der teuersten |
+| `v_household_stats` | wie viel Grundlage überhaupt da ist |
+
+Genauso ausführen wie oben. Erwartet: **Success. No rows returned.**
+
+**Prüfen, ob der Grundpreis jetzt ankommt:**
+
+```sql
+select product_name, purchase_count, merchant_count, min_cents,
+       base_price_cents, base_unit
+from public.v_product_prices
+order by product_name;
+```
+
+Erwartet: Bei Ware, die du nach Gewicht kaufst (Obst, Käse an der Theke), steht
+in `base_price_cents` jetzt eine Zahl und in `base_unit` ein `kg` oder `l`. Bei
+Stückware bleibt beides leer — ohne Packungsgröße gibt es keinen €/kg, und
+geraten wird nicht.
+
+**Und wie viel Grundlage da ist:**
+
+```sql
+select * from public.v_household_stats;
+```
+
+Erwartet: eine Zeile. `receipt_count` und `day_span` sind die beiden Zahlen, an
+denen die App misst, ob ihre Auswertungen schon etwas taugen — und ab denen der
+Einkaufszettel Vorschläge macht.
+
+---
+
 ## 3. Prüfen, ob alles angekommen ist
 
 Öffne eine neue Abfrage und führe diese vier Blöcke nacheinander aus.

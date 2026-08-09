@@ -920,6 +920,54 @@ steht — mehr wird nicht behauptet.
 bereits eng, fünf wären zu viel; das Konzept sieht es selbst so vor. Die eigene
 Karte steht in den Analysen und erscheint nur, wenn es Tankbelege gibt.
 
+### Ergänzt mit Schritt 8 (Bestpreise und Analysen scharf schalten)
+
+**Die Auswertungen rechneten längst gegen echte Daten — es fehlten Schwellen.**
+Mit drei Bons sagt „Sparpotenzial: 30 Cent" nichts über Läden, sondern über ein
+Sonderangebot, und ein „Bestpreis" aus einem einzigen Kauf ist keiner. Eine
+Auswertung, die mit wenigen Daten Unsinn behauptet, ist schlechter als eine, die
+sagt „dafür reicht es noch nicht" (`supabase/migrations/0007_auswertungen.sql`).
+
+**Der Grundpreis war tote Leitung.** `v_product_prices.base_price_cents` wurde
+aus `canonical_products.size_base` gerechnet — einer Spalte, die `save_receipt`
+**nie füllt**: Auf einem Bon steht die Packungsgröße fast nie, und sie zu raten
+ist verboten. Der Grundpreis war deshalb immer null, und überall stand „ohne
+Mengenangabe". Die Angabe war die ganze Zeit da, nur woanders: Bei Ware nach
+Gewicht oder Volumen **ist** `unit_price_cents` der Grundpreis — „1,79 EUR/kg"
+steht so auf dem Bon. Es fehlte die Umrechnung auf eine einheitliche Einheit.
+Für Stückware bleibt er null, und das ist richtig: ohne Packungsgröße kein €/kg.
+
+**Drei Schwellen beim Sparpotenzial**, jede fängt eine falsche Aussage ab:
+
+- *Mindestens zwei Läden.* Sonst hieße „woanders günstiger" in Wahrheit
+  „derselbe Laden, anderer Tag" — eine Aktion und keine Ladenwahl.
+- *Mindestens 20 Cent je Produkt.* Darunter ist es Rauschen. Ein Hinweis, der
+  zum Ladenwechsel wegen zwölf Cent rät, wird nicht ernst genommen — und das
+  färbt auf die Hinweise ab, die stimmen.
+- *Der Bestpreis ist höchstens ein halbes Jahr alt.* Ein Preis von vorletztem
+  Jahr ist heute nicht erreichbar; er erzeugte ein Sparpotenzial, das niemand
+  heben kann.
+
+**„Bestpreis" ist eine Aussage über einen Vergleich** und steht deshalb nur da,
+wenn es einen gab. Bei einem Kauf heißt es „Einmal bezahlt", bei einem Laden
+„Günstigster Preis". Die Zahl stimmt in allen drei Fällen — nur ihre Bezeichnung
+ändert sich, und darunter steht, was für den Vergleich noch fehlt.
+
+**„Häufigste Käufe" ist eine andere Frage als „teuerste Produkte"** und für einen
+Haushalt die nützlichere: Sie sagt, wofür sich ein Preisvergleich lohnt, und ist
+die Vorstufe zum Einkaufszettel. Mindestens zwei Käufe in sechs Monaten, sonst
+wäre es eine Liste von allem.
+
+**Die Analysen sagen selbst, wie belastbar sie sind.** `v_household_stats`
+liefert Einkäufe und Tage seit dem ersten Bon; darunter steht der Hinweis, ab
+wann es aussagekräftig wird. Die Schwelle ist dieselbe wie beim Einkaufszettel —
+vier Einkäufe und vierzehn Tage. Zwei Schwellen für dieselbe Frage wären zwei
+Wahrheiten.
+
+**Die Produktsuche zeigt zwei Zahlen statt einer.** Mit wenigen Bons ist der
+laufende Monat oft leer, und „0 Käufe" sieht aus, als hätte die Suche nichts
+gefunden — obwohl das Produkt im Vormonat dreimal vorkam.
+
 ### Die Sichten werden gegen erzeugte Testdaten geprüft
 
 `supabase/tests/` legt eine wegwerfbare Datenbank an, spielt alle Migrationen
@@ -993,7 +1041,7 @@ nur die Voreinstellung.
 | — | Health-Score als Formel in `src/lib/score.ts` | erledigt |
 | 6 | Verarbeitung im Hintergrund (`scan_jobs`) | erledigt |
 | 7 | Spritkosten | erledigt |
-| 8 | Bestpreise und Analysen scharf schalten | offen |
+| 8 | Bestpreise und Analysen scharf schalten | erledigt |
 | 9 | Einkaufszettel | offen |
 | 10 | Merkmale selbst anlegen und gewichten | offen |
 | 11 | Einstellungen als Übersicht mit eigenen Screens | offen |

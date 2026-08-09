@@ -73,6 +73,7 @@ export {
   getProductPriceDetail,
   getReceipt,
   getReceiptDraft,
+  getHouseholdStats,
   getMonthlyBudgetCents,
   saveMonthlyBudgetCents,
   searchItemSpending,
