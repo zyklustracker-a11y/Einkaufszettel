@@ -139,20 +139,60 @@ export interface ChartPoint {
  * Maps values onto an SVG viewBox. `padding` keeps the topmost dot from being
  * clipped by the stroke.
  *
+ * **`null` ist eine Lücke, kein Wert.** Seit Schritt 19 kann eine Reihe Monate
+ * enthalten, in denen nichts eingekauft wurde. Sie behalten ihren Platz auf der
+ * Achse — die Zeit läuft ja weiter —, bekommen aber keinen Punkt. Eine 0 an
+ * ihrer Stelle wäre eine Behauptung („der Score war null"), und sie einfach
+ * wegzulassen staucht die Achse: Dann läge zwischen Mai und Juli derselbe
+ * Abstand wie zwischen Juli und August.
+ *
  * Bei einer leeren Reihe kommt eine leere Liste zurück — `Math.min()` ohne
  * Argumente wäre `Infinity` und jede Koordinate danach `NaN`.
  */
-export function linePoints(values: number[], width: number, height: number, padding = 10): ChartPoint[] {
-  if (values.length === 0) return []
+export function linePoints(
+  values: (number | null)[],
+  width: number,
+  height: number,
+  padding = 10,
+): (ChartPoint | null)[] {
+  const known = values.filter((value): value is number => value !== null)
+  if (known.length === 0) return []
 
-  const min = Math.min(...values)
-  const max = Math.max(...values)
+  const min = Math.min(...known)
+  const max = Math.max(...known)
   const span = max - min || 1
-  return values.map((value, index) => ({
-    x: values.length === 1 ? width / 2 : (index * width) / (values.length - 1),
-    y: padding + (height - padding) * (1 - (value - min) / span),
-    value,
-  }))
+  return values.map((value, index) => {
+    if (value === null) return null
+    return {
+      x: values.length === 1 ? width / 2 : (index * width) / (values.length - 1),
+      y: padding + (height - padding) * (1 - (value - min) / span),
+      value,
+    }
+  })
+}
+
+/**
+ * Die Linie, in zusammenhängende Stücke zerlegt.
+ *
+ * Eine Lücke trennt zwei Stücke: Über einen Monat ohne Einkäufe wird **nicht**
+ * durchgezeichnet, weil die Linie sonst einen Verlauf behauptet, den es nicht
+ * gibt. Ohne Lücke kommt genau ein Stück zurück, und alles bleibt wie vorher.
+ */
+export function polylineSegments(points: (ChartPoint | null)[]): string[] {
+  const segments: string[] = []
+  let run: ChartPoint[] = []
+
+  for (const point of points) {
+    if (point === null) {
+      if (run.length > 1) segments.push(polylinePoints(run))
+      run = []
+      continue
+    }
+    run.push(point)
+  }
+  if (run.length > 1) segments.push(polylinePoints(run))
+
+  return segments
 }
 
 export function polylinePoints(points: ChartPoint[]): string {

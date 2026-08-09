@@ -275,3 +275,12 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+
+/* Was der Kategorien-Ring nicht zeigen kann. Steht unter ihm, weil die Zahl in
+   seiner Mitte sonst zu einer anderen Summe gehörte als seine Segmente. */
+.donutNote {
+  margin: 14px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}

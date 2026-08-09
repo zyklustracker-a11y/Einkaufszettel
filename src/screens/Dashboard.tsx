@@ -21,6 +21,14 @@ import {
 } from '../lib/format'
 import styles from './Dashboard.module.css'
 
+/**
+ * Ab welchem Tag des Monats die Hochrechnung überhaupt etwas aussagt.
+ *
+ * Vorher steht der bisherige Umsatz durch ein bis sechs Tage geteilt — das
+ * schwankt so stark, dass die Zahl täglich um Hunderte Euro springt.
+ */
+const FORECAST_FROM_DAY = 7
+
 export function Dashboard() {
   const state = useQuery(getDashboardData, [])
 
@@ -54,13 +62,28 @@ function DashboardBody({ data }: { data: DashboardData }) {
   const { summary } = data
   const budget = budgetState(summary)
   const slices = categorySlices(data.categoryTotals, getCategories())
+  const categorisedCents = data.categoryTotals.reduce((sum, total) => sum + total.amountCents, 0)
+  const uncategorisedCents = budget.spentCents - categorisedCents
   const previousMonthName = formatMonthName(shiftMonth(summary.month, -1))
 
   const foodSpendCents = data.unprocessedCents + data.processedCents
   const unprocessedShare = share(data.unprocessedCents, foodSpendCents)
-  const currentScore = data.scores.length > 0 ? data.scores[data.scores.length - 1].score : null
+  // Die Reihe enthält seit Schritt 19 auch Monate ohne Einkäufe (`score: null`).
+  // Gezeigt wird der jüngste Monat, für den es wirklich eine Zahl gibt.
+  const currentScore =
+    [...data.scores].reverse().find((entry) => entry.score !== null)?.score ?? null
 
   const nothingThisMonth = budget.spentCents === 0 && summary.receiptCount === 0
+
+  /*
+   * Die Hochrechnung ist ein Dreisatz auf den heutigen Tag im Monat. Am 1. heißt
+   * das „mal 31": Ein Wocheneinkauf für 50 € ergäbe „ca. 1.550 €" und „1.150 €
+   * über Budget", am 2. wären es 775 €. Mathematisch richtig, als Aussage
+   * unbrauchbar — und sie steht in Rot. Deshalb erscheint sie erst, wenn der
+   * Monat genug Tage hat, um überhaupt ein Tempo zu zeigen.
+   */
+  const forecastDay = dayOfMonth(summary.asOf)
+  const forecastReady = forecastDay >= FORECAST_FROM_DAY
 
   return (
     <>
@@ -118,7 +141,7 @@ function DashboardBody({ data }: { data: DashboardData }) {
           <EmptyState
             inline
             title="Noch kein Budget gesetzt"
-            link={{ to: '/einstellungen', label: 'Budget festlegen' }}
+            link={{ to: '/einstellungen/budget', label: 'Budget festlegen' }}
           >
             Leg in den Einstellungen fest, wie viel du im Monat ausgeben möchtest. Danach siehst du
             hier, wie viel davon schon verbraucht ist.
@@ -145,6 +168,15 @@ function DashboardBody({ data }: { data: DashboardData }) {
                 <div className={styles.forecastTitle}>Noch nichts ausgegeben</div>
                 <div className={styles.forecastDetail}>
                   Die Hochrechnung erscheint, sobald der erste Einkauf erfasst ist.
+                </div>
+              </div>
+            ) : !forecastReady ? (
+              <div className={`${styles.forecast} ${styles['forecast--ok']}`}>
+                <div className={styles.forecastTitle}>Für eine Hochrechnung ist es noch früh</div>
+                <div className={styles.forecastDetail}>
+                  Ab dem {FORECAST_FROM_DAY}. steht hier, worauf der Monat bei diesem Tempo
+                  hinausläuft. Vorher sagt ein einzelner Einkauf mehr über den Tag als über den
+                  Monat.
                 </div>
               </div>
             ) : (
@@ -189,7 +221,23 @@ function DashboardBody({ data }: { data: DashboardData }) {
           Ausgaben pro Kategorie
         </div>
         {slices.length > 0 ? (
-          <CategoryDonut slices={slices} totalCents={budget.spentCents} />
+          <>
+            {/*
+              Die Zahl in der Mitte ist die Summe der **Segmente**, nicht die
+              Monatssumme. Bis Schritt 19 stand dort die Monatssumme, und der
+              Ring behauptete damit, sie aufzuteilen — er kann es aber nicht:
+              Trinkgeld gehört zu keiner Kategorie, Pfand- und Rabattzeilen auch
+              nicht, und einer Position ohne Produkt fehlt sie noch. Wer die
+              Legende addierte, kam auf einen anderen Betrag als auf die Mitte.
+            */}
+            <CategoryDonut slices={slices} totalCents={categorisedCents} />
+            {uncategorisedCents > 0 && (
+              <p className={styles.donutNote}>
+                Dazu {formatEuro(uncategorisedCents)} ohne Kategorie – Trinkgeld, Pfand, Rabatte
+                und Positionen, denen noch ein Produkt fehlt.
+              </p>
+            )}
+          </>
         ) : (
           <EmptyState inline title="Noch keine Kategorien">
             Der Ring füllt sich, sobald Positionen erfasst und einem Produkt zugeordnet sind – Obst

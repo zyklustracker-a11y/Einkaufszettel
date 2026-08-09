@@ -30,10 +30,10 @@ import styles from './ShoppingList.module.css'
  *      steht, was war; hier hakt man ab, was noch kommt. Diese beiden Sorten
  *      Screen zu mischen macht beide unklarer.
  *
- * Der Platz reicht: Fünf Tabs plus Scan-Knopf ergeben auf 390 px rund 64 px je
- * Feld, und die Beschriftungen sind entsprechend kurz gewählt (Übersicht ·
- * Preise · Zettel · Analysen · Gesund). Sollte es am Gerät doch zu gedrängt
- * wirken, ist der Rückweg klein: Die Komponenten unten hängen an keiner Route.
+ * Der Tab ist geblieben, auch als die Leiste mit Schritt 15 wieder auf vier
+ * Felder ging: Abgegeben haben die Bestpreise, nicht der Zettel. Die
+ * Beschriftungen stehen seitdem wieder ausgeschrieben da (Übersicht · Zettel ·
+ * Analysen · Gesundheit).
  */
 export function ShoppingListScreen() {
   const state = useQuery(getShoppingList, [])
@@ -80,11 +80,7 @@ function Body({ list, reload }: { list: ShoppingList; reload: () => void }) {
       )}
 
       {list.items.length === 0 ? (
-        <EmptyState inline title={list.stats.suggestionsReady ? 'Gerade ist nichts fällig' : 'Noch kein Vorschlag'}>
-          {list.stats.suggestionsReady
-            ? 'Alles, was du regelmäßig kaufst, ist noch frisch. Sobald etwas fällig wird, steht es hier – bis dahin kannst du eigene Einträge ergänzen.'
-            : 'Vorschläge kommen, sobald genug Einkäufe erfasst sind. Eigene Einträge kannst du jederzeit hinschreiben.'}
-        </EmptyState>
+        <NothingDue stats={list.stats} rhythms={list.rhythms} />
       ) : (
         <>
           <Summary items={list.items} />
@@ -144,6 +140,55 @@ function Body({ list, reload }: { list: ShoppingList; reload: () => void }) {
         </p>
       )}
     </>
+  )
+}
+
+/**
+ * Der Leerzustand — und warum er drei Fassungen hat.
+ *
+ * Bis Schritt 19 stand hier ein Satz: „Alles, was du regelmäßig kaufst, ist
+ * noch frisch." Das war eine Behauptung, die die Daten oft nicht hergaben. Wer
+ * unregelmäßig einkauft, hat **gar keinen** erkannten Rhythmus — dann ist
+ * nichts „noch frisch", sondern nichts vorhersagbar. Der Satz beruhigte über
+ * etwas, das die App nicht wusste.
+ *
+ * Jetzt wird unterschieden:
+ *
+ *   1. Schwelle noch nicht erreicht → das sagt der Fortschritt darüber.
+ *   2. Schwelle erreicht, aber kein stabiler Rhythmus → sagen, woran es liegt,
+ *      und die erkannten Abstände zeigen. Der Nutzer sieht damit, dass die App
+ *      mitzählt, und kann selbst entscheiden.
+ *   3. Rhythmen erkannt, gerade keiner fällig → dann stimmt „noch frisch".
+ */
+function NothingDue({ stats, rhythms }: { stats: HouseholdStats; rhythms: RhythmProduct[] }) {
+  if (!stats.suggestionsReady) {
+    return (
+      <EmptyState inline title="Noch kein Vorschlag">
+        Vorschläge kommen, sobald genug Einkäufe erfasst sind. Eigene Einträge kannst du jederzeit
+        hinschreiben.
+      </EmptyState>
+    )
+  }
+
+  if (rhythms.length === 0) {
+    return (
+      <EmptyState inline title="Noch kein regelmäßiges Produkt erkannt">
+        Für einen Vorschlag braucht es ein Produkt, das du <strong>mindestens dreimal</strong> und
+        in einigermaßen gleichen Abständen gekauft hast. Bisher ist keines dabei – unregelmäßige
+        Käufe vorherzusagen wäre geraten. Eigene Einträge kannst du jederzeit hinschreiben.
+      </EmptyState>
+    )
+  }
+
+  return (
+    <EmptyState inline title="Gerade ist nichts fällig">
+      Erkannt sind{' '}
+      {rhythms
+        .slice(0, 4)
+        .map((rhythm) => `${rhythm.name} alle ${rhythm.medianGapDays} Tage`)
+        .join(' · ')}
+      . Keines davon ist gerade dran – sobald etwas fällig wird, steht es hier.
+    </EmptyState>
   )
 }
 
@@ -404,8 +449,8 @@ function AddItem({ busy, onAdd }: { busy: boolean; onAdd: (label: string) => Pro
       <input
         className={styles.addInput}
         value={text}
-        placeholder="Eigener Eintrag, z. B. Blumen"
-        aria-label="Eigener Eintrag"
+        placeholder="Eigener Eintrag"
+        aria-label="Eigener Eintrag, zum Beispiel Blumen"
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === 'Enter') void submit()

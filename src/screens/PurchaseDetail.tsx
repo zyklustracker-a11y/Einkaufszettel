@@ -19,9 +19,14 @@ export function PurchaseDetail() {
    * Routers und nicht in der Adresse: Ein Neuladen soll die Bestätigung nicht
    * wiederholen — gespeichert wurde ja nur einmal.
    */
-  const routed = useLocation().state as { justSaved?: boolean; updated?: boolean } | null
+  const routed = useLocation().state as {
+    justSaved?: boolean
+    updated?: boolean
+    shopping?: { done: number; total: number } | null
+  } | null
   const justSaved = routed?.justSaved === true
   const wasUpdated = routed?.updated === true
+  const shopping = routed?.shopping ?? null
 
   return (
     <div className="screen screen--tabbed">
@@ -34,7 +39,12 @@ export function PurchaseDetail() {
               gelöscht.
             </EmptyState>
           ) : (
-            <PurchaseBody receipt={receipt} justSaved={justSaved} wasUpdated={wasUpdated} />
+              <PurchaseBody
+              receipt={receipt}
+              justSaved={justSaved}
+              wasUpdated={wasUpdated}
+              shopping={shopping}
+            />
           )
         }
       </Async>
@@ -46,11 +56,14 @@ function PurchaseBody({
   receipt,
   justSaved,
   wasUpdated,
+  shopping,
 }: {
   receipt: Receipt
   justSaved: boolean
   /** Aus dem Bearbeiten gekommen und nicht aus einem frischen Scan. */
   wasUpdated: boolean
+  /** Wie weit der Einkaufszettel nach dem Speichern abgehakt ist. */
+  shopping: { done: number; total: number } | null
 }) {
   const navigate = useNavigate()
   const [confirming, setConfirming] = useState(false)
@@ -80,6 +93,16 @@ function PurchaseBody({
           {wasUpdated
             ? 'Änderungen gesichert. Korrekturen an Produkten gelten rückwirkend für alle Käufe.'
             : 'Gespeichert. Der Einkauf zählt ab jetzt in der Übersicht mit.'}
+          {/*
+            Der Kreis zwischen Planung und Erfassung, den das Konzept
+            beschreibt. Abgehakt hat `save_receipt` schon beim Speichern — bis
+            Schritt 19 sah man davon nur nichts.
+          */}
+          {shopping && shopping.total > 0 && (
+            <span className={styles.savedShopping}>
+              Einkaufszettel: {shopping.done} von {shopping.total} erledigt.
+            </span>
+          )}
         </div>
       )}
 

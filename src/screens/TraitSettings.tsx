@@ -110,12 +110,20 @@ export function TraitSettings() {
               <span className={trait.active ? styles.name : `${styles.name} ${styles['name--off']}`}>
                 {trait.label}
               </span>
+              {/*
+                Zwei Zeilen statt einer. In einer Zeile stand bei 375 px
+                „Gruppe milch_b…" — abgeschnitten war ausgerechnet der Zusatz
+                „aus Milch-Feldern", also die Erklärung, warum sich das Merkmal
+                nicht anhaken lässt.
+              */}
               <span className={styles.meta}>
-                {trait.group ? `Gruppe ${trait.group}` : 'ohne Gruppe'}
+                {groupLabel(trait.group)}
                 {trait.isDefault ? '' : ' · selbst angelegt'}
                 {trait.active ? '' : ' · aus'}
-                {DERIVED_TRAIT_KEYS.includes(trait.id) ? ' · aus Milch-Feldern' : ''}
               </span>
+              {DERIVED_TRAIT_KEYS.includes(trait.id) && (
+                <span className={styles.meta}>aus den Milch-Feldern abgeleitet</span>
+              )}
             </button>
 
             <span
@@ -189,6 +197,23 @@ export function TraitSettings() {
       )}
     </section>
   )
+}
+
+/**
+ * „Gruppe Fette" statt „Gruppe fette".
+ *
+ * `trait_group` ist ein Datenbankschlüssel und stand bis Schritt 19 roh in der
+ * Liste — `milch_basis`, `getreide`, `fette`. Für den Nutzer ist das kein Wort,
+ * sondern eine Spalte. Angezeigt wird deshalb eine lesbare Fassung; gespeichert
+ * bleibt der Schlüssel, damit die Gruppenregel weiter greift.
+ */
+export function groupLabel(group: string | undefined): string {
+  if (!group) return 'ohne Gruppe'
+  const readable = group
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+  return `Gruppe ${readable}`
 }
 
 /* ================================================== Anlegen und Bearbeiten */
@@ -449,7 +474,7 @@ function GroupRow({
               setCustom(false)
             }}
           >
-            {name}
+            {groupLabel(name).replace('Gruppe ', '')}
           </Chip>
         ))}
         <Chip selected={custom} onClick={() => setCustom(true)}>

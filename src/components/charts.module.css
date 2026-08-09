@@ -147,14 +147,19 @@
   gap: 10px;
 }
 
+/* Zwei Zeilen statt Auslassungspunkten.
+
+   „Grundnahrungsmittel" passte bei 393 px nicht in eine Zeile und stand als
+   „Grundnahrungsm…" da — ausgerechnet bei der Kategorie mit dem längsten Namen.
+   Umbrechen kostet nur dort Höhe, wo es nötig ist; der Balken daneben bleibt
+   mittig ausgerichtet. */
 .rowName {
   width: 112px;
   flex: 0 0 112px;
   font-size: 12.5px;
+  line-height: 1.3;
   color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 .rowTrack {

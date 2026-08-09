@@ -209,7 +209,13 @@ export interface CategoryTotal {
   amountCents: number
 }
 
-export type RangeId = 'week' | 'month' | 'year' | 'custom'
+/**
+ * Die Zeiträume des Ausgabenverlaufs.
+ *
+ * `custom` ist mit Schritt 19 entfallen: Es zeigte die letzten vierzehn Tage in
+ * zwei Balken, hieß „Eigen" und war an nichts anpassbar.
+ */
+export type RangeId = 'week' | 'month' | 'year'
 
 export interface TrendPoint {
   label: string
@@ -218,9 +224,8 @@ export interface TrendPoint {
 
 /**
  * Ein Topf des Ausgabenverlaufs, so wie ihn die View `v_spending_trend` liefert:
- * Zeitraum und Summe, aber keine Beschriftung. Ob daraus `Mo`, `KW32`, `Aug`
- * oder `1.–7.` wird, entscheidet die Anzeige (PROJEKT.md: Formatierung nur in
- * der UI).
+ * Zeitraum und Summe, aber keine Beschriftung. Ob daraus `Mo`, `1.–7.` oder
+ * `Aug` wird, entscheidet die Anzeige (PROJEKT.md: Formatierung nur in der UI).
  */
 export interface TrendBucket {
   rangeId: RangeId
@@ -229,21 +234,15 @@ export interface TrendBucket {
   start: string
   /** ISO-Datum, letzter Tag des Topfs. */
   end: string
-  /** Kalenderwoche des Topf-Anfangs, für die `KW32`-Beschriftung. */
+  /** ISO-Kalenderwoche des Topfbeginns. */
   isoWeek: number
-  amountCents: number
-}
-
-export interface TopProduct {
-  name: string
-  purchaseCount: number
   amountCents: number
 }
 
 export interface HealthMonth {
   /** First day of the month, ISO. */
   month: string
-  score: number
+  score: number | null
 }
 
 export interface HealthSummary {
@@ -289,8 +288,6 @@ export interface ProductPriceOverview {
    */
   merchantCount: number
   best: PricePoint
-  /** Jüngster Preis je anderem Händler, günstigster zuerst. */
-  others: PricePoint[]
 }
 
 /**
@@ -317,6 +314,12 @@ export interface HouseholdStats {
   requiredReceipts: number
   requiredDays: number
   suggestionsReady: boolean
+  /**
+   * Produkte, die mehrfach gekauft wurden, aber immer im selben Laden. Ihnen
+   * fehlt für einen Preisvergleich nur noch der zweite Händler — und genau das
+   * sagt der Leerzustand des Sparpotenzials damit.
+   */
+  singleMerchantProducts: number
 }
 
 /**
@@ -396,7 +399,15 @@ export interface SavingsRow {
   worst: PricePoint
   /** Wie viele Käufe im Zeitraum über dem Bestpreis lagen. */
   overpaidCount: number
+  /**
+   * Was die Käufe dieses Monats gegenüber dem Bestpreis **wirklich** mehr
+   * gekostet haben, in Cent. Seit Schritt 19 die Zeilensumme minus dem, was
+   * dieselbe Menge zum Bestpreis gekostet hätte — vorher war es die Differenz
+   * der Einzelpreise, also bei zwei Flaschen Milch die Hälfte des Betrags.
+   */
   excessCents: number
+  /** `kg` oder `l`, wenn die Preise oben Grundpreise sind. Sonst null. */
+  baseUnit: string | null
 }
 
 /**
@@ -433,5 +444,7 @@ export interface ItemSearchResult {
  */
 export interface ItemSearch {
   inMonth: ItemSearchResult
+  /** Die letzten zwölf Monate — die Frage „was hat mich das dieses Jahr gekostet". */
+  lastYear: ItemSearchResult
   allTime: ItemSearchResult
 }

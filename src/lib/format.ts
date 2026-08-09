@@ -92,6 +92,18 @@ export function formatPricePerLitre(centsPerLitre: number): string {
   return `${perLitre.format(centsPerLitre / 100)} €/l`
 }
 
+/**
+ * `2,19 €` oder `2,19 €/kg` — ein Preis, der bei Ware nach Gewicht ein
+ * Grundpreis ist.
+ *
+ * Gebraucht überall dort, wo zwei Preise verglichen werden: Ohne die Einheit
+ * liest sich „1,79 € statt 2,19 €" bei Bananen wie ein Packungspreis, obwohl
+ * es Kilopreise sind.
+ */
+export function formatUnitPrice(cents: number, unit: string | null): string {
+  return unit === null ? formatEuro(cents) : `${formatEuro(cents)}/${unit}`
+}
+
 /** `62 %` — takes a fraction, not a percentage. */
 export function formatPercent(fraction: number): string {
   return percent.format(fraction)

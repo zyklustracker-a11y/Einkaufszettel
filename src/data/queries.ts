@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase'
-import { toISO } from '../lib/format'
+import { shiftMonth, toISO } from '../lib/format'
 import { healthScore } from '../lib/score'
 import type { TraitSpending } from '../lib/score'
 import type { SavedItem } from '../lib/draft'
@@ -25,7 +25,6 @@ import type {
   Receipt,
   ReceiptItem,
   SavingsRow,
-  TopProduct,
   Trait,
   TrendBucket,
 } from '../types'
@@ -90,12 +89,6 @@ interface TrendRow {
   bucket_start: string
   bucket_end: string
   iso_week: number
-  amount_cents: number
-}
-
-interface TopProductRow {
-  name: string
-  purchase_count: number
   amount_cents: number
 }
 
@@ -191,6 +184,8 @@ interface SavingsRowRaw {
   worst_purchased_on: string
   overpaid_count: number
   excess_cents: number
+  /** `kg`, `l` oder null — damit die App „1,79 €/kg statt 2,19 €/kg" schreibt. */
+  base_unit: string | null
 }
 
 /* ------------------------------------------------------------- Übersetzung */
@@ -261,9 +256,26 @@ function scoresByMonth(rows: ScoreItemRow[], traits: Trait[]): HealthMonth[] {
     byMonth.set(row.month, items)
   }
 
-  return [...byMonth.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([month, items]) => ({ month, score: healthScore(items, traits) }))
+  const present = [...byMonth.keys()].sort((a, b) => a.localeCompare(b))
+  if (present.length === 0) return []
+
+  /*
+   * Die Reihe läuft **lückenlos** vom ersten bis zum letzten Monat mit
+   * Einkäufen. Bis Schritt 19 kamen nur die Monate zurück, in denen etwas
+   * gekauft wurde — die Kurve zeigte dann „Mai · Juli · August" mit gleichen
+   * Abständen, obwohl zwischen Mai und Juli ein leerer Monat lag. Ein Urlaub
+   * sah damit aus wie ein normaler Monatswechsel.
+   *
+   * Der leere Monat bekommt `null` und nicht 0: Null wäre der schlechteste
+   * Score, den es gibt, und behauptete etwas über einen Monat, über den die
+   * Daten nichts sagen.
+   */
+  const months: HealthMonth[] = []
+  for (let month = present[0]; month <= present[present.length - 1]; month = shiftMonth(month, 1)) {
+    const items = byMonth.get(month)
+    months.push({ month, score: items ? healthScore(items, traits) : null })
+  }
+  return months
 }
 
 /* =============================================================== Übersicht */
@@ -392,7 +404,6 @@ export interface AnalyticsData {
   buckets: TrendBucket[]
   categoryTotals: CategoryTotal[]
   savings: SavingsRow[]
-  topProducts: TopProduct[]
   /** Leer, solange kein Tankbeleg erfasst ist — dann fehlt die Karte ganz. */
   fuelMonths: FuelMonth[]
   frequentProducts: FrequentProduct[]
@@ -410,6 +421,7 @@ interface StatsRow {
   required_receipts: number
   required_days: number
   suggestions_ready: boolean
+  single_merchant_products: number
 }
 
 /**
@@ -423,7 +435,7 @@ export async function getHouseholdStats(): Promise<HouseholdStats> {
   const row = unwrapMaybe(
     await supabase
       .from('v_household_stats')
-      .select('receipt_count, first_purchased_on, last_purchased_on, day_span, product_count, merchant_count, required_receipts, required_days, suggestions_ready')
+      .select('receipt_count, first_purchased_on, last_purchased_on, day_span, product_count, merchant_count, required_receipts, required_days, suggestions_ready, single_merchant_products')
       .maybeSingle(),
   ) as StatsRow | null
 
@@ -439,6 +451,7 @@ export async function getHouseholdStats(): Promise<HouseholdStats> {
     requiredReceipts: row?.required_receipts ?? 4,
     requiredDays: row?.required_days ?? 14,
     suggestionsReady: row?.suggestions_ready ?? false,
+    singleMerchantProducts: row?.single_merchant_products ?? 0,
   }
 }
 
@@ -492,7 +505,7 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
   const summary = await loadCurrentMonth()
   const month = summary.month
 
-  const [buckets, categoryTotals, savings, topProducts, fuelMonths, frequentProducts, stats] =
+  const [buckets, categoryTotals, savings, fuelMonths, frequentProducts, stats] =
     await Promise.all([
       supabase
         .from('v_spending_trend')
@@ -504,16 +517,9 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
         .from('v_savings_current_month')
         // Eine Zeile, keine Verkettung: supabase-js liest die Spaltenliste zur
         // Übersetzungszeit aus und braucht dafür ein Literal.
-        .select('product_id, product_name, best_merchant_id, best_price_cents, best_purchased_on, worst_merchant_id, worst_price_cents, worst_purchased_on, overpaid_count, excess_cents')
+        .select('product_id, product_name, best_merchant_id, best_price_cents, best_purchased_on, worst_merchant_id, worst_price_cents, worst_purchased_on, overpaid_count, excess_cents, base_unit')
         .order('excess_cents', { ascending: false })
         .then((r) => unwrap<SavingsRowRaw[]>(r)),
-      supabase
-        .from('v_top_products')
-        .select('name, purchase_count, amount_cents')
-        .eq('month', month)
-        .lte('rank', 10)
-        .order('rank')
-        .then((r) => unwrap<TopProductRow[]>(r)),
       loadFuelMonths(),
       supabase
         .from('v_frequent_products')
@@ -551,11 +557,7 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
       },
       overpaidCount: row.overpaid_count,
       excessCents: row.excess_cents,
-    })),
-    topProducts: topProducts.map((row) => ({
-      name: row.name,
-      purchaseCount: row.purchase_count,
-      amountCents: row.amount_cents,
+      baseUnit: row.base_unit,
     })),
     fuelMonths,
     frequentProducts: frequentProducts.map((row) => ({
@@ -579,7 +581,7 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
 export async function searchItemSpending(term: string, month: string): Promise<ItemSearch> {
   const empty: ItemSearchResult = { purchaseCount: 0, amountCents: 0 }
   const needle = term.trim()
-  if (!needle) return { inMonth: empty, allTime: empty }
+  if (!needle) return { inMonth: empty, lastYear: empty, allTime: empty }
 
   /*
    * Eine Abfrage über alles, danach im Browser geteilt. Zwei Abfragen wären
@@ -600,8 +602,17 @@ export async function searchItemSpending(term: string, month: string): Promise<I
     amountCents: subset.reduce((total, row) => total + row.total_cents, 0),
   })
 
+  /*
+   * Drei Zeitfenster statt zwei. Der laufende Monat ist bei wenigen Bons oft
+   * leer, „insgesamt" reicht bis zum allerersten Bon zurück — dazwischen fehlte
+   * die Frage, die man tatsächlich hat: „Was hat mich Kaffee dieses Jahr
+   * gekostet?"
+   */
+  const twelveMonthsAgo = monthsBack(11)
+
   return {
     inMonth: sum(rows.filter((row) => row.month === month)),
+    lastYear: sum(rows.filter((row) => row.month >= twelveMonthsAgo)),
     allTime: sum(rows),
   }
 }
@@ -648,20 +659,14 @@ export async function getHealthData(): Promise<HealthData> {
 /* ============================================================== Bestpreise */
 
 export async function getPriceOverview(): Promise<ProductPriceOverview[]> {
-  const [products, best, latest] = await Promise.all([
+  const [products, best] = await Promise.all([
     supabase
       .from('v_product_prices')
       .select(PRODUCT_PRICE_COLUMNS)
-      .order('product_name')
       .then((r) => unwrap<ProductPriceRow[]>(r)),
     supabase
       .from('v_product_best_price')
       .select('product_id, merchant_id, purchased_on, price_cents')
-      .then((r) => unwrap<PricePointRow[]>(r)),
-    supabase
-      .from('v_product_merchant_latest')
-      .select('product_id, merchant_id, purchased_on, price_cents')
-      .order('price_cents')
       .then((r) => unwrap<PricePointRow[]>(r)),
   ])
 
@@ -683,9 +688,6 @@ export async function getPriceOverview(): Promise<ProductPriceOverview[]> {
         purchaseCount: row.purchase_count,
         merchantCount: row.merchant_count,
         best: bestPoint,
-        others: latest
-          .filter((p) => p.product_id === row.product_id && p.merchant_id !== bestPoint.merchantId)
-          .map(toPricePoint),
       },
     ]
   })

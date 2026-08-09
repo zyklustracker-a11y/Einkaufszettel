@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase'
-import { DataError, unwrap } from './client'
+import { DataError, germanDataError, unwrap } from './client'
 import { reference } from './reference'
 import { getHouseholdStats } from './queries'
 import type { ExtractedUnit } from '../lib/extraction'
@@ -103,10 +103,29 @@ async function loadRhythms(): Promise<RhythmProduct[]> {
 export async function getShoppingList(): Promise<ShoppingList> {
   const { data: listId, error } = await supabase.rpc('shopping_list_refresh')
 
-  if (error || typeof listId !== 'string') {
+  /*
+   * Zwei verschiedene Lagen, zwei verschiedene Sätze.
+   *
+   * Bis Schritt 19 wurde **jeder** Fehler zu „Bitte 0008_einkaufszettel.sql
+   * ausführen" — auch ein Funkloch im Laden. Die Meldung schickte damit in den
+   * SQL-Editor, wo nichts zu holen ist. Nur wenn die Funktion selbst fehlt
+   * (42883) oder eine Relation dahinter (42P01), ist die Migration wirklich der
+   * Grund; alles andere übersetzt `germanDataError` passend.
+   */
+  if (error) {
+    const code = typeof error.code === 'string' ? error.code : ''
+    if (code === '42883' || code === '42P01') {
+      throw new DataError(
+        'Der Einkaufszettel ist noch nicht eingerichtet. Bitte ' +
+          'supabase/migrations/0008_einkaufszettel.sql einmal im SQL-Editor ausführen.',
+      )
+    }
+    throw new DataError(germanDataError(error))
+  }
+
+  if (typeof listId !== 'string') {
     throw new DataError(
-      'Der Einkaufszettel ist noch nicht eingerichtet. Bitte ' +
-        'supabase/migrations/0008_einkaufszettel.sql einmal im SQL-Editor ausführen.',
+      'Der Einkaufszettel konnte nicht geöffnet werden. Bitte versuch es noch einmal.',
     )
   }
 
@@ -122,6 +141,34 @@ export async function getShoppingList(): Promise<ShoppingList> {
   ])
 
   return { listId, items: items.map(toItem), stats, rhythms }
+}
+
+/**
+ * Wie weit der offene Zettel abgehakt ist.
+ *
+ * `save_receipt` hakt die gekauften Produkte selbst ab — in derselben
+ * Transaktion, in der der Bon entsteht (PROJEKT.md, Schritt 9). Nur sah man das
+ * bisher nirgends: Die gebaute Funktion war unbemerkbar. Diese Abfrage schließt
+ * den Kreis, den das Konzept beschreibt („5 von 7 erledigt"), ohne dass dafür
+ * am Schreibweg etwas geändert werden müsste.
+ *
+ * Sie darf scheitern, ohne dass jemand etwas merkt: Es ist eine Zusatzauskunft
+ * nach einem bereits gespeicherten Bon, und ein Fehler hier dürfte den
+ * Speichern-Erfolg nicht in Frage stellen.
+ */
+export async function getShoppingProgress(): Promise<{ done: number; total: number } | null> {
+  try {
+    const { data: listId } = await supabase.rpc('shopping_list_refresh')
+    if (typeof listId !== 'string') return null
+
+    const rows = unwrap<Array<{ checked: boolean }>>(
+      await supabase.from('v_shopping_list_items').select('checked').eq('list_id', listId),
+    )
+    if (rows.length === 0) return null
+    return { done: rows.filter((row) => row.checked).length, total: rows.length }
+  } catch {
+    return null
+  }
 }
 
 /** Abhaken und wieder öffnen. */

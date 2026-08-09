@@ -224,3 +224,12 @@
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+
+/* Der Hinweis unter der Score-Kurve, wenn Monate ohne Einkäufe dazwischenliegen.
+   Er steht da, weil eine Lücke in der Linie sonst wie ein Zeichenfehler aussieht. */
+.gapNote {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}

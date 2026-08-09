@@ -14,12 +14,19 @@ import {
   formatMonth,
   formatMonthShort,
   formatPricePerLitre,
+  formatUnitPrice,
 } from '../lib/format'
 import { rangeLabel, trendPoints } from '../lib/trend'
 import type { FuelMonth, HouseholdStats, RangeId } from '../types'
 import styles from './Analytics.module.css'
 
-const RANGE_IDS: RangeId[] = ['week', 'month', 'year', 'custom']
+/*
+ * Drei Zeiträume statt vier. „Eigen" zeigte die letzten vierzehn Tage in zwei
+ * Balken, hieß nach etwas, das es nicht war (anpassbar war daran nichts), und
+ * lag zwischen zwei Reitern, die beide mehr sagen. Der Platz kommt den drei
+ * übrigen zugute.
+ */
+const RANGE_IDS: RangeId[] = ['week', 'month', 'year']
 
 export function Analytics() {
   const state = useQuery(getAnalyticsData, [])
@@ -122,6 +129,17 @@ function AnalyticsBody({ data }: { data: AnalyticsData }) {
             gekauft hast – sonst wäre „woanders günstiger“ in Wahrheit „derselbe Laden, anderer
             Tag“, also eine Aktion und keine Ladenwahl. Es zählen Preise der letzten sechs Monate
             und Mehrkosten ab 20 Cent.
+            {data.stats.singleMerchantProducts > 0 && (
+              <>
+                {' '}
+                <strong>
+                  {data.stats.singleMerchantProducts}{' '}
+                  {data.stats.singleMerchantProducts === 1 ? 'Produkt hast' : 'Produkte hast'} du
+                  mehrfach gekauft, aber immer im selben Laden
+                </strong>{' '}
+                – denen fehlt nur noch der zweite.
+              </>
+            )}
           </EmptyState>
         ) : (
           <>
@@ -130,16 +148,22 @@ function AnalyticsBody({ data }: { data: AnalyticsData }) {
               {data.savings.length === 1 ? 'Produkt gab es' : 'Produkte gab es'} laut deiner
               Historie woanders günstiger –{' '}
               <span className={styles.savingsTotal}>{formatEuro(excessCents)} Mehrkosten</span> im{' '}
-              {formatMonth(data.month)}.
+              {formatMonth(data.month)}. Gerechnet auf die Mengen, die du tatsächlich gekauft hast.
             </p>
             {data.savings.map((row) => (
               <div key={row.productId} className={styles.savingsRow}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className={styles.savingsName}>{row.productName}</div>
+                  {/*
+                    Die beiden Preise sind bei Ware nach Gewicht **Grundpreise**.
+                    Ohne das „/kg" liest sich „1,79 € statt 2,19 €" wie ein
+                    Packungspreis — und die Zahl daneben passte dann nicht dazu.
+                  */}
                   <div className={styles.savingsHint}>
-                    {getMerchantName(row.cheapest.merchantId)} {formatEuro(row.cheapest.priceCents)}{' '}
-                    statt {getMerchantName(row.worst.merchantId)}{' '}
-                    {formatEuro(row.worst.priceCents)} · {row.overpaidCount} ×
+                    {getMerchantName(row.cheapest.merchantId)}{' '}
+                    {formatUnitPrice(row.cheapest.priceCents, row.baseUnit)} statt{' '}
+                    {getMerchantName(row.worst.merchantId)}{' '}
+                    {formatUnitPrice(row.worst.priceCents, row.baseUnit)} · {row.overpaidCount} ×
                   </div>
                 </div>
                 <div className={styles.savingsDiff}>{formatEuroSigned(row.excessCents)}</div>
@@ -152,25 +176,6 @@ function AnalyticsBody({ data }: { data: AnalyticsData }) {
       <FuelCard months={data.fuelMonths} />
 
       <ProductSearch month={data.month} />
-
-      <section className={styles.listCard}>
-        <div className={styles.listTitle}>Top 10 teuerste Produkte</div>
-        {data.topProducts.length === 0 ? (
-          <EmptyState inline title="Noch keine Produkte">
-            Hier stehen später die zehn Produkte, für die du in diesem Monat am meisten ausgegeben
-            hast.
-          </EmptyState>
-        ) : (
-          data.topProducts.map((product, index) => (
-            <div key={product.name} className={styles.topRow}>
-              <span className={styles.rank}>{index + 1}</span>
-              <span className={styles.topName}>{product.name}</span>
-              <span className={styles.topCount}>{product.purchaseCount} ×</span>
-              <span className={styles.topAmount}>{formatEuro(product.amountCents)}</span>
-            </div>
-          ))
-        )}
-      </section>
 
       {/*
         „Häufigste Käufe" ist eine andere Frage als „teuerste Produkte" — und für
@@ -333,7 +338,7 @@ function ProductSearch({ month }: { month: string }) {
   const state = useQuery(() => searchItemSpending(query, month), [query, month])
 
   const empty = { purchaseCount: 0, amountCents: 0 }
-  const result = state.data ?? { inMonth: empty, allTime: empty }
+  const result = state.data ?? { inMonth: empty, lastYear: empty, allTime: empty }
   const searching = query.trim() !== ''
 
   return (
@@ -361,15 +366,32 @@ function ProductSearch({ month }: { month: string }) {
             wurde.
           */}
           {searching && (
-            <div className={styles.searchResult} style={{ marginTop: 4 }}>
-              <div className={styles.searchCount}>
-                {result.allTime.purchaseCount}{' '}
-                {result.allTime.purchaseCount === 1 ? 'Kauf' : 'Käufe'} · insgesamt
+            <>
+              {/*
+                Drei Zeitfenster. Der laufende Monat ist bei wenigen Bons oft
+                leer, „insgesamt" reicht bis zum allerersten Bon zurück —
+                dazwischen fehlte die Frage, die man tatsächlich hat: „Was hat
+                mich das dieses Jahr gekostet?"
+              */}
+              <div className={styles.searchResult} style={{ marginTop: 4 }}>
+                <div className={styles.searchCount}>
+                  {result.lastYear.purchaseCount}{' '}
+                  {result.lastYear.purchaseCount === 1 ? 'Kauf' : 'Käufe'} · letzte 12 Monate
+                </div>
+                <div className={styles.searchCount} style={{ textAlign: 'right' }}>
+                  {formatEuro(result.lastYear.amountCents)}
+                </div>
               </div>
-              <div className={styles.searchCount} style={{ textAlign: 'right' }}>
-                {formatEuro(result.allTime.amountCents)}
+              <div className={styles.searchResult} style={{ marginTop: 4 }}>
+                <div className={styles.searchCount}>
+                  {result.allTime.purchaseCount}{' '}
+                  {result.allTime.purchaseCount === 1 ? 'Kauf' : 'Käufe'} · insgesamt
+                </div>
+                <div className={styles.searchCount} style={{ textAlign: 'right' }}>
+                  {formatEuro(result.allTime.amountCents)}
+                </div>
               </div>
-            </div>
+            </>
           )}
         </>
       )}

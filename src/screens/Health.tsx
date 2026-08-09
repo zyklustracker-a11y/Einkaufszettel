@@ -27,8 +27,16 @@ function HealthBody({ data }: { data: HealthData }) {
   const [showAllConcerns, setShowAllConcerns] = useState(false)
 
   const scores = data.scores
-  const current = scores.length > 0 ? scores[scores.length - 1] : null
-  const previous = scores.length > 1 ? scores[scores.length - 2] : null
+  /*
+   * Seit Schritt 19 enthält die Reihe auch Monate ohne Einkäufe — mit `null`
+   * statt einer Zahl, damit die Zeitachse stimmt. Für „aktuell" und „davor"
+   * zählen deshalb nur die Monate, in denen wirklich etwas gekauft wurde.
+   */
+  const withScore = scores.filter(
+    (entry): entry is { month: string; score: number } => entry.score !== null,
+  )
+  const current = withScore.length > 0 ? withScore[withScore.length - 1] : null
+  const previous = withScore.length > 1 ? withScore[withScore.length - 2] : null
   const delta = current && previous ? current.score - previous.score : 0
 
   const foodSpendCents = data.unprocessedCents + data.processedCents
@@ -73,7 +81,7 @@ function HealthBody({ data }: { data: HealthData }) {
           Ein einzelner Monat ergibt keine Kurve. Statt einer Linie aus einem
           Punkt steht dann ein Satz da, was hier später zu sehen sein wird.
         */}
-        {scores.length > 1 ? (
+        {withScore.length > 1 ? (
           <>
             <div style={{ marginTop: 18 }}>
               <Sparkline
@@ -82,11 +90,22 @@ function HealthBody({ data }: { data: HealthData }) {
                 label="Gesundheits-Score im Verlauf"
               />
             </div>
+            {/*
+              Alle Monate der Reihe, auch die leeren: Nur so steht die
+              Beschriftung unter dem Punkt, zu dem sie gehört.
+            */}
             <div className={styles.months}>
               {scores.map((s) => (
                 <span key={s.month}>{formatMonthShort(s.month)}</span>
               ))}
             </div>
+            {scores.length > withScore.length && (
+              <p className={styles.gapNote}>
+                In {scores.length - withScore.length}{' '}
+                {scores.length - withScore.length === 1 ? 'Monat' : 'Monaten'} dazwischen ist kein
+                Einkauf erfasst – die Linie setzt dort aus, statt einen Verlauf zu behaupten.
+              </p>
+            )}
           </>
         ) : (
           <p className={styles.empty} style={{ marginTop: 16 }}>

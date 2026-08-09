@@ -126,3 +126,19 @@
   line-height: 1.45;
   color: var(--muted);
 }
+
+/* „Noch 52 weitere ohne Vergleich" — dieselbe Machart wie „Alle anzeigen" im
+   Gesundheits-Screen, damit derselbe Handgriff überall gleich aussieht. */
+.showAll {
+  width: 100%;
+  height: 44px;
+  margin-top: 4px;
+  border-radius: 14px;
+  border: 1px dashed var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}

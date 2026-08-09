@@ -5,13 +5,12 @@ import type {
   MonthSummary,
   RangeId,
   Settings,
-  TopProduct,
   TrendPoint,
 } from '../types'
-import { formatDate, formatMonth, formatMonthShort, parseISO } from '../lib/format'
+import { formatMonth, formatMonthShort } from '../lib/format'
 import { foodItems, healthScore } from '../lib/score'
 import { categories } from './categories'
-import { daysAgo, isoWeek, monthDay, monthsAgo, today } from './dates'
+import { monthsAgo, today } from './dates'
 import { receipts } from './receipts'
 import { traits } from './traits'
 
@@ -63,9 +62,9 @@ export const trends: Record<RangeId, TrendPoint[]> = {
     { label: 'Sa', amountCents: 6130 },
     { label: 'So', amountCents: 0 },
   ],
-  // The weeks the current month runs through, by their ISO calendar number.
+  // Die Wochen, durch die der laufende Monat läuft, nach Tagesbereich.
   month: [6840, 9620, 11240, 0, 0].map((amountCents, index) => ({
-    label: `KW${isoWeek(monthDay(1 + index * 7))}`,
+    label: `${1 + index * 7}.–${Math.min(7 + index * 7, 31)}.`,
     amountCents,
   })),
   // Six months back to this one; the last bar is the current month to date and
@@ -74,40 +73,14 @@ export const trends: Record<RangeId, TrendPoint[]> = {
     label: formatMonthShort(monthsAgo(5 - index)),
     amountCents,
   })),
-  // The last fortnight, split into two weeks.
-  custom: [
-    { label: dayRange(13, 7), amountCents: 6840 },
-    { label: dayRange(6, 0), amountCents: 20860 },
-  ],
-}
-
-/** `1.–7.` — bucket label, day numbers only, as in the design. */
-function dayRange(fromDaysAgo: number, toDaysAgo: number): string {
-  const day = (iso: string) => parseISO(iso).getDate()
-  return `${day(daysAgo(fromDaysAgo))}.–${day(daysAgo(toDaysAgo))}.`
 }
 
 export const rangeLabels: Record<RangeId, { tab: string; period: string }> = {
   week: { tab: 'Woche', period: 'diese Woche' },
   month: { tab: 'Monat', period: formatMonth(monthsAgo(0)) },
-  year: { tab: 'Jahr', period: 'letzte 6 Monate' },
-  // `01.08.–14.08.2026` — the year is only spelled out once, at the end.
-  custom: { tab: 'Eigen', period: `${formatDate(daysAgo(13)).slice(0, 6)}–${formatDate(daysAgo(0))}` },
+  year: { tab: '6 Monate', period: 'letzte 6 Monate' },
 }
 
-/** Top spend per product this month, sorted in `derive.ts`. */
-export const topProducts: TopProduct[] = [
-  { name: 'Hähnchenbrust', purchaseCount: 4, amountCents: 2696 },
-  { name: 'Lachsfilet', purchaseCount: 1, amountCents: 1249 },
-  { name: 'Rinderhack', purchaseCount: 2, amountCents: 998 },
-  { name: 'Olivenöl', purchaseCount: 1, amountCents: 849 },
-  { name: 'Gouda am Stück', purchaseCount: 3, amountCents: 837 },
-  { name: 'Kaffeebohnen', purchaseCount: 1, amountCents: 799 },
-  { name: 'Eier (10er)', purchaseCount: 2, amountCents: 668 },
-  { name: 'Sauerteigbrot', purchaseCount: 2, amountCents: 568 },
-  { name: 'Tiefkühl-Pizza', purchaseCount: 2, amountCents: 558 },
-  { name: 'Butter', purchaseCount: 2, amountCents: 518 },
-]
 
 /**
  * The current month's score is computed from the receipts we actually have;

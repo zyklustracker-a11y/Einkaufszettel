@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { CategorySlice } from '../lib/derive'
-import { donutGradient, linePoints, polylinePoints } from '../lib/derive'
+import { donutGradient, linePoints, polylineSegments } from '../lib/derive'
 import { formatEuro, formatEuroWhole } from '../lib/format'
 import styles from './charts.module.css'
 
@@ -37,6 +37,10 @@ export function CategoryDonut({ slices, totalCents }: { slices: CategorySlice[];
 /**
  * Line chart with a dot per data point. A dashed midline is drawn for price
  * histories, where "above or below the middle" is the thing worth seeing.
+ *
+ * **`null` ist eine Lücke.** Ein Monat ohne Einkäufe behält seinen Platz auf der
+ * Achse, bekommt aber weder Punkt noch Linie — durchgezeichnet würde ein
+ * Verlauf behauptet, den es nicht gibt.
  */
 export function Sparkline({
   values,
@@ -44,7 +48,7 @@ export function Sparkline({
   midline = false,
   label,
 }: {
-  values: number[]
+  values: (number | null)[]
   height: number
   midline?: boolean
   label: string
@@ -55,6 +59,8 @@ export function Sparkline({
 
   // Ohne Messpunkte gibt es keine Linie zu zeichnen.
   if (points.length === 0) return null
+
+  const dots = points.filter((point): point is NonNullable<typeof point> => point !== null)
 
   return (
     <svg
@@ -76,14 +82,18 @@ export function Sparkline({
           strokeDasharray="3 5"
         />
       )}
-      <polyline
-        points={polylinePoints(points)}
-        fill="none"
-        stroke="var(--green)"
-        strokeWidth="2.6"
-        strokeLinejoin="round"
-        strokeLinecap="round"      />
-      {points.map((point, index) => (
+      {polylineSegments(points).map((segment, index) => (
+        <polyline
+          key={index}
+          points={segment}
+          fill="none"
+          stroke="var(--green)"
+          strokeWidth="2.6"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+      ))}
+      {dots.map((point, index) => (
         <circle
           key={index}
           cx={point.x}

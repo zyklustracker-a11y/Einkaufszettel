@@ -129,3 +129,11 @@
   font-weight: 600;
   cursor: pointer;
 }
+
+/* Der Zettel-Stand unter der Speichern-Bestätigung. Eigene Zeile, damit die
+   Bestätigung selbst kurz bleibt. */
+.savedShopping {
+  display: block;
+  margin-top: 4px;
+  font-weight: 600;
+}

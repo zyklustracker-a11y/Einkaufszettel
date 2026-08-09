@@ -105,6 +105,7 @@ export type { HouseholdMember, Invite } from './household'
 
 export {
   getShoppingList,
+  getShoppingProgress,
   setShoppingItemChecked,
   setShoppingItemQuantity,
   removeShoppingItem,

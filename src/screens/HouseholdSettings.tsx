@@ -189,6 +189,13 @@ function JoinCard({ members, receiptCount }: { members: number; receiptCount: nu
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  /*
+   * Mit eigenen Bons lehnt die Datenbank den Beitritt ab: Der eigene Haushalt
+   * müsste dabei aufgelöst werden, und ein Haushalt mit Daten gehört nicht
+   * stillschweigend gelöscht (PROJEKT.md, Schritt 12).
+   */
+  const blocked = receiptCount > 0
+
   const join = async () => {
     setBusy(true)
     setError(null)
@@ -224,7 +231,7 @@ function JoinCard({ members, receiptCount }: { members: number; receiptCount: nu
         lehnt die Datenbank ab, weil Zusammenführen nicht rückgängig zu machen
         wäre.
       */}
-      {receiptCount > 0 ? (
+      {blocked ? (
         <p className={styles.warn}>
           In deinem Haushalt liegen bereits {receiptCount}{' '}
           {receiptCount === 1 ? 'Einkauf' : 'Einkäufe'}. Ein Beitritt würde ihn auflösen – deshalb
@@ -249,6 +256,13 @@ function JoinCard({ members, receiptCount }: { members: number; receiptCount: nu
         </p>
       )}
 
+      {/*
+        Bei eigenen Bons ist der Beitritt ausgeschlossen — das steht oben, und
+        deshalb sind Feld und Knopf hier auch gesperrt. Bis Schritt 19 blieben
+        beide bedienbar: Der Screen sagte „lehnt die App ab" und ließ einen
+        trotzdem tippen, um dann genau das zu tun. Ein Formular, das nicht
+        gelingen kann, gehört nicht bedienbar.
+      */}
       <input
         className={styles.input}
         value={code}
@@ -256,13 +270,14 @@ function JoinCard({ members, receiptCount }: { members: number; receiptCount: nu
         autoCapitalize="characters"
         autoCorrect="off"
         spellCheck={false}
+        disabled={blocked}
         aria-label="Einladungscode"
         onChange={(event) => setCode(event.target.value.toUpperCase())}
       />
       <button
         type="button"
         className={styles.primary}
-        disabled={busy || code.trim().length < 8}
+        disabled={blocked || busy || code.trim().length < 8}
         onClick={() => void join()}
       >
         {busy ? 'Tritt bei…' : 'Beitreten'}

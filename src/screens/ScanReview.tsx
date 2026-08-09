@@ -9,6 +9,7 @@ import {
   getActiveCategories,
   getActiveTraits,
   getReceiptDraft,
+  getShoppingProgress,
   saveReceipt,
   useQuery,
 } from '../data'
@@ -564,9 +565,19 @@ function ReviewBody({ source }: { source: ReviewSource }) {
        */
       clearPendingCapture()
       clearPendingExtraction()
+
+      /*
+       * Der Zettel-Stand nach dem Speichern. `save_receipt` hat die gekauften
+       * Produkte in derselben Transaktion abgehakt; hier wird nur nachgesehen,
+       * wie weit die Liste damit ist, damit das Einkaufs-Detail es sagen kann.
+       * Scheitert die Abfrage, fehlt eine Zeile Text — der Bon ist längst
+       * gespeichert.
+       */
+      const shopping = await getShoppingProgress()
+
       navigate(`/einkauf/${savedId}`, {
         replace: true,
-        state: { justSaved: true, updated: editingSaved },
+        state: { justSaved: true, updated: editingSaved, shopping },
       })
     } catch (cause) {
       setSaveError(
