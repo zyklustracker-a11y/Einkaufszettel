@@ -73,6 +73,30 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ------------------------------------------------------------ Händlerart
+
+   Zwei Chips plus eine Zeile Erklärung. Die Erklärung steht darunter und nicht
+   daneben: Auf 390 px bliebe neben den Chips ein Streifen von rund 120 px, und
+   darin bräche jeder der beiden Sätze vierzeilig um.                          */
+
+.kindRow {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.kindChips {
+  display: flex;
+  gap: 8px;
+}
+
+.kindHint {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
 /* --------------------------------------------------- reconciliation banner */
 
 .banner {
@@ -328,6 +352,34 @@
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+}
+
+/* ------------------------------------------------------------- Trinkgeld
+
+   Dieselbe Karte wie „Abgleich je Steuerklasse", weil es dieselbe Sorte Block
+   ist: eine Sache, die vor dem Speichern noch zu klären ist.                  */
+
+.tip {
+  margin-top: 14px;
+  background: var(--card);
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+}
+
+.tip .chips {
+  margin-top: 10px;
+}
+
+.tipField {
+  margin-top: 12px;
+}
+
+/* Ein schmales Feld: Ein Trinkgeld hat zwei bis drei Stellen, und über die
+   ganze Kartenbreite sähe es aus, als würde dort ein Satz erwartet. */
+.tipField .input {
+  max-width: 140px;
+  margin-top: 6px;
 }
 
 /* --------------------------------------------- Rohantwort des Modells */

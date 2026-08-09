@@ -667,6 +667,80 @@ deshalb den benutzten Namen und den Wortlaut der Schnittstelle. (Aufgefallen
 beim Versuch mit `pixtral-large-latest`: Der Name ist richtig, das Modell
 gehört aber zum kostenpflichtigen Tarif.)
 
+### Ergänzt mit Schritt 5a (eigene Kategorien, Auswärts essen)
+
+Schritt 5 ist in zwei Etappen geteilt. **5a** ist die Migration samt
+Kategorieverwaltung und Auswärts essen, **5b** bringt Fremdwährung und das
+Bearbeiten gespeicherter Bons. Die Migration `0004_erweiterungen.sql` enthält
+schon **alle** Schemaänderungen beider Etappen — das war der Grund, die drei
+Erweiterungen überhaupt zu bündeln, und ein zweites Mal am Schema zu drehen wäre
+mit jedem gespeicherten Bon teurer geworden.
+
+**Kategorien sind jetzt Daten, nicht Code.** Damit gilt für sie, was seit v2
+schon für Merkmale gilt. `categories` bekommt `description` (geht in den
+Prompt), `active` (aus statt gelöscht), `color` und `is_default`. Der
+Datenmodell-Grundsatz „Kategorien bleiben fest" unten ist damit **überholt**.
+
+**Der Schlüssel entsteht beim Anlegen aus dem Namen und ist danach
+unveränderlich** — `category_key()` in SQL, `toCategoryKey()` in TypeScript.
+Zwei Umsetzungen derselben Regel, weil das Anlegen in der Datenbank passiert,
+das Anlegen-Formular den künftigen Schlüssel aber vorher zeigt; ein Wert, den
+man nicht mehr ändern kann, soll vorher sichtbar sein. Sie sind mit Tests
+aneinandergebunden (`src/lib/category.test.ts`).
+
+**Gelöscht wird nie.** `canonical_products` verweist über einen Fremdschlüssel
+auf die Kategorie. Eine abgeschaltete verschwindet aus Auswahl und Prompt und
+bleibt für Altdaten gültig; die Einstellungen sagen vorher, wie viele Produkte
+das betrifft.
+
+**Die Farbe gehört der Kategorie.** Vorher vergab `categorySlices` die Grün-Ramp
+nach Ausgabenhöhe — dieselbe Kategorie war im einen Monat dunkelgrün und im
+nächsten hell, nur weil einmal mehr Obst gekauft wurde. Mit frei anlegbaren
+Kategorien ginge es ohnehin nicht mehr: Eine selbst angelegte hätte keinen Platz
+in der Ramp. Gespeichert wird Hex und keine CSS-Variable — die `--cat-*`-Token
+sind in beiden Themes gleich definiert, es geht also nichts verloren, und einen
+Variablennamen könnte die Datenbank nicht prüfen.
+
+**„Auswärts" hängt am Händler, nicht an der Kategorie.** Das Konzept nennt eine
+Kategorie `dining`; der Kategorieschlüssel ist ab jetzt aber Sache des Nutzers,
+und ein fest verdrahtetes `dining` in Code oder Sicht wäre genau das versteckte
+Verhalten, das die Merkmalstabelle abgeschafft hat. Gerechnet wird deshalb über
+`merchants.kind`. Das ist auch sachlich der bessere Anker: Der Ausschluss aus
+den Bestpreisen hängt ohnehin am Händler, und die drei Teilbeträge der Kopfkarte
+ergeben so **exakt** die Gesamtsumme, ohne dass eine Position doppelt zählt. Die
+Kategorie „Auswärts essen" behält ihre Aufgabe — sie gibt den Positionen einen
+Platz im Ring mit eigener Farbe. Nur rechnet niemand mit ihrem Schlüssel.
+
+**Die Händlerart wird nachgeschlagen, nicht geraten.** Das Konzept sieht vor,
+dass das Modell sie vorschlägt. Genau das passiert bewusst nicht: Durchgang 1
+ist seit 4d ein reiner Abschreiber, und jede zusätzliche Deutungsaufgabe
+konkurriert mit dem Abtippen — daran ist der Prompt zweimal gescheitert.
+Stattdessen sucht die Edge Function den Bonnamen über `merchant_kind_for()` in
+`merchants` (dieselbe Normalform wie beim Zusammenführen, „REWE CITY" findet
+also „REWE"). Bei einem neuen Restaurant tippt der Nutzer einmal auf „Gastro";
+ab dem nächsten Bon desselben Ladens steht es von selbst da. Die Zusicherung des
+Konzepts — einmal gesetzt, gilt für alle künftigen Bons — ist damit erfüllt,
+ohne den empfindlichsten Teil der Erkennung anzufassen.
+
+**Trinkgeld ist keine Position und steht nicht in `printed_total_cents`.** Es
+steht meist gar nicht auf dem Papier, wird also eingegeben statt gelesen. Läge
+es in der gedruckten Summe, meldete der Summenabgleich bei jedem
+Restaurantbesuch eine Abweichung, die keine ist. Es zählt in „Auswärts" und in
+die Gesamtsumme, in keine Kategorie. **Vorbelegung immer „Nein"** — ein
+vorausgefülltes Trinkgeld wäre eine Behauptung über etwas, das der Bon nicht
+hergibt.
+
+**Vier Zahlen auf 390 px.** Nebeneinander passen sie nicht: Drei Spalten à rund
+100 px tragen „1.234,56 €" nicht ohne Umbruch. „Gesamt" steht deshalb groß in
+eigener Zeile, die drei Teilbeträge kleiner darunter.
+
+**`save_receipt` kann jetzt aktualisieren.** Mit `bon_id` in der Anfrage wird der
+bestehende Bon geändert statt ein zweiter angelegt; die Positionen werden dabei
+**ersetzt** und nicht abgeglichen. Welche Zeile der Nutzer umbenannt, gelöscht
+oder ergänzt hat, ließe sich von außen nicht zuverlässig zuordnen, und eine
+falsch zugeordnete Zeile wäre schlimmer als eine neu geschriebene. Der Bon behält
+seine id — der Verweis aus der Adresszeile bleibt gültig.
+
 ## Datenmodell-Grundsätze
 
 - **Haushalt statt Einzelnutzer.** Alle Familienmitglieder sehen dieselben Daten. Jede
@@ -678,7 +752,10 @@ gehört aber zum kostenpflichtigen Tarif.)
   „ohne Mengenangabe" ist ein echter Zustand, kein Fehler.
 - **Datum als ISO** in den Daten, `dd.MM.yyyy` in der Anzeige.
 - **Kategorien als stabile Schlüssel** (`obst_gemuese`), nicht als deutsche Anzeigetexte.
-  Kategorien bleiben fest; nur Merkmale sind erweiterbar.
+  ~~Kategorien bleiben fest; nur Merkmale sind erweiterbar.~~ *Überholt mit
+  Schritt 5a: Kategorien sind ebenfalls Tabellendaten und vom Nutzer
+  erweiterbar. Der Schlüssel bleibt stabil — er entsteht beim Anlegen aus dem
+  Namen und ändert sich danach nie wieder.*
 - **Merkmale als Tabellendaten**, verknüpft über eine n:m-Tabelle
   `canonical_product_traits`. Kein Enum, kein Union-Typ, kein Array fester Werte.
 - **Merkmale, Kategorie und Milchattribute hängen am kanonischen Produkt**, nicht an der
@@ -707,8 +784,14 @@ nur die Voreinstellung.
 | 4b-2 | Speichern aus dem Korrektur-Screen: `product_mappings`, `canonical_products`, Bon und Positionen | erledigt |
 | 4c | Erkennung in zwei Durchgängen: Struktur ohne Deutung, Zuordnung danach und nur für Unbekanntes | erledigt |
 | 4d | Das Modell tippt nur noch Zeilen ab; die Aufteilung in Positionen macht der Code | erledigt |
-| 5 | Bestpreis- und Analyse-Logik als SQL-Views | mit 2c vorgezogen |
+| 5a | Migration `0004` (alle Schemaänderungen), Kategorieverwaltung, Auswärts essen mit Trinkgeld | erledigt |
+| 5b | Fremdwährung mit EZB-Kurs, gespeicherte Bons bearbeiten | offen |
+| — | Bestpreis- und Analyse-Logik als SQL-Views | mit 2c vorgezogen |
 | 6 | Health-Score, Merkmals-Verwaltung in den Einstellungen, Sparhinweise, Push zum Monatsreport | Score erledigt, Rest offen |
+
+Ab hier zählt der Fahrplan aus `KONZEPT-ERWEITERUNGEN.md` weiter (Verarbeitung
+im Hintergrund, Spritkosten, Einkaufszettel …). Die Nummerierung der beiden
+Dateien ist seit Schritt 5 dieselbe.
 
 Der ursprüngliche Schritt 3 (Google-Login) wurde als 2b vorgezogen, weil ohne
 Anmeldung keine Abfrage eine Zeile zurückgibt: Die Zugriffsregeln hängen am

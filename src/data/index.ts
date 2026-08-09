@@ -19,8 +19,25 @@
 import { reference } from './reference'
 import type { Category, Merchant, MerchantId, Trait, TraitId } from '../types'
 
-export { loadReference, clearReference, refreshMerchants } from './reference'
+export { loadReference, clearReference, refreshMerchants, refreshCategories } from './reference'
 export type { Reference } from './reference'
+
+/**
+ * Die Kategorieverwaltung aus den Einstellungen. Sie schreibt in `categories`
+ * und frischt danach das Zwischenlager auf — auch das gehört in diese Schicht
+ * und nicht in einen Screen.
+ */
+export {
+  checkNewCategoryName,
+  createCategory,
+  getCategoryProductCounts,
+  moveCategory,
+  setCategoryActive,
+  sortedCategories,
+  suggestCategoryColor,
+  updateCategory,
+} from './categories'
+export type { CategoryEdit, NewCategory } from './categories'
 
 export { useQuery } from './useQuery'
 export type { QueryState } from './useQuery'
@@ -56,7 +73,18 @@ export type { AnalyticsData, DashboardData, HealthData, RecentReceipt } from './
 
 /* ------------------------------------------------- Stammdaten, synchron */
 
+/**
+ * **Alle** Kategorien, auch abgeschaltete.
+ *
+ * Zum Nachschlagen gedacht: Ein Produkt aus dem letzten Jahr kann auf eine
+ * Kategorie zeigen, die es in der Auswahl nicht mehr gibt — sein Name soll
+ * trotzdem dastehen und nicht der rohe Schlüssel.
+ */
 export const getCategories = (): Category[] => reference().categories
+
+/** Nur aktive Kategorien erreichen die Auswahl. Das ist der Sinn von „aus". */
+export const getActiveCategories = (): Category[] =>
+  reference().categories.filter((c) => c.active)
 
 export const getCategory = (id: string): Category | undefined =>
   reference().categories.find((c) => c.id === id)

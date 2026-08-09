@@ -63,18 +63,30 @@ function DashboardBody({ data }: { data: DashboardData }) {
         </EmptyState>
       ) : (
         <section className="card">
+          {/*
+            Vier Zahlen statt drei (KONZEPT-ERWEITERUNGEN.md, Abschnitt 1).
+            Nebeneinander wären sie auf 390 px zu eng — bei 4-stelligen Beträgen
+            bräche die Zeile um. Deshalb steht „Gesamt" groß in einer eigenen
+            Zeile und die drei Teilbeträge kleiner darunter. Sie ergeben zusammen
+            genau die große Zahl; dafür sorgt die Sicht, die Gastronomie aus
+            „Lebensmittel" und „Non-Food" heraushält.
+          */}
+          <div className={styles.grandRow}>
+            <div className={styles.totalLabel}>Gesamt</div>
+            <div className={styles.grandTotalValue}>{formatEuro(budget.spentCents)}</div>
+          </div>
           <div className={styles.totals}>
-            <div style={{ flex: 1 }}>
-              <div className={styles.totalLabel}>Lebensmittel</div>
-              <div className={styles.totalValue}>{formatEuro(summary.foodCents)}</div>
+            <div className={styles.part}>
+              <div className={styles.partLabel}>Lebensmittel</div>
+              <div className={styles.partValue}>{formatEuro(summary.foodCents)}</div>
             </div>
-            <div style={{ flex: 1 }}>
-              <div className={styles.totalLabel}>Non-Food</div>
-              <div className={styles.totalValue}>{formatEuro(summary.nonFoodCents)}</div>
+            <div className={styles.part}>
+              <div className={styles.partLabel}>Auswärts</div>
+              <div className={styles.partValue}>{formatEuro(summary.diningCents)}</div>
             </div>
-            <div className={styles.grandTotal}>
-              <div className={styles.totalLabel}>Gesamt</div>
-              <div className={styles.grandTotalValue}>{formatEuro(budget.spentCents)}</div>
+            <div className={styles.part}>
+              <div className={styles.partLabel}>Non-Food</div>
+              <div className={styles.partValue}>{formatEuro(summary.nonFoodCents)}</div>
             </div>
           </div>
           <div className={styles.asOf}>

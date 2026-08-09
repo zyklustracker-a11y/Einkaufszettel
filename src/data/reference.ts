@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase'
+import { FALLBACK_CATEGORY_COLOR } from '../lib/category'
 import { DataError, unwrap, unwrapMaybe } from './client'
-import type { Category, CategoryId, Merchant, Trait } from '../types'
+import type { Category, CategoryId, Merchant, MerchantKind, Trait } from '../types'
 
 /**
  * Stammdaten des Haushalts: Kategorien, Merkmale, Händler.
@@ -34,6 +35,10 @@ interface CategoryRow {
   name: string
   is_food: boolean
   sort_order: number
+  description: string
+  active: boolean
+  color: string
+  is_default: boolean
 }
 
 interface TraitRow {
@@ -53,9 +58,47 @@ interface TraitRow {
 interface MerchantRow {
   id: string
   name: string
+  kind: string
 }
 
 let cache: Reference | null = null
+
+/** Die Spaltenliste steht zweimal (Laden und Auffrischen) — hier einmal. */
+const CATEGORY_COLUMNS = 'key, name, is_food, sort_order, description, active, color, is_default'
+const MERCHANT_COLUMNS = 'id, name, kind'
+
+/**
+ * Aus der Kategoriezeile wird eine `Category`.
+ *
+ * Die fachliche id ist der **Schlüssel**, nicht die uuid — dieselbe Wahl wie
+ * bei den Merkmalen: Bon-Positionen, Sichten und der Prompt rechnen alle mit
+ * dem Schlüssel.
+ *
+ * Eine leere Farbe fängt der Ersatzton ab. Sie sollte nach der Migration nicht
+ * mehr vorkommen; ein Ring mit einem leeren `background` wäre aber ein
+ * unsichtbarer Fehler, und dafür ist eine Zeile Code zu billig.
+ */
+function toCategory(row: CategoryRow): Category {
+  return {
+    id: row.key as CategoryId,
+    name: row.name,
+    isFood: row.is_food,
+    description: row.description,
+    active: row.active,
+    color: row.color || FALLBACK_CATEGORY_COLOR,
+    sortOrder: row.sort_order,
+    isDefault: row.is_default,
+  }
+}
+
+function toMerchant(row: MerchantRow): Merchant {
+  return {
+    id: row.id,
+    name: row.name,
+    // Alles, was nicht ausdrücklich Gastronomie ist, ist ein Laden.
+    kind: (row.kind === 'gastro' ? 'gastro' : 'retail') as MerchantKind,
+  }
+}
 
 /**
  * Aus der Merkmalszeile wird ein `Trait`.
@@ -100,7 +143,7 @@ export async function loadReference(): Promise<Reference> {
     loadHouseholdId(),
     supabase
       .from('categories')
-      .select('key, name, is_food, sort_order')
+      .select(CATEGORY_COLUMNS)
       .order('sort_order')
       .then((r) => unwrap<CategoryRow[]>(r)),
     supabase
@@ -112,20 +155,16 @@ export async function loadReference(): Promise<Reference> {
       .then((r) => unwrap<TraitRow[]>(r)),
     supabase
       .from('merchants')
-      .select('id, name')
+      .select(MERCHANT_COLUMNS)
       .order('name')
       .then((r) => unwrap<MerchantRow[]>(r)),
   ])
 
   cache = {
     householdId,
-    categories: categoryRows.map((row) => ({
-      id: row.key as CategoryId,
-      name: row.name,
-      isFood: row.is_food,
-    })),
+    categories: categoryRows.map(toCategory),
     traits: traitRows.map(toTrait),
-    merchants: merchantRows.map((row) => ({ id: row.id, name: row.name })),
+    merchants: merchantRows.map(toMerchant),
     traitKeyByUuid: Object.fromEntries(traitRows.map((row) => [row.id, row.key])),
   }
   return cache
@@ -150,7 +189,23 @@ export function clearReference(): void {
 export async function refreshMerchants(): Promise<void> {
   if (!cache) return
   const rows = unwrap<MerchantRow[]>(
-    await supabase.from('merchants').select('id, name').order('name'),
+    await supabase.from('merchants').select(MERCHANT_COLUMNS).order('name'),
   )
-  cache = { ...cache, merchants: rows.map((row) => ({ id: row.id, name: row.name })) }
+  cache = { ...cache, merchants: rows.map(toMerchant) }
+}
+
+/**
+ * Nach jeder Änderung in der Kategorieverwaltung.
+ *
+ * Die Kategorien liegen im Zwischenlager, damit die Positionsliste sie mitten
+ * im Zeichnen nachschlagen kann. Nach einem Anlegen oder Umfärben ist das Lager
+ * veraltet — und weil die Nachschlage-Funktionen synchron sind, merkt das sonst
+ * niemand.
+ */
+export async function refreshCategories(): Promise<void> {
+  if (!cache) return
+  const rows = unwrap<CategoryRow[]>(
+    await supabase.from('categories').select(CATEGORY_COLUMNS).order('sort_order'),
+  )
+  cache = { ...cache, categories: rows.map(toCategory) }
 }

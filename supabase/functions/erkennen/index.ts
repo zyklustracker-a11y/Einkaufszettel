@@ -78,6 +78,23 @@ interface StructureResponse {
    * Der Haushalt kennt jeden Artikel auf diesem Bon, es ist nichts mehr zu tun.
    */
   offeneRohtexte: string[]
+  /**
+   * Die gespeicherte Art dieses Händlers — `retail` oder `gastro`.
+   *
+   * **Nachgeschlagen, nicht geraten.** Der Händlername aus dem Bonkopf wird über
+   * `merchant_key()` in `merchants` gesucht; ist er bekannt, kommt seine Art
+   * zurück. Sonst `retail`.
+   *
+   * Das Konzept sieht vor, dass „das Modell die Art vorschlägt". Genau das
+   * passiert hier bewusst NICHT: Durchgang 1 ist seit Schritt 4d ein reiner
+   * Abschreiber, und jede zusätzliche Deutungsaufgabe konkurriert mit dem
+   * Abtippen — daran ist der Prompt schon zweimal gescheitert (PROJEKT.md, 4c
+   * und 4d). Der Nutzer tippt bei einem neuen Restaurant einmal auf „Gastro";
+   * ab dem nächsten Bon desselben Ladens steht es von selbst da. Damit ist die
+   * Zusicherung des Konzepts („einmal gesetzt, gilt für alle künftigen Bons")
+   * erfüllt, ohne den empfindlichsten Teil der Erkennung anzufassen.
+   */
+  merchantKind: 'retail' | 'gastro'
 }
 
 /** Eine geprüfte Zuordnung, wie Durchgang 2 sie zurückgibt. */
@@ -281,7 +298,7 @@ async function loadKnownProducts(supabase: Client, householdId: string): Promise
   return known
 }
 
-/** Die aktiven Merkmale und die Kategorien — die Zutaten des Zuordnungs-Prompts. */
+/** Die aktiven Merkmale und Kategorien — die Zutaten des Zuordnungs-Prompts. */
 async function loadPromptContext(supabase: Client, householdId: string) {
   const [traitResult, categoryResult] = await Promise.all([
     supabase
@@ -294,8 +311,13 @@ async function loadPromptContext(supabase: Client, householdId: string) {
       .order('sort_order'),
     supabase
       .from('categories')
-      .select('key, name')
+      // `description` seit Schritt 5: Sie sagt dem Modell, was in die Kategorie
+      // gehört und was nicht. Damit wirkt eine selbst angelegte Kategorie ab
+      // dem nächsten Scan — ohne Codeänderung, ohne Ausrollen.
+      .select('key, name, description')
       .eq('household_id', householdId)
+      // Und nur die aktiven, aus demselben Grund wie bei den Merkmalen.
+      .eq('active', true)
       .order('sort_order'),
   ])
 
@@ -303,8 +325,42 @@ async function loadPromptContext(supabase: Client, householdId: string) {
 
   return {
     traits: (traitResult.data ?? []) as Array<{ key: string; description: string }>,
-    categories: (categoryResult.data ?? []) as Array<{ key: string; name: string }>,
+    categories: (categoryResult.data ?? []).map((row) => ({
+      key: String(row.key),
+      name: String(row.name),
+      // Die Spalte ist `not null default ''`; `?? ''` fängt trotzdem ab, dass
+      // die Migration noch nicht gelaufen ist — dann fehlt sie ganz.
+      description: String(row.description ?? ''),
+    })),
   }
+}
+
+/**
+ * Die gespeicherte Art eines Händlers.
+ *
+ * Die Suche macht die Datenbank (`merchant_kind_for`), weil sie über
+ * `merchant_key()` läuft — dieselbe Normalform, mit der `save_receipt` Händler
+ * zusammenführt. Ohne sie fände ein Bon, auf dem der Laden diesmal „REWE CITY"
+ * statt „REWE" heißt, seine eigene Art nicht wieder.
+ *
+ * Bei jedem Zweifel `retail`: Wer nichts Gegenteiliges weiß, behauptet nichts —
+ * und ein fälschlich als Gastro geführter Supermarkt fiele aus den Bestpreisen
+ * heraus, ohne dass jemand nach dem Grund suchte. Deshalb reißt auch ein Fehler
+ * hier den Scan nicht mit: Markieren statt ablehnen, wie überall.
+ */
+async function loadMerchantKind(
+  supabase: Client,
+  merchantName: string | null,
+): Promise<'retail' | 'gastro'> {
+  const name = (merchantName ?? '').trim()
+  if (name === '') return 'retail'
+
+  const { data, error } = await supabase.rpc('merchant_kind_for', { p_name: name })
+  if (error) {
+    console.error('Händlerart konnte nicht geladen werden:', error.message)
+    return 'retail'
+  }
+  return data === 'gastro' ? 'gastro' : 'retail'
 }
 
 interface RequestBody {
@@ -396,6 +452,10 @@ async function handleStructure(
     durationMs: outcome.durationMs,
     raw: outcome.text,
     offeneRohtexte,
+    // Erst hier, weil der Händlername aus der Modellantwort kommt. Eine
+    // Abfrage über einen Namen, den man noch nicht kennt, gibt es nicht — und
+    // der Modellaufruf davor dauert ohnehin vierzehn Sekunden.
+    merchantKind: await loadMerchantKind(supabase, extraction.merchantName),
   }
 
   return json(response, 200)

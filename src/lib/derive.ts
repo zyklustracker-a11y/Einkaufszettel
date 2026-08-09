@@ -1,3 +1,4 @@
+import { FALLBACK_CATEGORY_COLOR } from './category.ts'
 import type { Category, CategoryId, CategoryTotal, MonthSummary, Receipt } from '../types'
 
 /**
@@ -25,18 +26,6 @@ export function receiptDiscrepancy(receipt: Receipt): number {
 
 /* -------------------------------------------------------------- categories */
 
-/** Green ramp for food categories, ordered from biggest to smallest spender. */
-const FOOD_RAMP = [
-  'var(--cat-1)',
-  'var(--cat-2)',
-  'var(--cat-3)',
-  'var(--cat-4)',
-  'var(--cat-5)',
-  'var(--cat-6)',
-  'var(--cat-7)',
-  'var(--cat-8)',
-]
-
 export interface CategorySlice {
   id: CategoryId
   name: string
@@ -47,34 +36,42 @@ export interface CategorySlice {
 }
 
 /**
- * Food categories sorted by spend, with Non-Food pinned last in its own neutral
- * tone — the brief calls for it to stay visible no matter how small it is.
+ * Die Segmente des Kategorien-Rings.
+ *
+ * **Die Farbe kommt seit Schritt 5 von der Kategorie**, nicht mehr aus einer
+ * Ramp im Code. Vorher wurde sie nach Ausgabenhöhe vergeben: Milchprodukte
+ * waren im einen Monat dunkelgrün und im nächsten hellgrün, nur weil einmal
+ * mehr Obst gekauft wurde. Das war schon vorher unglücklich; mit frei
+ * anlegbaren Kategorien ginge es gar nicht mehr, weil eine selbst angelegte
+ * keinen Platz in der Ramp hätte (KONZEPT-ERWEITERUNGEN.md, Abschnitt 2).
+ *
+ * Geblieben ist die Reihenfolge: Lebensmittel nach Ausgaben absteigend,
+ * Non-Food ans Ende — es soll sichtbar bleiben, egal wie klein es ist.
  */
 export function categorySlices(totals: CategoryTotal[], categories: Category[]): CategorySlice[] {
   const byId = new Map(categories.map((c) => [c.id, c]))
   // `|| 1` fängt den leeren Monat ab: ohne ihn wäre jeder Anteil NaN.
   const sum = totals.reduce((acc, t) => acc + t.amountCents, 0) || 1
 
+  const toSlice = (total: CategoryTotal): CategorySlice => {
+    const category = byId.get(total.categoryId)
+    return {
+      id: total.categoryId,
+      name: category?.name ?? total.categoryId,
+      amountCents: total.amountCents,
+      // Ohne Kategorie im Zwischenlager gibt es auch keine Farbe. Kann nur
+      // auftreten, wenn eine Kategorie zwischen zwei Abfragen verschwindet.
+      color: category?.color ?? FALLBACK_CATEGORY_COLOR,
+      share: total.amountCents / sum,
+    }
+  }
+
   const food = totals
     .filter((t) => byId.get(t.categoryId)?.isFood)
     .sort((a, b) => b.amountCents - a.amountCents)
-    .map((t, index) => ({
-      id: t.categoryId,
-      name: byId.get(t.categoryId)?.name ?? t.categoryId,
-      amountCents: t.amountCents,
-      color: FOOD_RAMP[index % FOOD_RAMP.length],
-      share: t.amountCents / sum,
-    }))
+    .map(toSlice)
 
-  const nonFood = totals
-    .filter((t) => !byId.get(t.categoryId)?.isFood)
-    .map((t) => ({
-      id: t.categoryId,
-      name: byId.get(t.categoryId)?.name ?? t.categoryId,
-      amountCents: t.amountCents,
-      color: 'var(--cat-nonfood)',
-      share: t.amountCents / sum,
-    }))
+  const nonFood = totals.filter((t) => !byId.get(t.categoryId)?.isFood).map(toSlice)
 
   return [...food, ...nonFood]
 }
@@ -82,6 +79,7 @@ export function categorySlices(totals: CategoryTotal[], categories: Category[]):
 /* ------------------------------------------------------------------ budget */
 
 export interface BudgetState {
+  /** Alles zusammen: Lebensmittel, Auswärts (samt Trinkgeld) und Non-Food. */
   spentCents: number
   budgetCents: number
   forecastCents: number
@@ -109,7 +107,11 @@ export function share(part: number, whole: number): number {
 
 export function budgetState(summary: MonthSummary): BudgetState {
   // Sums and differences of whole cents stay whole cents — nothing to round.
-  const spentCents = summary.foodCents + summary.nonFoodCents
+  //
+  // Seit Schritt 5 sind es drei Summanden. Die Sicht liefert sie überschneidungs-
+  // frei: Eine Restaurantposition zählt in `diningCents` und ausdrücklich NICHT
+  // noch einmal in `foodCents`, sonst stünde hier zu viel.
+  const spentCents = summary.foodCents + summary.diningCents + summary.nonFoodCents
   const scale = Math.max(summary.budgetCents, summary.forecastCents)
 
   return {

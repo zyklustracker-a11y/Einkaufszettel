@@ -4,10 +4,11 @@ import { Link, useNavigate } from 'react-router-dom'
 import { BottomSheet } from '../components/BottomSheet'
 import { ReceiptItemList, TraitLegend } from '../components/ReceiptItemList'
 import { EmptyState } from '../components/states'
-import { getActiveTraits, getCategories, saveReceipt } from '../data'
+import { getActiveCategories, getActiveTraits, saveReceipt } from '../data'
 import {
   DAIRY_CATEGORY,
   DERIVED_TRAIT_KEYS,
+  TIP_PERCENTS,
   baseAmount,
   buildSavePayload,
   differs,
@@ -17,6 +18,7 @@ import {
   emptyDraft,
   expectedTotalCents,
   taxReconciliation,
+  tipFromPercent,
   toDrafts,
   withoutCategory,
 } from '../lib/draft'
@@ -25,7 +27,13 @@ import { clearPendingCapture } from '../lib/capture'
 import type { ExtractedUnit, ExtractionResponse } from '../lib/extraction'
 import { daysBetween, formatDate, formatEuro, formatMonth, roundCents, todayISO } from '../lib/format'
 import { clearPendingExtraction, getPendingExtraction } from '../lib/scanResult'
-import type { CategoryId, MilkHeat, MilkHomogenized, ReceiptItem } from '../types'
+import type {
+  CategoryId,
+  MerchantKind,
+  MilkHeat,
+  MilkHomogenized,
+  ReceiptItem,
+} from '../types'
 import styles from './ScanReview.module.css'
 
 /**
@@ -182,6 +190,22 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
+  /*
+   * Die Händlerart. Vorbelegt mit dem, was die Datenbank über diesen Laden
+   * weiß; ein unbekannter Laden ist ein Laden. `kindEdited` merkt sich, ob der
+   * Nutzer sie angefasst hat — nur dann stellt das Speichern einen bekannten
+   * Händler um (siehe `buildSavePayload`).
+   */
+  const [merchantKind, setMerchantKind] = useState<MerchantKind>(result.merchantKind)
+  const [kindEdited, setKindEdited] = useState(false)
+
+  /*
+   * Trinkgeld, in Cent. **Vorbelegung immer „Nein"**, auch bei einem bekannten
+   * Gastro-Händler: Niemand soll versehentlich Trinkgeld erfassen, das er nicht
+   * gegeben hat (KONZEPT-ERWEITERUNGEN.md, Abschnitt 1).
+   */
+  const [tipCents, setTipCents] = useState(0)
+
   const notice = dateNotice(purchasedOn, todayISO())
 
   /* Beides rechnet aus dem aktuellen Stand, nicht aus dem der Erkennung. */
@@ -234,8 +258,13 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
       const receiptId = await saveReceipt(
         buildSavePayload({
           merchantName: extraction.merchantName,
+          merchantKind,
+          merchantKindEdited: kindEdited,
           purchasedOn: purchasedOn || todayISO(),
           printedTotalCents: printed,
+          // Trinkgeld gibt es nur bei Gastronomie. Wer eine Zeile eingetippt und
+          // danach auf „Laden" zurückgestellt hat, soll sie nicht mitspeichern.
+          tipCents: merchantKind === 'gastro' ? tipCents : 0,
           drafts,
         }),
       )
@@ -306,6 +335,39 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
           </div>
 
           {/*
+            Die Händlerart. Sie steht hier oben beim Händler, weil sie zu ihm
+            gehört und nicht zu diesem einen Beleg: Einmal gesetzt, gilt sie für
+            alle künftigen Bons desselben Ladens.
+          */}
+          <div className={styles.kindRow}>
+            <div className={styles.kindChips}>
+              <Chip
+                selected={merchantKind === 'retail'}
+                onClick={() => {
+                  setMerchantKind('retail')
+                  setKindEdited(true)
+                }}
+              >
+                Laden
+              </Chip>
+              <Chip
+                selected={merchantKind === 'gastro'}
+                onClick={() => {
+                  setMerchantKind('gastro')
+                  setKindEdited(true)
+                }}
+              >
+                Gastro
+              </Chip>
+            </div>
+            <div className={styles.kindHint}>
+              {merchantKind === 'gastro'
+                ? 'Zählt als „Auswärts" und nicht in die Bestpreise – Portionen sind nicht vergleichbar.'
+                : 'Supermarkt, Bäckerei, Tankstelle, Drogerie.'}
+            </div>
+          </div>
+
+          {/*
             Bewusst neutral gehalten und nicht im Warnton der Summen-Zeile
             darüber: Das hier ist eine Auskunft, kein Mangel.
           */}
@@ -360,6 +422,19 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
           + Position hinzufügen
         </button>
 
+        {/*
+          Nur bei Gastronomie, und dort direkt vor dem Speichern-Knopf: Es ist
+          das Letzte, was noch fehlt, und das Einzige auf diesem Screen, das
+          nicht vom Bon abgelesen werden konnte.
+        */}
+        {merchantKind === 'gastro' && (
+          <TipBlock
+            tipCents={tipCents}
+            baseCents={printed ?? itemsTotalCents}
+            onChange={setTipCents}
+          />
+        )}
+
         <RawAnswer result={result} />
       </div>
 
@@ -395,10 +470,94 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
           disabled={saving || drafts.length === 0}
           onClick={save}
         >
-          {saving ? 'Wird gespeichert…' : `Speichern · ${formatEuro(printed ?? itemsTotalCents)}`}
+          {saving
+            ? 'Wird gespeichert…'
+            : // Mit Trinkgeld: Auf dem Knopf steht, was der Abend gekostet hat,
+              // nicht was auf dem Zettel gedruckt war.
+              `Speichern · ${formatEuro((printed ?? itemsTotalCents) + (merchantKind === 'gastro' ? tipCents : 0))}`}
         </button>
       </div>
     </>
+  )
+}
+
+/* ============================================================== Trinkgeld */
+
+/**
+ * „Trinkgeld gegeben?" — abgefragt, nicht geraten.
+ *
+ * Trinkgeld steht auf einem Restaurantbeleg praktisch nie: Es wird beim Zahlen
+ * gesagt und nicht gedruckt. Es gibt also nichts zu erkennen, und deshalb ist
+ * das hier ein Eingabefeld und keine Anzeige.
+ *
+ * **Vorbelegung immer „Nein".** Ein vorausgefülltes Trinkgeld wäre eine
+ * Behauptung über etwas, das der Bon nicht hergibt — und in der Monatssumme
+ * stünde dann Geld, das nie geflossen ist.
+ *
+ * Die Prozentknöpfe füllen nur das Feld vor. Auf 43,80 € sind 10 % genau
+ * 4,38 €; gegeben werden meist 5 €, und dann soll das dastehen.
+ */
+function TipBlock({
+  tipCents,
+  baseCents,
+  onChange,
+}: {
+  tipCents: number
+  /** Grundlage der Prozentrechnung: die gedruckte Summe ohne Trinkgeld. */
+  baseCents: number
+  onChange: (cents: number) => void
+}) {
+  /*
+   * Das Feld führt seinen eigenen Text: Wer „4," getippt hat, ist mitten in
+   * einer Zahl, und `toPriceField(400)` würde ihm daraus „4,00" machen und den
+   * Cursor verschieben. Die Knöpfe darüber schreiben beides zugleich.
+   */
+  const [field, setField] = useState(() => (tipCents === 0 ? '' : toPriceField(tipCents)))
+
+  const set = (cents: number) => {
+    onChange(cents)
+    setField(cents === 0 ? '' : toPriceField(cents))
+  }
+
+  return (
+    <section className={styles.tip}>
+      <div className={styles.notesTitle}>Trinkgeld gegeben?</div>
+
+      <div className={styles.chips}>
+        <Chip selected={tipCents === 0} onClick={() => set(0)}>
+          Nein
+        </Chip>
+        {TIP_PERCENTS.map((percent) => {
+          const cents = tipFromPercent(baseCents, percent)
+          return (
+            <Chip key={percent} selected={tipCents !== 0 && tipCents === cents} onClick={() => set(cents)}>
+              {percent} % · {formatEuro(cents)}
+            </Chip>
+          )
+        })}
+      </div>
+
+      <div className={styles.tipField}>
+        <span className={styles.fieldLabel}>Eigener Betrag</span>
+        <input
+          className={`${styles.input} ${styles['input--number']}`}
+          type="text"
+          inputMode="decimal"
+          value={field}
+          placeholder="0,00"
+          aria-label="Trinkgeld in Euro"
+          onChange={(event) => {
+            setField(event.target.value)
+            onChange(event.target.value.trim() === '' ? 0 : Math.max(0, parsePrice(event.target.value)))
+          }}
+        />
+      </div>
+
+      <p className={styles.taxNote}>
+        Trinkgeld ist keine Bon-Position: Es zählt in „Auswärts" und in die Gesamtsumme, aber in
+        keine Kategorie – und der Summenabgleich oben lässt es außen vor.
+      </p>
+    </section>
   )
 }
 
@@ -809,8 +968,13 @@ function EditSheet({
           <>
             <div>
               <div className={styles.fieldLabel}>Kategorie</div>
+              {/*
+                Nur aktive Kategorien. Eine abgeschaltete gilt für Altdaten
+                weiter, wird aber nicht mehr neu vergeben — das ist der Sinn von
+                „aus" (KONZEPT-ERWEITERUNGEN.md, Abschnitt 2).
+              */}
               <div className={styles.chips}>
-                {getCategories().map((category) => (
+                {getActiveCategories().map((category) => (
                   <Chip
                     key={category.id}
                     selected={category.id === categoryKey}

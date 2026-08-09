@@ -78,8 +78,21 @@ function PurchaseBody({ receipt, justSaved }: { receipt: Receipt; justSaved: boo
             {receipt.items.length === 1 ? 'Position' : 'Positionen'}
           </div>
         </div>
-        <div className={styles.total}>{formatEuro(receipt.printedTotalCents)}</div>
+        {/*
+          Mit Trinkgeld: Hier steht, was der Einkauf gekostet hat. Die gedruckte
+          Summe allein wäre bei einem Restaurantbesuch die falsche Zahl — und
+          die einzige, die die Übersicht daneben nicht zeigt.
+        */}
+        <div className={styles.total}>
+          {formatEuro(receipt.printedTotalCents + receipt.tipCents)}
+        </div>
       </div>
+
+      {receipt.tipCents > 0 && (
+        <p className={styles.tip}>
+          Davon {formatEuro(receipt.tipCents)} Trinkgeld · Bon {formatEuro(receipt.printedTotalCents)}
+        </p>
+      )}
 
       {/*
         „Korrigieren" stand hier bis Schritt 4b-2 und führte in den

@@ -11,6 +11,7 @@ import {
   expectedTotalCents,
   normalizeTraits,
   taxReconciliation,
+  tipFromPercent,
   toDrafts,
   withoutCategory,
 } from './draft.ts'
@@ -254,9 +255,41 @@ test('differs', async (t) => {
 test('buildSavePayload', async (t) => {
   const base = {
     merchantName: 'REWE CITY',
+    merchantKind: 'retail' as const,
+    merchantKindEdited: false,
     purchasedOn: '2026-08-14',
     printedTotalCents: 258,
+    tipCents: 0,
   }
+
+  await t.test('meldet die Händlerart nur dann als Nutzerentscheidung, wenn sie eine war', () => {
+    // Ohne diese Unterscheidung setzte jeder weitere Bon eines als Gastro
+    // markierten Ladens ihn wieder auf „retail" zurück.
+    assert.equal(buildSavePayload({ ...base, drafts: [draft()] }).haendler_art_quelle, 'model')
+    assert.equal(
+      buildSavePayload({
+        ...base,
+        merchantKind: 'gastro',
+        merchantKindEdited: true,
+        drafts: [draft()],
+      }).haendler_art_quelle,
+      'user',
+    )
+  })
+
+  await t.test('lässt das Trinkgeld aus der gedruckten Summe heraus', () => {
+    // `summe_cent` ist das, was auf dem Papier steht — dagegen rechnet der
+    // Summenabgleich. Läge das Trinkgeld darin, meldete er bei jedem
+    // Restaurantbesuch eine Abweichung.
+    const payload = buildSavePayload({ ...base, tipCents: 500, drafts: [draft()] })
+    assert.equal(payload.summe_cent, 258)
+    assert.equal(payload.trinkgeld_cent, 500)
+  })
+
+  await t.test('schickt niemals ein negatives Trinkgeld', () => {
+    const payload = buildSavePayload({ ...base, tipCents: -500, drafts: [draft()] })
+    assert.equal(payload.trinkgeld_cent, 0)
+  })
 
   await t.test('schickt den Vorschlag als „model", die Korrektur als „user"', () => {
     const payload = buildSavePayload({
@@ -297,6 +330,24 @@ test('buildSavePayload', async (t) => {
     const payload = buildSavePayload({ ...base, drafts: [added] })
     assert.equal(payload.positionen[0].rohtext, '')
     assert.equal(payload.positionen[0].quelle, 'user')
+  })
+})
+
+test('tipFromPercent', async (t) => {
+  await t.test('rechnet auf ganze Cent', () => {
+    // 43,80 € · 10 % = 4,38 €. Kein halber Cent, nirgends.
+    assert.equal(tipFromPercent(4380, 10), 438)
+    assert.equal(tipFromPercent(4380, 5), 219)
+  })
+
+  await t.test('rundet kaufmännisch statt abzuschneiden', () => {
+    // 12,35 € · 5 % = 0,6175 € → 62 Cent.
+    assert.equal(tipFromPercent(1235, 5), 62)
+  })
+
+  await t.test('gibt ohne Grundbetrag nichts zurück', () => {
+    assert.equal(tipFromPercent(0, 10), 0)
+    assert.equal(tipFromPercent(-100, 10), 0)
   })
 })
 

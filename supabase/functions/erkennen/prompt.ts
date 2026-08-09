@@ -72,15 +72,24 @@ export interface PromptTrait {
   description: string
 }
 
-/** Eine Kategorie des Haushalts, so wie sie aus `categories` kommt. */
+/**
+ * Eine Kategorie des Haushalts, so wie sie aus `categories` kommt.
+ *
+ * `description` kam mit Schritt 5 dazu und ist der eigentliche Grund, warum
+ * eigene Kategorien überhaupt funktionieren: Ohne sie müsste das Modell aus dem
+ * Namen raten. Bei „Gewürze" ginge das noch, bei „Vorratskammer" nicht mehr.
+ * Leer ist erlaubt — dann steht eben nur der Name da.
+ */
 export interface PromptCategory {
   key: string
   name: string
+  description: string
 }
 
 export interface PromptContext {
   /** Nur die **aktiven** Merkmale. Inaktive dürfen dem Modell nicht angeboten werden. */
   traits: PromptTrait[]
+  /** Ebenfalls nur die **aktiven**. Eine abgeschaltete wird nicht mehr vergeben. */
   categories: PromptCategory[]
 }
 
@@ -335,7 +344,14 @@ keinen dazu, fass keine zwei zusammen.
 
 function zuordnung(context: PromptContext): string {
   const kategorien = context.categories
-    .map((category) => `- ${category.key}: ${category.name}`)
+    .map((category) => {
+      const erklaerung = category.description.trim()
+      // Die Erklärung sagt, was hineingehört und was nicht — sie ist bei einem
+      // selbst erfundenen Namen die einzige Information, die das Modell hat.
+      return erklaerung === ''
+        ? `- ${category.key}: ${category.name}`
+        : `- ${category.key}: ${category.name} — ${erklaerung}`
+    })
     .join('\n')
 
   const merkmale = context.traits

@@ -370,11 +370,34 @@ Erfassung, ohne Zutun.
 Auswertungen werden erst mit Daten sichtbar, und dann zeigt sich auch, was tatsächlich
 fehlt.
 
+# Beim Bauen von Schritt 5 entschieden
+
+Drei Stellen weichen bewusst vom Wortlaut oben ab. Die Begründungen stehen
+ausführlich in `PROJEKT.md` unter „Ergänzt mit Schritt 5a"; hier nur, *was*
+anders ist, damit beim Weiterlesen niemand nach etwas sucht, das es nicht gibt:
+
+- **Die Kategorie heißt `auswaerts_essen`, nicht `dining`.** Sie entsteht über
+  die Kategorieverwaltung, und der Schlüssel wird dort aus dem Namen abgeleitet.
+  Wichtiger: **kein Code rechnet mit ihrem Schlüssel.** Was als „Auswärts" zählt,
+  entscheidet `merchants.kind` — der Ausschluss aus den Bestpreisen hängt ohnehin
+  am Händler, und so ergeben die drei Teilbeträge der Kopfkarte exakt die
+  Gesamtsumme.
+- **Die Händlerart schlägt nicht das Modell vor, sondern die Datenbank.**
+  Durchgang 1 ist seit Schritt 4d ein reiner Abschreiber; eine zusätzliche
+  Deutungsaufgabe dort hat schon zweimal Beträge gekostet. Ein bekannter Laden
+  bringt seine Art mit, ein neues Restaurant kostet einen Tipper — danach nie
+  wieder.
+- **`exchange_rates.date` heißt `rate_date`.** `date` ist in PostgreSQL als
+  Spaltenname zwar erlaubt, liest sich aber wie ein Typ.
+
 # Offene Kleinigkeiten
 
 - **„Korrigieren" im Einkaufs-Detail** wurde in 4b-2 entfernt, weil der Knopf in den
   Korrektur-Screen führte, der auf frisch erkannten Daten arbeitet. Ein gespeicherter Bon
   braucht einen eigenen Bearbeiten-Weg. Derzeit: löschen und neu scannen.
+  *Die Datenbankseite ist mit Schritt 5a fertig — `save_receipt` aktualisiert
+  einen Bon, wenn die Anfrage `bon_id` trägt. Es fehlt nur noch das Laden eines
+  gespeicherten Bons in die Entwurfsform und der Knopf im Einkaufs-Detail.*
 - **Zeitschätzung des Fortschrittsbalkens** (`EXPECTED_MS` in `src/lib/progress.ts`) ist
   geraten. Nachjustieren, sobald die tatsächliche Dauer im Alltag bekannt ist.
 - **`mistral-small-latest` als Modellalternative** testen, falls die Erkennung wieder
