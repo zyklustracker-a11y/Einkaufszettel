@@ -94,8 +94,28 @@
   color: var(--muted);
 }
 
+/*
+ * Der Abschnitt, der gerade läuft.
+ *
+ * Er braucht seine eigene Anzeige, weil einer von ihnen vierzehn Sekunden
+ * dauert: Ohne sie stünde die Liste die längste Zeit des Scans regungslos da,
+ * und der Nutzer sähe nicht, worauf er wartet. Nur DIESE Zeile pulsiert —
+ * vorher pulsierte alles Kommende mit, was die Aufmerksamkeit gerade dorthin
+ * zog, wo nichts passiert.
+ */
+.step--running {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Erledigt und entfallen bleiben ruhig stehen; sie wollen nichts mehr. */
+.step--done,
+.step--skipped {
+  color: var(--muted);
+}
+
 .step--pending {
-  animation: pulse 1.4s ease-in-out infinite;
+  opacity: 0.55;
 }
 
 .tick {
@@ -111,8 +131,39 @@
   justify-content: center;
 }
 
+/* Erledigt: grüner Kreis mit Häkchen — das ist schon die Grundform oben. */
+.tick--done {
+  background: var(--green);
+}
+
+/* Läuft: ein gefüllter Punkt, der atmet. */
+.tick--running {
+  background: transparent;
+  border: 2px solid var(--green);
+  animation: breathe 1.4s ease-in-out infinite;
+}
+
+/* Kommt noch: ein leerer Kreis. */
 .tick--pending {
+  background: transparent;
+  border: 2px solid var(--line);
+}
+
+/* Entfallen: ein Strich in gedämpfter Farbe, kein Häkchen. */
+.tick--skipped {
   background: var(--chip);
+  color: var(--muted);
+  font-weight: 700;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--green-soft);
+  }
+  50% {
+    box-shadow: 0 0 0 5px var(--green-soft);
+  }
 }
 
 /*

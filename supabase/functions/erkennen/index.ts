@@ -175,7 +175,7 @@ function failFromMistral(reason: MistralFailure, model: string, detail: string):
   if (reason === 'modell_abgelehnt') {
     return fail(
       'modell_abgelehnt',
-      `Mistral hat die Anfrage abgelehnt. Benutztes Modell: „${model}". Antwort der ` +
+      `Die Bon-Erkennung hat die Anfrage abgelehnt. Benutztes Modell: „${model}". Antwort der ` +
         `Schnittstelle: ${detail} — wenn du MISTRAL_MODEL oder MISTRAL_TEXT_MODEL gesetzt hast, ` +
         'prüfe den Namen oder entferne das Secret wieder.',
       502,
@@ -184,7 +184,8 @@ function failFromMistral(reason: MistralFailure, model: string, detail: string):
   if (reason === 'kontingent') {
     return fail(
       'kontingent',
-      'Das Kontingent bei Mistral ist gerade erschöpft. Bitte in ein paar Minuten noch einmal versuchen.',
+      'Das Kontingent für die Bon-Erkennung ist gerade erschöpft. Bitte in ein paar Minuten ' +
+        'noch einmal versuchen.',
       429,
     )
   }

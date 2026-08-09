@@ -70,8 +70,12 @@ export const TICK_MS = 100
  *
  * Ohne diese kurze Pause wäre die 100 nie zu sehen — der Screen verschwände im
  * selben Augenblick, in dem sie erscheint.
+ *
+ * Mit Schritt 4d von 250 auf 450 ms erhöht: Seitdem bekommt auch der letzte
+ * Abschnitt sein Häkchen, und zwar genau in diesem Moment. Bei 250 ms war das
+ * ein Blinzeln.
  */
-export const FINISH_MS = 250
+export const FINISH_MS = 450
 
 /**
  * Die vier Abschnitte mit ihrem Prozentbereich und dem Text dazu.
@@ -85,6 +89,11 @@ export const FINISH_MS = 250
  * Listen über denselben vier Abschnitten wären zwei Stellen, die auseinander-
  * laufen können.
  *
+ * **In den Beschriftungen steht kein Anbietername.** „Mistral liest den Bon"
+ * stand hier bis Schritt 4d und war gleich doppelt schlecht: Mit dem Namen kann
+ * niemand etwas anfangen, und bei einem Anbieterwechsel stünde dort dauerhaft
+ * etwas Falsches. Beschrieben wird, was passiert — nicht, wer es tut.
+ *
  * `zuordnen` wird übersprungen, wenn der Haushalt jeden Artikel schon kennt.
  * Dann springt der Balken von 80 auf 95 — der eine erlaubte Sprung, weil er
  * eine Abkürzung anzeigt, die wirklich stattgefunden hat.
@@ -95,10 +104,10 @@ export const PROGRESS_STEPS: ReadonlyArray<{
   from: number
   to: number
 }> = [
-  { phase: 'vorbereiten', label: 'Bild wird vorbereitet…', from: 0, to: 5 },
-  { phase: 'lesen', label: 'Mistral liest den Bon…', from: 5, to: 80 },
-  { phase: 'zuordnen', label: 'Positionen werden zugeordnet…', from: 80, to: WAIT_CEILING },
-  { phase: 'auswerten', label: 'Ergebnis wird geprüft…', from: WAIT_CEILING, to: CHECK_CEILING },
+  { phase: 'vorbereiten', label: 'Bild wird vorbereitet', from: 0, to: 5 },
+  { phase: 'lesen', label: 'Bon wird gelesen', from: 5, to: 80 },
+  { phase: 'zuordnen', label: 'Positionen werden zugeordnet', from: 80, to: WAIT_CEILING },
+  { phase: 'auswerten', label: 'Ergebnis wird geprüft', from: WAIT_CEILING, to: CHECK_CEILING },
 ]
 
 /* ------------------------------------------------------------- Die Rechnung */
