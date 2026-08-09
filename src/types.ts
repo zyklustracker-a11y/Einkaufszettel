@@ -142,6 +142,18 @@ export interface Receipt {
    * Abweichung melden.
    */
   tipCents: number
+  /**
+   * Die Bonwährung. `EUR` im Normalfall — und dann sind die drei Felder darunter
+   * null. Bei einem Franken-Bon halten die Cent-Felder oben trotzdem **Euro**;
+   * daneben steht, was auf dem Papier stand.
+   */
+  currency: string
+  /** Die gedruckte Summe in der Bonwährung. Null bei einem Euro-Bon. */
+  originalTotalCents: number | null
+  /** Der beim Speichern eingefrorene Kurs: Originalbetrag × Kurs = Euro. */
+  exchangeRate: number | null
+  /** Der Stichtag, für den der Kurs galt — bei einem Samstagsbon der Freitag. */
+  rateDate: string | null
   items: ReceiptItem[]
 }
 

@@ -93,9 +93,9 @@ geht nichts nach Supabase.
 
 **Über die Weboberfläche:** Supabase → **Edge Functions** → **Deploy a new
 function** → **Via Editor**, Name `erkennen` (genau so, klein geschrieben — die
-App ruft diese Adresse auf), dann die sieben Dateien anlegen: `index.ts`,
+App ruft diese Adresse auf), dann die acht Dateien anlegen: `index.ts`,
 `prompt.ts`, `mistral.ts`, `validate.ts`, `lines.ts`, `assign.ts`,
-`mappings.ts`. Die
+`mappings.ts`, `rates.ts`. Die
 `*.test.ts` werden nicht gebraucht, die Tests laufen auf deinem Rechner.
 
 **Mit der Supabase-CLI:**
@@ -206,6 +206,7 @@ Bons unter keinen Umständen beeinflussen können.
 | `validate.ts` | Durchgang 1 prüfen: Schema, Beträge, Mengen, Summenabgleich — und die Formen, die dabei entstehen |
 | `assign.ts` | Durchgang 2 prüfen: Kategorien und Merkmale gegen die Liste des Haushalts |
 | `mappings.ts` | Das Gedächtnis: bekannte Rohtexte aus der Datenbank einsetzen |
+| `rates.ts` | Der EZB-Referenzkurs zum Bon-Datum, samt Zwischenspeicher. Ohne Schlüssel, ohne Anmeldung |
 | `*.test.ts` | Tests dazu — laufen mit `npm test` mit |
 
 Die Typdefinitionen liegen bewusst in `validate.ts` und nicht in einer eigenen

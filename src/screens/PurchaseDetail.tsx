@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { BottomSheet } from '../components/BottomSheet'
 import { ReceiptItemList } from '../components/ReceiptItemList'
 import { Async, EmptyState } from '../components/states'
 import { BackLink } from '../components/ui'
 import { deleteReceipt, getMerchantName, getReceipt, useQuery } from '../data'
 import { receiptDiscrepancy, receiptItemsTotal } from '../lib/derive'
-import { formatDate, formatEuro } from '../lib/format'
+import { formatDate, formatEuro, formatMoney } from '../lib/format'
 import type { Receipt } from '../types'
 import styles from './PurchaseDetail.module.css'
 
@@ -19,7 +19,9 @@ export function PurchaseDetail() {
    * Routers und nicht in der Adresse: Ein Neuladen soll die Bestätigung nicht
    * wiederholen — gespeichert wurde ja nur einmal.
    */
-  const justSaved = (useLocation().state as { justSaved?: boolean } | null)?.justSaved === true
+  const routed = useLocation().state as { justSaved?: boolean; updated?: boolean } | null
+  const justSaved = routed?.justSaved === true
+  const wasUpdated = routed?.updated === true
 
   return (
     <div className="screen screen--tabbed">
@@ -32,7 +34,7 @@ export function PurchaseDetail() {
               gelöscht.
             </EmptyState>
           ) : (
-            <PurchaseBody receipt={receipt} justSaved={justSaved} />
+            <PurchaseBody receipt={receipt} justSaved={justSaved} wasUpdated={wasUpdated} />
           )
         }
       </Async>
@@ -40,7 +42,16 @@ export function PurchaseDetail() {
   )
 }
 
-function PurchaseBody({ receipt, justSaved }: { receipt: Receipt; justSaved: boolean }) {
+function PurchaseBody({
+  receipt,
+  justSaved,
+  wasUpdated,
+}: {
+  receipt: Receipt
+  justSaved: boolean
+  /** Aus dem Bearbeiten gekommen und nicht aus einem frischen Scan. */
+  wasUpdated: boolean
+}) {
   const navigate = useNavigate()
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -66,7 +77,9 @@ function PurchaseBody({ receipt, justSaved }: { receipt: Receipt; justSaved: boo
     <>
       {justSaved && (
         <div className={styles.saved} role="status">
-          Gespeichert. Der Einkauf zählt ab jetzt in der Übersicht mit.
+          {wasUpdated
+            ? 'Änderungen gesichert. Korrekturen an Produkten gelten rückwirkend für alle Käufe.'
+            : 'Gespeichert. Der Einkauf zählt ab jetzt in der Übersicht mit.'}
         </div>
       )}
 
@@ -95,14 +108,33 @@ function PurchaseBody({ receipt, justSaved }: { receipt: Receipt; justSaved: boo
       )}
 
       {/*
+        Der Originalbetrag zusätzlich unter dem Euro-Betrag
+        (KONZEPT-ERWEITERUNGEN.md, Abschnitt 5). Der Kurs steht daneben, weil er
+        die Zahl darüber erklärt — und weil er eingefroren ist: Ein späterer
+        Kurswechsel ändert diesen Bon nicht mehr.
+      */}
+      {receipt.originalTotalCents !== null && receipt.exchangeRate !== null && (
+        <p className={styles.tip}>
+          {formatMoney(receipt.originalTotalCents, receipt.currency)} · Kurs{' '}
+          {receipt.exchangeRate.toFixed(6).replace('.', ',')}
+          {receipt.rateDate ? ` (EZB, ${formatDate(receipt.rateDate)})` : ''}
+        </p>
+      )}
+
+      {/*
         „Korrigieren" stand hier bis Schritt 4b-2 und führte in den
-        Korrektur-Screen. Das ist entfallen: Der Screen arbeitet an einem frisch
-        erkannten Bon, nicht an einem gespeicherten — ein Knopf, der etwas
-        anderes tut als er verspricht, ist schlechter als keiner. Einen
-        gespeicherten Bon nachträglich zu ändern kommt später; bis dahin ist der
-        Weg: löschen und neu scannen.
+        Korrektur-Screen, der auf frisch erkannten Daten arbeitete — ein Knopf,
+        der etwas anderes tut als er verspricht, ist schlechter als keiner.
+        Deshalb war er entfallen.
+        Seit Schritt 5b ist er zurück, und diesmal hält er, was er verspricht:
+        Der Korrektur-Screen lädt den gespeicherten Bon in dieselbe Entwurfsform
+        wie einen frisch gescannten, und beim Sichern wird dieser Bon
+        aktualisiert statt ein zweiter angelegt.
       */}
       <div className={styles.actions}>
+        <Link to={`/einkauf/${receipt.id}/bearbeiten`} className={styles.action}>
+          Bearbeiten
+        </Link>
         <button
           type="button"
           className={`${styles.action} ${styles['action--danger']}`}

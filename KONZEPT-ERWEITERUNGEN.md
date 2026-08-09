@@ -389,15 +389,22 @@ anders ist, damit beim Weiterlesen niemand nach etwas sucht, das es nicht gibt:
   wieder.
 - **`exchange_rates.date` heißt `rate_date`.** `date` ist in PostgreSQL als
   Spaltenname zwar erlaubt, liest sich aber wie ein Typ.
+- **Der Kurs-Zwischenspeicher hält nur echte Veröffentlichungstage.** Ein Bon vom
+  Samstag löst deshalb jedes Mal einen Abruf aus, statt dass ein erfundener
+  Samstags-Eintrag entsteht — sonst verlöre `receipts.rate_date` seine Aussage.
+  Für Werktagsbons, den Normalfall, wird ein Tag genau einmal abgefragt.
+- **Beim Bearbeiten eines Fremdwährungsbons wird nicht zurückgerechnet.** Die
+  Beträge stehen dann in Euro, so wie sie gespeichert sind; ein Rundgang Euro →
+  Franken → Euro verschöbe sonst bei jedem Bearbeiten einzelne Zeilen um einen
+  Cent.
 
 # Offene Kleinigkeiten
 
-- **„Korrigieren" im Einkaufs-Detail** wurde in 4b-2 entfernt, weil der Knopf in den
-  Korrektur-Screen führte, der auf frisch erkannten Daten arbeitet. Ein gespeicherter Bon
-  braucht einen eigenen Bearbeiten-Weg. Derzeit: löschen und neu scannen.
-  *Die Datenbankseite ist mit Schritt 5a fertig — `save_receipt` aktualisiert
-  einen Bon, wenn die Anfrage `bon_id` trägt. Es fehlt nur noch das Laden eines
-  gespeicherten Bons in die Entwurfsform und der Knopf im Einkaufs-Detail.*
+- ~~**„Korrigieren" im Einkaufs-Detail**~~ *Erledigt mit Schritt 5b. Der Knopf
+  heißt jetzt „Bearbeiten" und führt in denselben Korrektur-Screen — diesmal
+  hält er, was er verspricht: Der gespeicherte Bon wird in dieselbe Entwurfsform
+  geladen wie ein frisch gescannter, und beim Sichern wird er aktualisiert statt
+  ein zweiter angelegt.*
 - **Zeitschätzung des Fortschrittsbalkens** (`EXPECTED_MS` in `src/lib/progress.ts`) ist
   geraten. Nachjustieren, sobald die tatsächliche Dauer im Alltag bekannt ist.
 - **`mistral-small-latest` als Modellalternative** testen, falls die Erkennung wieder

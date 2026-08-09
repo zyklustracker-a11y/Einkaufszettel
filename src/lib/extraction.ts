@@ -138,6 +138,15 @@ export interface Extraction {
   purchasedOn: string | null
   /** `HH:MM`, 24 Stunden. */
   purchasedAt: string | null
+  /**
+   * Der gedruckte Währungscode, oder null, wenn keiner dastand.
+   *
+   * **Alle Beträge in dieser Struktur sind in dieser Währung.** Umgerechnet wird
+   * erst beim Speichern (`buildSavePayload`), damit der Korrektur-Screen
+   * dieselben Zahlen zeigt wie das Papier — man prüft ja gegen den Bon in der
+   * Hand.
+   */
+  currency: string | null
   printedTotalCents: number | null
   items: ExtractedItem[]
   itemsTotalCents: number
@@ -195,6 +204,39 @@ export interface StructureResponse {
    * Abtippen, und genau daran ist der Prompt schon zweimal gescheitert.
    */
   merchantKind: MerchantKind
+  /**
+   * Der EZB-Kurs zum Bon-Datum — nur bei Fremdwährung, sonst null. Bei einem
+   * Euro-Bon, dem Normalfall, wird gar nichts abgerufen.
+   */
+  exchangeRate: ExchangeRate | null
+  /**
+   * Warum kein Kurs da ist, als fertiger deutscher Satz. Der Korrektur-Screen
+   * zeigt ihn zusammen mit einem Kursfeld für diesen einen Bon — das Speichern
+   * wird dadurch nicht blockiert, es fehlt nur eine Zahl.
+   */
+  rateError: string | null
+}
+
+/**
+ * Ein Wechselkurs, wie ihn die Edge Function beschafft.
+ *
+ * `rate` ist Euro je **eine** Einheit der Fremdwährung — die Richtung, in der
+ * gerechnet wird: Betrag × rate = Euro. Die EZB veröffentlicht andersherum;
+ * umgedreht wird auf dem Server.
+ *
+ * `rateDate` ist der Tag, für den die EZB den Kurs veröffentlicht hat. Bei einem
+ * Bon vom Samstag steht hier der Freitag davor — mitgespeichert, damit später
+ * nachvollziehbar bleibt, woher die Zahl stammt.
+ */
+export interface ExchangeRate {
+  rate: number
+  rateDate: string
+}
+
+/** Die Antwort auf eine reine Kursanfrage. */
+export interface RateResponse {
+  exchangeRate: ExchangeRate | null
+  rateError: string | null
 }
 
 /** Eine geprüfte Zuordnung aus Durchgang 2, samt ihrem Rohtext. */
@@ -232,4 +274,8 @@ export interface ExtractionResponse {
   assignment: AssignmentInfo | null
   /** Die gespeicherte Art des Händlers, aus Durchgang 1 durchgereicht. */
   merchantKind: MerchantKind
+  /** Der EZB-Kurs, aus Durchgang 1 durchgereicht. Null bei einem Euro-Bon. */
+  exchangeRate: ExchangeRate | null
+  /** Warum kein Kurs da ist. Null heißt: Es gab nichts zu holen. */
+  rateError: string | null
 }

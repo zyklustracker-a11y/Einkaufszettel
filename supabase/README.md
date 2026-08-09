@@ -399,8 +399,31 @@ Die Einrichtung steht Schritt für Schritt in
 Was die Funktion mit der Datenbank macht: Sie **liest** `household_members`,
 `traits` und `categories`, um daraus den Prompt zu bauen — und seit 4b-2
 zusätzlich `product_mappings`, `canonical_products` und deren Merkmale, damit
-ein schon bekannter Bontext gar nicht erst neu geraten wird. Geschrieben wird
-nichts; das macht `save_receipt` beim Speichern.
+ein schon bekannter Bontext gar nicht erst neu geraten wird.
+
+Seit Schritt 5 kommt zweierlei dazu: Sie schlägt die **Händlerart** über
+`merchant_kind_for()` nach, und bei einem Bon in fremder Währung holt sie den
+**EZB-Referenzkurs** zum Bon-Datum und legt ihn in `exchange_rates` ab. Das ist
+das einzige, was diese Funktion je schreibt — und ein Wechselkurs gehört keinem
+Haushalt. Alles andere schreibt `save_receipt` beim Speichern.
+
+Die EZB braucht dafür **keinen Schlüssel und keine Anmeldung**: Abgefragt wird
+`data-api.ecb.europa.eu` als CSV. Es gibt also nichts einzurichten. Ein
+Fehlschlag ist eingeplant — dann zeigt der Korrektur-Screen ein Kursfeld für
+diesen einen Bon.
+
+**Prüfen, ob Kurse ankommen** (erst nach dem ersten Bon in fremder Währung):
+
+```sql
+select rate_date, currency, rate, fetched_at
+from public.exchange_rates
+order by rate_date desc
+limit 10;
+```
+
+Erwartet: mehrere Zeilen — die Funktion holt immer das Fenster der letzten
+vierzehn Tage, damit der nächste Bon aus demselben Zeitraum ohne Abruf
+auskommt. `rate` ist Euro je **eine** Einheit: Betrag × `rate` = Euro.
 
 ---
 
@@ -416,16 +439,12 @@ Bewusst nicht Teil dieser Migrationen, das kommt in späteren Schritten:
   sich seit Schritt 5 dagegen anlegen, umbenennen, umfärben, umsortieren und
   abschalten.
 
-Und zwei Dinge, für die die **Datenbank schon bereit ist**, die Oberfläche aber
-noch nicht — sie kommen in der zweiten Etappe von Schritt 5:
+Nicht mehr offen, seit Schritt 5b:
 
-- **Fremdwährung.** Die Spalten auf `receipts` und die Tabelle `exchange_rates`
-  stehen bereits; den EZB-Kurs holt die Edge Function noch nicht ab, und der
-  Korrektur-Screen zeigt noch kein Währungsfeld. Bis dahin wird jeder Bon als
-  Euro-Bon gespeichert.
-- **Einen gespeicherten Bon nachträglich ändern.** `save_receipt()` kann es
-  bereits (Feld `bon_id` in der Anfrage), das Einkaufs-Detail bietet es noch
-  nicht an. Bis dahin ist der Weg löschen und neu scannen.
+- **Fremdwährung** mit EZB-Kurs zum Bon-Datum — abgerufen von der Edge Function,
+  zwischengespeichert in `exchange_rates`.
+- **Einen gespeicherten Bon nachträglich ändern** — „Bearbeiten" im
+  Einkaufs-Detail.
 
 ---
 

@@ -71,6 +71,7 @@ export interface ModelReceipt {
   haendler?: unknown
   datum?: unknown
   uhrzeit?: unknown
+  waehrung?: unknown
   summe_cent?: unknown
   /**
    * Die abgetippten Zeilen des Artikelbereichs — seit Schritt 4d der Weg, auf
@@ -230,6 +231,14 @@ export interface Extraction {
   purchasedOn: string | null
   /** `HH:MM`, 24 Stunden. */
   purchasedAt: string | null
+  /**
+   * Der gedruckte Währungscode, oder null, wenn keiner dastand.
+   *
+   * **Alle Beträge in dieser Struktur sind in dieser Währung** — umgerechnet
+   * wird erst beim Speichern, damit der Korrektur-Screen dieselben Zahlen zeigt
+   * wie das Papier. Null heißt: kein Zeichen gelesen, also Euro.
+   */
+  currency: string | null
   /** Die auf dem Papier gedruckte Summe in Cent. */
   printedTotalCents: number | null
   items: ExtractedItem[]
@@ -381,6 +390,41 @@ function toIsoDate(value: unknown): string | null {
   const valid =
     date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
   return valid ? raw : null
+}
+
+/**
+ * Das gedruckte Währungszeichen als ISO-Code.
+ *
+ * Auf einem Bon steht selten der saubere Code: „Fr.", „SFr.", „€" sind
+ * dasselbe wie „CHF" beziehungsweise „EUR". Die Liste ist bewusst kurz und
+ * enthält nur, was an der deutsch-schweizerischen Grenze tatsächlich über den
+ * Tisch geht — alles Weitere muss als Dreibuchstaben-Code dastehen.
+ *
+ * **Nicht geraten wird auch hier:** Steht nichts da, kommt null zurück, und der
+ * Bon gilt als Euro-Bon. Ein aus der Anschrift erschlossenes „CHF" wäre die
+ * Sorte plausibler Fehler, die niemand bemerkt — und die jede Monatssumme um
+ * sieben Prozent verschöbe.
+ */
+export function toCurrency(value: unknown): string | null {
+  const raw = text(value)
+  if (raw === null) return null
+
+  const cleaned = raw.toUpperCase().replace(/[^A-Z€$£]/g, '')
+  const known: Record<string, string> = {
+    '€': 'EUR',
+    EUR: 'EUR',
+    EURO: 'EUR',
+    FR: 'CHF',
+    SFR: 'CHF',
+    CHF: 'CHF',
+    $: 'USD',
+    USD: 'USD',
+    '£': 'GBP',
+    GBP: 'GBP',
+  }
+  if (known[cleaned]) return known[cleaned]
+
+  return /^[A-Z]{3}$/.test(cleaned) ? cleaned : null
 }
 
 function toTime(value: unknown): string | null {
@@ -861,6 +905,7 @@ export function validateExtraction(model: ModelReceipt): Extraction {
     merchantName,
     purchasedOn,
     purchasedAt: toTime(model.uhrzeit),
+    currency: toCurrency(model.waehrung),
     printedTotalCents,
     items,
     itemsTotalCents,

@@ -342,8 +342,9 @@ zurückschreiben) sind deshalb noch offen.
 `prompt.ts` ist die eine Datei, an der ohne Codeverständnis nachgeschärft wird;
 `index.ts` (Ablauf), `mistral.ts` (Netz) und `validate.ts` (Prüfung samt der
 Typen, die sie erzeugt) bleiben davon unberührt. Mit 4b-2 kam `mappings.ts` dazu
-(das Gedächtnis), mit 4c `assign.ts` (die Prüfung des zweiten Durchgangs) und
-mit 4d `lines.ts` (die Aufteilung der abgetippten Zeilen in Positionen).
+(das Gedächtnis), mit 4c `assign.ts` (die Prüfung des zweiten Durchgangs), mit 4d `lines.ts`
+(die Aufteilung der abgetippten Zeilen in Positionen) und mit 5b `rates.ts`
+(der EZB-Kurs samt Zwischenspeicher).
 Anleitung: `supabase/functions/README.md`.
 
 **Ausgerollt wird über GitHub Actions**, nicht von Hand
@@ -741,6 +742,86 @@ oder ergänzt hat, ließe sich von außen nicht zuverlässig zuordnen, und eine
 falsch zugeordnete Zeile wäre schlimmer als eine neu geschriebene. Der Bon behält
 seine id — der Verweis aus der Adresszeile bleibt gültig.
 
+### Ergänzt mit Schritt 5b (Fremdwährung, gespeicherte Bons bearbeiten)
+
+**Der Entwurf rechnet in der Bonwährung, umgerechnet wird genau einmal.** Ein
+Schweizer Bon steht im Korrektur-Screen in Franken — man prüft ja gegen das
+Papier in der Hand, und würde schon die Erkennung umrechnen, stimmte keine
+einzige Zeile mit dem Beleg überein. Aus Franken werden Euro erst in
+`buildSavePayload`. In der Datenbank halten die Cent-Felder danach durchgehend
+Euro, und keine Auswertung weiß von Währungen.
+
+**Beim Umrechnen darf keine Abweichung aus dem Nichts entstehen.** Jede Zeile
+wird einzeln gerundet; die Summe der gerundeten Zeilen liegt deshalb manchmal
+ein, zwei Cent neben der gerundeten Gesamtsumme. Bei einem Bon, der in Franken
+exakt aufging, hätte der Korrektur-Screen „stimmt" gesagt und das Einkaufs-Detail
+zeigte hinterher eine Differenz. Deshalb gilt bei einem aufgehenden Bon in Euro
+**die Summe der umgerechneten Zeilen**. Das erfindet kein Geld: Was gedruckt
+stand, steht unverändert in `original_total_cents`. Ging der Bon schon in Franken
+nicht auf, bleibt die umgerechnete gedruckte Summe stehen — sonst verschwiege das
+Umrechnen einen Lesefehler.
+
+**Der Kurs kommt von der EZB, zum Bon-Datum.** Abgerufen wird in der Edge
+Function (`rates.ts`), weil dort die Netzwerkrechte liegen und das Ergebnis
+gleich in `exchange_rates` landet. Die EZB veröffentlicht „Franken je Euro";
+gespeichert wird der Kehrwert, also die Form, in der gerechnet wird: Betrag ×
+Kurs = Euro. An Wochenenden und Feiertagen wird das Fenster der letzten vierzehn
+Tage abgefragt und die jüngste Beobachtung ≤ Bon-Datum genommen — damit sind
+Feiertage erledigt, ohne dass irgendwo ein Kalender stünde. Der **tatsächlich
+verwendete Stichtag** wird mitgespeichert.
+
+**Der Zwischenspeicher hält nur echte Veröffentlichungstage.** Für einen Bon vom
+Samstag wird deshalb jedes Mal neu gefragt: Einen Kurs unter dem Datum „Samstag"
+abzulegen wäre eine Behauptung über einen Tag, an dem nichts veröffentlicht
+wurde, und `receipts.rate_date` verlöre seine Aussage. Der Preis ist eine
+zusätzliche Anfrage, wenn derselbe Wochenendbon ein zweites Mal gescannt wird.
+Für den Normalfall — ein Werktagsbon — wird genau einmal gefragt.
+
+**Ein gescheiterter Abruf blockiert das Speichern nicht, ein fehlender Kurs
+schon.** Das ist kein Widerspruch: Der Scan läuft durch, der Korrektur-Screen
+erscheint, und dort steht ein Kursfeld für genau diesen einen Bon. Was nicht geht,
+ist Franken-Beträge als Euro in die Datenbank zu schreiben — das verschöbe jede
+Monatssumme, ohne dass es jemandem auffiele. Es fehlt also eine einzige Zahl, und
+das Feld dafür steht daneben. **Ein Wechselkurs-Feld in den Einstellungen gibt es
+ausdrücklich nicht.**
+
+**Ein anderes Bon-Datum zieht einen neuen Kurs nach sich.** Der Kurs richtet sich
+nach dem Bon-Datum, also muss ein korrigiertes Datum ihn mitziehen. Ein Kurs, den
+der Nutzer von Hand eingetragen hat, wird dabei nicht überschrieben — sonst wäre
+die Handeingabe beim nächsten Tastendruck im Datumsfeld wieder weg.
+
+**Bearbeiten ist eine andere Vorlage, kein anderer Screen.** „Bearbeiten" im
+Einkaufs-Detail führt in denselben Korrektur-Screen. Er hatte seine ganze
+Bearbeitungslogik ohnehin in `src/lib/draft.ts`; es fehlte das Laden eines
+gespeicherten Bons in diese Form (`getReceiptDraft`, `toDraftsFromSaved`) und ein
+Speichern, das aktualisiert statt anlegt (`bon_id`). Ein zweiter Screen mit
+denselben vierzig Feldern wäre die Sorte Verdopplung, die auseinanderläuft.
+
+**Beim Bearbeiten wird nicht zurückgerechnet.** Ein gespeicherter
+Fremdwährungsbon steht in der Datenbank bereits in Euro, und dort bleibt er auch
+im Entwurf. Ein Rundgang Euro → Franken → Euro verschöbe bei jedem Bearbeiten
+einzelne Zeilen um einen Cent, ohne dass jemand etwas geändert hätte.
+Zurückgerechnet wird nur der Originalbetrag — eine Zusatzangabe, an der keine
+Auswertung hängt. Der Kurs bleibt eingefroren: Ihn nachzuführen würde
+Monatssummen der Vergangenheit rückwirkend ändern.
+
+**Eine geladene Zeile gilt nicht als bearbeitet.** `edited` bleibt `false`, bis
+`differs` eine echte Änderung sieht — sonst ginge jede unveränderte Zeile beim
+erneuten Speichern als Nutzerkorrektur durch und beförderte einen
+Modellvorschlag zur Entscheidung.
+
+**Die Positionen werden beim Aktualisieren ersetzt, nicht abgeglichen.** Welche
+Zeile umbenannt, gelöscht oder ergänzt wurde, ließe sich von außen nicht
+zuverlässig zuordnen, und eine falsch zugeordnete Zeile wäre schlimmer als eine
+neu geschriebene. Der Bon behält seine id.
+
+**Die Währung ist Abschreiben, nicht Deuten.** Durchgang 1 gibt zusätzlich
+`waehrung` zurück — aber nur, wenn ein Zeichen auf dem Bon **gedruckt** steht
+(`CHF`, `Fr.`, `€`). Aus der Anschrift oder dem Ladennamen auf die Währung zu
+schließen ist ausdrücklich verboten: Ein aus dem Kontext erschlossenes „CHF" wäre
+die Sorte plausibler Fehler, die niemand bemerkt und die jede Monatssumme um
+sieben Prozent verschiebt. Steht nichts da, ist der Bon ein Euro-Bon.
+
 ## Datenmodell-Grundsätze
 
 - **Haushalt statt Einzelnutzer.** Alle Familienmitglieder sehen dieselben Daten. Jede
@@ -785,7 +866,7 @@ nur die Voreinstellung.
 | 4c | Erkennung in zwei Durchgängen: Struktur ohne Deutung, Zuordnung danach und nur für Unbekanntes | erledigt |
 | 4d | Das Modell tippt nur noch Zeilen ab; die Aufteilung in Positionen macht der Code | erledigt |
 | 5a | Migration `0004` (alle Schemaänderungen), Kategorieverwaltung, Auswärts essen mit Trinkgeld | erledigt |
-| 5b | Fremdwährung mit EZB-Kurs, gespeicherte Bons bearbeiten | offen |
+| 5b | Fremdwährung mit EZB-Kurs, gespeicherte Bons bearbeiten | erledigt |
 | — | Bestpreis- und Analyse-Logik als SQL-Views | mit 2c vorgezogen |
 | 6 | Health-Score, Merkmals-Verwaltung in den Einstellungen, Sparhinweise, Push zum Monatsreport | Score erledigt, Rest offen |
 

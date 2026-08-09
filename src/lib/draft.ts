@@ -156,6 +156,79 @@ export function toDrafts(extraction: Extraction): DraftItem[] {
   return extraction.items.map(toDraft)
 }
 
+/* ==================================================== Gespeichert → Entwurf */
+
+/**
+ * Eine gespeicherte Position, so flach, wie die Datenbank sie hergibt.
+ *
+ * Der Weg zurück in den Korrektur-Screen. Er war überraschend kurz, weil der
+ * Screen seine ganze Bearbeitungslogik schon hier hat — es fehlte nur das
+ * Laden.
+ */
+export interface SavedItem {
+  rawText: string
+  name: string
+  categoryKey: CategoryId | null
+  traitKeys: TraitId[]
+  milkHeat: MilkHeat
+  milkHomogenized: MilkHomogenized
+  quantityBase: number | null
+  quantityUnit: ExtractedUnit | null
+  unitPriceCents: number | null
+  totalCents: number
+  /** Beide immer positiv — das Vorzeichen steckt in `totalCents`. */
+  discountCents: number
+  depositCents: number
+  taxCode: string | null
+  canonicalProductId: string | null
+}
+
+/**
+ * Aus gespeicherten Positionen werden Entwürfe.
+ *
+ * Zwei Entscheidungen stecken darin:
+ *
+ * **Die Art wird zurückgewonnen, nicht gespeichert.** `receipt_items` hat keine
+ * Spalte dafür — sie hat `deposit_cents` und `discount_cents`, und genau daraus
+ * ist die Zeile beim Speichern entstanden. Sie wieder abzulesen ist keine
+ * Vermutung, sondern die Umkehrung derselben Regel.
+ *
+ * **`edited` bleibt false.** Sonst würde jede unveränderte Zeile beim erneuten
+ * Speichern als Nutzerkorrektur durchgehen und einen Modellvorschlag zur
+ * Entscheidung befördern. Was der Nutzer tatsächlich ändert, merkt `differs`
+ * — genau wie beim frischen Scan.
+ */
+export function toDraftsFromSaved(items: SavedItem[]): DraftItem[] {
+  return items.map((item, index) => {
+    const kind: ItemKind =
+      item.depositCents > 0 ? 'pfand' : item.discountCents > 0 ? 'rabatt' : 'artikel'
+
+    const traits = normalizeTraits(item.traitKeys, item.milkHeat, item.milkHomogenized)
+
+    return {
+      key: `b${index + 1}`,
+      rawText: item.rawText,
+      kind,
+      name: item.name || item.rawText,
+      categoryKey: item.categoryKey,
+      traitKeys: traits.traitKeys,
+      milkHeat: traits.milkHeat,
+      milkHomogenized: traits.milkHomogenized,
+      quantityBase: item.quantityBase,
+      quantityUnit: item.quantityUnit,
+      unitPriceCents: item.unitPriceCents,
+      totalCents: item.totalCents,
+      taxCode: item.taxCode,
+      // Die Zuordnung kommt aus der Datenbank — das ist die Bedeutung von
+      // „gelernt", und die Zeile trägt im Screen dasselbe Zeichen wie beim Scan.
+      known: item.canonicalProductId !== null,
+      canonicalProductId: item.canonicalProductId,
+      edited: false,
+      added: false,
+    }
+  })
+}
+
 /** Eine von Hand ergänzte Position — für die Zeile, die das Modell übersehen hat. */
 export function emptyDraft(key: string): DraftItem {
   return {
@@ -336,6 +409,55 @@ export function tipFromPercent(baseCents: number, percent: number): number {
   return roundCents((baseCents * percent) / 100)
 }
 
+/* ============================================================ Fremdwährung */
+
+/**
+ * Ein Bon in fremder Währung, mit dem Kurs, zu dem er umgerechnet wird.
+ *
+ * **Der Entwurf rechnet durchgehend in der Bonwährung.** Umgerechnet wird genau
+ * einmal, beim Speichern. Der Grund ist der Zweck des Screens: „Prüfen &
+ * korrigieren" heißt, die Zahlen mit dem Papier in der Hand zu vergleichen — und
+ * auf einem Schweizer Bon stehen Franken. Würde schon die Erkennung umrechnen,
+ * stimmte keine einzige Zeile mit dem Beleg überein.
+ */
+export interface Conversion {
+  /** Der Währungscode des Bons. Nie `EUR` — dann gibt es nichts umzurechnen. */
+  currency: string
+  /** Euro je **eine** Einheit der Fremdwährung: Betrag × rate = Euro. */
+  rate: number
+  /**
+   * Der Tag, für den der Kurs veröffentlicht wurde — bei einem Bon vom Samstag
+   * der Freitag davor. Null, wenn der Nutzer den Kurs von Hand eingetragen hat:
+   * Dann gibt es keinen Stichtag, und einen zu erfinden wäre eine Behauptung
+   * über eine Veröffentlichung, die es nicht gab.
+   */
+  rateDate: string | null
+  /**
+   * In welcher Währung die Beträge des Entwurfs stehen.
+   *
+   * `bon` — frisch gescannt: Sie stehen in Franken, umgerechnet wird beim
+   * Speichern.
+   *
+   * `euro` — ein gespeicherter Bon wird bearbeitet. In der Datenbank stehen
+   * bereits Euro, und **zurückgerechnet wird ausdrücklich nicht**. Ein
+   * Rundgang Euro → Franken → Euro verschöbe bei jedem Bearbeiten einzelne
+   * Zeilen um einen Cent, ohne dass jemand etwas geändert hätte. Umgerechnet
+   * wird in diesem Fall nur der Originalbetrag, und der ist eine reine
+   * Zusatzangabe, an der keine Auswertung hängt.
+   */
+  amountsIn: 'bon' | 'euro'
+}
+
+/**
+ * Ein Betrag in Bonwährung wird zu Euro-Cent.
+ *
+ * Gerundet wird sofort auf ganze Cent — Geld ist in dieser App nie eine
+ * Kommazahl, auch nicht für einen Zwischenschritt (PROJEKT.md).
+ */
+export function toEuroCents(cents: number, rate: number): number {
+  return roundCents(cents * rate)
+}
+
 /* ====================================================== Entwurf → Speichern */
 
 /**
@@ -365,6 +487,11 @@ export interface SavePosition {
 }
 
 export interface SavePayload {
+  /**
+   * Gesetzt: den bestehenden Bon aktualisieren statt einen zweiten anzulegen.
+   * Null beim frisch gescannten Bon.
+   */
+  bon_id: string | null
   haendler: string | null
   /** `retail` oder `gastro` — die Art hängt am Händler, nicht am Beleg. */
   haendler_art: MerchantKind
@@ -376,58 +503,130 @@ export interface SavePayload {
    */
   haendler_art_quelle: 'user' | 'model'
   gekauft_am: string
+  /**
+   * Die gedruckte Summe — **immer in Euro-Cent**, auch bei einem Franken-Bon.
+   * Die bestehenden Cent-Felder halten weiterhin Euro, damit alle Auswertungen
+   * unverändert weiterrechnen (KONZEPT-ERWEITERUNGEN.md, Abschnitt 5).
+   */
   summe_cent: number
-  /** Trinkgeld in Cent. Keine Position, sondern eine Eigenschaft des Belegs. */
+  /** Trinkgeld in Euro-Cent. Keine Position, sondern eine Eigenschaft des Belegs. */
   trinkgeld_cent: number
+  /** Die Bonwährung. `EUR` im Normalfall. */
+  waehrung: string
+  /** Die gedruckte Summe in der Bonwährung. Null bei einem Euro-Bon. */
+  original_summe_cent: number | null
+  /** Der verwendete Kurs, eingefroren. Null bei einem Euro-Bon. */
+  kurs: number | null
+  /** Der Stichtag des Kurses. Null bei Euro oder bei einem Kurs von Hand. */
+  kurs_datum: string | null
   positionen: SavePosition[]
 }
 
 export function buildSavePayload(input: {
+  /** Gesetzt: bestehenden Bon aktualisieren. Null: neuen anlegen. */
+  receiptId?: string | null
   merchantName: string | null
   merchantKind: MerchantKind
   /** Hat der Nutzer die Händlerart in diesem Screen angefasst? */
   merchantKindEdited: boolean
   purchasedOn: string
+  /** In der **Bonwährung** — so, wie es auf dem Papier steht. */
   printedTotalCents: number | null
+  /** Ebenfalls in der Bonwährung: Trinkgeld gibt man in Franken, nicht in Euro. */
   tipCents: number
   drafts: DraftItem[]
+  /** Null bei einem Euro-Bon — dann wird nichts umgerechnet. */
+  conversion?: Conversion | null
 }): SavePayload {
   const drafts = input.drafts
+  const conversion = input.conversion ?? null
+
+  /*
+   * Alle Beträge unten laufen hier durch. Ohne Umrechnung — Euro-Bon oder ein
+   * gespeicherter Bon, dessen Beträge schon in Euro stehen — bleibt alles, wie
+   * es ist.
+   */
+  const convert = conversion !== null && conversion.amountsIn === 'bon'
+  const euro = (cents: number): number =>
+    convert ? toEuroCents(cents, (conversion as Conversion).rate) : cents
+
+  // Ohne gelesene Gesamtsumme gilt, was die Positionen ergeben. Der Bon hat
+  // dann keine Abweichung — es gibt nichts, wogegen er abweichen könnte.
+  const draftPrintedCents = input.printedTotalCents ?? draftsTotalCents(drafts)
+
+  const positionen: SavePosition[] = drafts.map((draft) => {
+    const name = draft.name.trim() || draft.rawText.trim()
+    return {
+      rohtext: draft.rawText.trim(),
+      art: draft.kind,
+      name,
+      // Pfand und Rabatt sind keine Produkte: keine Kategorie, keine Merkmale.
+      kategorie: draft.kind === 'artikel' ? draft.categoryKey : null,
+      merkmale: draft.kind === 'artikel' ? draft.traitKeys : [],
+      milch_erhitzung: draft.kind === 'artikel' ? draft.milkHeat : 'unbekannt',
+      milch_homogenisiert: draft.kind === 'artikel' ? draft.milkHomogenized : 'unbekannt',
+      menge_basis: draft.quantityBase,
+      menge_einheit: draft.quantityUnit,
+      einzelpreis_cent: draft.unitPriceCents === null ? null : euro(draft.unitPriceCents),
+      zeilensumme_cent: euro(draft.totalCents),
+      pfand_cent: draft.kind === 'pfand' ? Math.abs(euro(draft.totalCents)) : 0,
+      rabatt_cent: draft.kind === 'rabatt' ? Math.abs(euro(draft.totalCents)) : 0,
+      steuer: draft.taxCode,
+      quelle: draft.edited ? 'user' : 'model',
+      produkt_id: draft.canonicalProductId,
+    }
+  })
+
+  /*
+   * Die Gesamtsumme in Euro — der eine Punkt, an dem Umrechnen mehr ist als
+   * Multiplizieren.
+   *
+   * Jede Zeile wird einzeln gerundet. Die Summe der gerundeten Zeilen kann
+   * deshalb ein, zwei Cent neben der gerundeten Gesamtsumme liegen. Bei einem
+   * Bon, der in Franken **exakt** aufging, entstünde daraus eine Abweichung aus
+   * dem Nichts: Der Korrektur-Screen hätte „stimmt" gesagt, und das
+   * Einkaufs-Detail zeigte hinterher eine Differenz.
+   *
+   * Deshalb gilt bei einem aufgehenden Bon in Euro die Summe der umgerechneten
+   * Zeilen. Das erfindet kein Geld — was auf dem Papier stand, steht unverändert
+   * in `original_summe_cent`, und `printed_total_cents` ist bei einem
+   * Fremdwährungsbon ohnehin ein abgeleiteter Wert. Ging er nicht auf, bleibt
+   * die umgerechnete gedruckte Summe stehen, damit die Abweichung sichtbar
+   * bleibt.
+   */
+  const reconciles = draftsTotalCents(drafts) === draftPrintedCents
+  const summeCent = convert && reconciles
+    ? positionen.reduce((sum, position) => sum + position.zeilensumme_cent, 0)
+    : euro(draftPrintedCents)
+
+  /*
+   * Der Originalbetrag. Beim frischen Scan steht er schon da — es ist die
+   * gedruckte Summe. Beim Bearbeiten eines gespeicherten Bons wird er aus der
+   * Euro-Summe und dem eingefrorenen Kurs zurückgerechnet, damit er zu den
+   * Positionen passt, wenn eine dazugekommen ist.
+   */
+  const originalSummeCent =
+    conversion === null
+      ? null
+      : convert
+        ? draftPrintedCents
+        : roundCents(summeCent / conversion.rate)
 
   return {
+    bon_id: input.receiptId ?? null,
     haendler: input.merchantName?.trim() || null,
     haendler_art: input.merchantKind,
     haendler_art_quelle: input.merchantKindEdited ? 'user' : 'model',
     gekauft_am: input.purchasedOn,
-    // Ohne gelesene Gesamtsumme gilt, was die Positionen ergeben. Der Bon hat
-    // dann keine Abweichung — es gibt nichts, wogegen er abweichen könnte.
-    //
-    // Das Trinkgeld steht ausdrücklich NICHT hier drin: `summe_cent` ist die
+    // Das Trinkgeld steht ausdrücklich NICHT in `summe_cent`: Das ist die
     // gedruckte Summe, und gegen sie rechnet der Summenabgleich.
-    summe_cent: input.printedTotalCents ?? draftsTotalCents(drafts),
-    trinkgeld_cent: Math.max(0, Math.round(input.tipCents)),
-    positionen: drafts.map((draft) => {
-      const name = draft.name.trim() || draft.rawText.trim()
-      return {
-        rohtext: draft.rawText.trim(),
-        art: draft.kind,
-        name,
-        // Pfand und Rabatt sind keine Produkte: keine Kategorie, keine Merkmale.
-        kategorie: draft.kind === 'artikel' ? draft.categoryKey : null,
-        merkmale: draft.kind === 'artikel' ? draft.traitKeys : [],
-        milch_erhitzung: draft.kind === 'artikel' ? draft.milkHeat : 'unbekannt',
-        milch_homogenisiert: draft.kind === 'artikel' ? draft.milkHomogenized : 'unbekannt',
-        menge_basis: draft.quantityBase,
-        menge_einheit: draft.quantityUnit,
-        einzelpreis_cent: draft.unitPriceCents,
-        zeilensumme_cent: draft.totalCents,
-        pfand_cent: draft.kind === 'pfand' ? Math.abs(draft.totalCents) : 0,
-        rabatt_cent: draft.kind === 'rabatt' ? Math.abs(draft.totalCents) : 0,
-        steuer: draft.taxCode,
-        quelle: draft.edited ? 'user' : 'model',
-        produkt_id: draft.canonicalProductId,
-      }
-    }),
+    summe_cent: summeCent,
+    trinkgeld_cent: Math.max(0, euro(Math.round(input.tipCents))),
+    waehrung: conversion?.currency ?? 'EUR',
+    original_summe_cent: originalSummeCent,
+    kurs: conversion?.rate ?? null,
+    kurs_datum: conversion?.rateDate ?? null,
+    positionen,
   }
 }
 
