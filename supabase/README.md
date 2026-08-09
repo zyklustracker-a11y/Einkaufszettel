@@ -140,6 +140,72 @@ Erwartet: zweimal `rewe`.
 
 ---
 
+## 2d. Die vierte Migration: Kategorien, Auswärts essen, Fremdwährung
+
+`migrations/0004_erweiterungen.sql` gehört zu Schritt 5. Sie bringt **alle**
+Schemaänderungen der drei Erweiterungen auf einmal — Schemaänderungen sind jetzt
+billig und werden mit jedem gespeicherten Bon teurer.
+
+| Was | Wofür |
+|---|---|
+| `categories.description`, `.active`, `.color`, `.is_default` | Kategorien werden verwaltbar; die Erklärung geht an das Modell |
+| Funktion `category_key()` | „Auswärts essen" → `auswaerts_essen` |
+| `merchants.kind` | `retail` oder `gastro` |
+| Funktion `merchant_kind_for()` | schlägt die Art zu einem Bonnamen nach |
+| `receipts.tip_cents` | Trinkgeld — keine Position, sondern Eigenschaft des Belegs |
+| `receipts.currency`, `.original_total_cents`, `.exchange_rate`, `.rate_date` | Fremdwährung; die Cent-Felder halten weiterhin Euro |
+| Tabelle `exchange_rates` | Zwischenspeicher für EZB-Kurse, **ohne** Haushalt |
+| Merkmal `auswaerts` | Gewicht 0, landet unter „Beobachtet" |
+| Sichten neu gerechnet | vierte Kopfzahl „Auswärts", Gastro raus aus den Bestpreisen |
+| `save_receipt()` erweitert | Händlerart, Trinkgeld, Währung — und **Aktualisieren** statt Neuanlegen |
+
+Genauso ausführen wie oben: **SQL Editor → New query → Datei einfügen → Run.**
+Erwartet: **Success. No rows returned.** Meldungen wie `constraint … does not
+exist, skipping` sind in Ordnung — die Datei ist ausdrücklich mehrfach
+ausführbar.
+
+**Prüfen, ob der Schlüssel richtig gebildet wird:**
+
+```sql
+select public.category_key('Auswärts essen') as a,
+       public.category_key('Obst & Gemüse')  as b;
+```
+
+Erwartet: `auswaerts_essen` und `obst_gemuese`. Genau diese Umformung macht auch
+die App, wenn sie im Anlegen-Formular den künftigen Schlüssel anzeigt.
+
+**Und dass die neun mitgelieferten Kategorien ihre Farbe bekommen haben:**
+
+```sql
+select key, color, active, is_default, left(description, 40) as erklaerung
+from public.categories
+order by sort_order;
+```
+
+Erwartet: neun Zeilen, überall eine Farbe wie `#16915c` und ein Satz Erklärung.
+Ist eine Farbe leer, ist die Migration nicht durchgelaufen.
+
+**Und dass das Merkmal `auswaerts` da ist:**
+
+```sql
+select key, short, weight, active from public.traits where key = 'auswaerts';
+```
+
+Erwartet: eine Zeile mit `A`, Gewicht `0`, aktiv.
+
+> **Die vier Zahlen der Kopfkarte müssen sich zur Gesamtsumme addieren.** Das ist
+> die Probe, an der man merkt, ob die Sichten sauber sind:
+>
+> ```sql
+> select food_cents, dining_cents, nonfood_cents, total_cents,
+>        food_cents + dining_cents + nonfood_cents = total_cents as stimmt
+> from public.v_current_month_summary;
+> ```
+>
+> Erwartet: `stimmt` = `true`.
+
+---
+
 ## 3. Prüfen, ob alles angekommen ist
 
 Öffne eine neue Abfrage und führe diese vier Blöcke nacheinander aus.
@@ -210,10 +276,12 @@ Erwartet nach genau einer Anmeldung:
 
 | haushalte | mitglieder | kategorien | merkmale | merkmale_aktiv |
 |---|---|---|---|---|
-| 1 | 1 | 9 | 13 | 12 |
+| 1 | 1 | 9 | 14 | 13 |
 
-Zwölf von dreizehn aktiv ist richtig: `zusatzstoffe` ist absichtlich
-ausgeschaltet, so wie es in `PROJEKT.md` steht.
+Dreizehn von vierzehn aktiv ist richtig: `zusatzstoffe` ist absichtlich
+ausgeschaltet, so wie es in `PROJEKT.md` steht. Das vierzehnte Merkmal ist
+`auswaerts` — es kam mit Schritt 5 dazu. Vor der vierten Migration standen hier
+13 und 12.
 
 Und zur Kontrolle die Merkmale selbst:
 
@@ -343,10 +411,21 @@ Bewusst nicht Teil dieser Migrationen, das kommt in späteren Schritten:
 - **Speicherort für die Bon-Fotos.** Es gibt keinen und soll keinen geben: Das
   Foto wird nach dem Speichern verworfen und nie hochgeladen (PROJEKT.md).
   `receipts.image_path` bleibt deshalb null.
-- **Einen gespeicherten Bon nachträglich ändern.** Korrigiert wird vor dem
-  Speichern; danach ist der Weg löschen und neu scannen.
-- **Merkmale bearbeiten.** Die Einstellungen zeigen die dreizehn Merkmale, aber
-  schreibgeschützt — das Bearbeiten kommt in Schritt 6.
+- **Merkmale bearbeiten.** Die Einstellungen zeigen die vierzehn Merkmale, aber
+  schreibgeschützt — das Bearbeiten kommt in Schritt 10. **Kategorien** lassen
+  sich seit Schritt 5 dagegen anlegen, umbenennen, umfärben, umsortieren und
+  abschalten.
+
+Und zwei Dinge, für die die **Datenbank schon bereit ist**, die Oberfläche aber
+noch nicht — sie kommen in der zweiten Etappe von Schritt 5:
+
+- **Fremdwährung.** Die Spalten auf `receipts` und die Tabelle `exchange_rates`
+  stehen bereits; den EZB-Kurs holt die Edge Function noch nicht ab, und der
+  Korrektur-Screen zeigt noch kein Währungsfeld. Bis dahin wird jeder Bon als
+  Euro-Bon gespeichert.
+- **Einen gespeicherten Bon nachträglich ändern.** `save_receipt()` kann es
+  bereits (Feld `bon_id` in der Anfrage), das Einkaufs-Detail bietet es noch
+  nicht an. Bis dahin ist der Weg löschen und neu scannen.
 
 ---
 

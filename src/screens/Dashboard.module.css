@@ -33,32 +33,15 @@
   cursor: pointer;
 }
 
-/* ------------------------------------------------------------ month totals */
+/* ------------------------------------------------------------ month totals
 
-.totals {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 8px;
-}
+   Seit Schritt 5 sind es vier Zahlen: Lebensmittel · Auswärts · Non-Food ·
+   Gesamt. Nebeneinander passen sie auf 390 px nicht — drei Spalten à rund
+   100 px tragen „1.234,56 €" nicht, ohne umzubrechen. Deshalb zwei Ebenen:
+   „Gesamt" groß in eigener Zeile, die drei Teilbeträge kleiner darunter.       */
 
-.totalLabel {
-  font-size: 12px;
-  color: var(--muted);
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.totalValue {
-  font-size: 22px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-}
-
-.grandTotal {
-  flex: 0 0 auto;
-  text-align: right;
+.grandRow {
+  margin-bottom: 14px;
 }
 
 .grandTotalValue {
@@ -68,6 +51,49 @@
   letter-spacing: -0.035em;
   line-height: 1;
   /* The hero figure must never wrap, even at 277,00 €. */
+  white-space: nowrap;
+}
+
+.totalLabel {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+/* Drei gleich breite Spalten, damit die Beträge untereinander stehen. `1fr`
+   statt `auto`: Bei ungleich langen Zahlen rutschten die Trennlinien sonst
+   sichtbar hin und her, sobald sich ein Betrag ändert. */
+.totals {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.part + .part {
+  padding-left: 10px;
+  border-left: 1px solid var(--line);
+}
+
+.partLabel {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-weight: 600;
+  margin-bottom: 3px;
+  /* „Lebensmittel" ist das längste Wort der drei und darf nicht umbrechen —
+     sonst wären die drei Spalten unterschiedlich hoch. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.partValue {
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
   white-space: nowrap;
 }
 

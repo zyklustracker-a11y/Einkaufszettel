@@ -15,28 +15,49 @@
  */
 export type MerchantId = string
 
+/**
+ * `retail` oder `gastro`. Die Art hängt am Händler und nicht am Beleg: Einmal
+ * gesetzt, gilt sie für alle künftigen Bons desselben Ladens
+ * (KONZEPT-ERWEITERUNGEN.md, Abschnitt 1).
+ */
+export type MerchantKind = 'retail' | 'gastro'
+
 export interface Merchant {
   id: MerchantId
   name: string
+  kind: MerchantKind
 }
 
-/** Stable category keys. `nonfood` is always shown, never folded into "other". */
-export type CategoryId =
-  | 'produce'
-  | 'meat'
-  | 'dairy'
-  | 'sweets'
-  | 'bakery'
-  | 'drinks'
-  | 'readymeals'
-  | 'staples'
-  | 'nonfood'
+/**
+ * Der stabile Schlüssel einer Kategorie.
+ *
+ * Bis Schritt 5 war das eine feste Aufzählung der neun mitgelieferten
+ * Kategorien. Seitdem legt der Nutzer eigene an, und der Schlüssel entsteht beim
+ * Anlegen aus dem Namen (`category_key()` in der Datenbank). Eine Aufzählung im
+ * Code wäre damit eine zweite Wahrheit, die schon beim ersten selbst angelegten
+ * „gewuerze" auseinanderliefe — dieselbe Begründung wie bei den Merkmalen
+ * (PROJEKT.md: „Merkmale sind Daten, nicht Code").
+ *
+ * Der Alias bleibt trotzdem stehen: Er sagt an jeder Fundstelle, dass hier ein
+ * Kategorieschlüssel gemeint ist und nicht irgendein Text.
+ */
+export type CategoryId = string
 
 export interface Category {
   id: CategoryId
   name: string
   /** Non-food is charted in a neutral tone; food categories share a green ramp. */
   isFood: boolean
+  /** Kurze Erklärung. **Geht als Anweisung an das Modell**, wie bei Merkmalen. */
+  description: string
+  /** Aus statt gelöscht: Produkte verweisen auf die Kategorie. */
+  active: boolean
+  /** Hex-Farbe für Ring und Balken, z. B. `#16915c`. Gehört der Kategorie. */
+  color: string
+  /** Reihenfolge in Auswahl und Auswertung. */
+  sortOrder: number
+  /** Mitgeliefert oder selbst angelegt. Änderbar sind beide. */
+  isDefault: boolean
 }
 
 /**
@@ -115,6 +136,12 @@ export interface Receipt {
   date: string
   /** The sum printed on the paper receipt. May disagree with the line items. */
   printedTotalCents: number
+  /**
+   * Trinkgeld. Bewusst **nicht** in `printedTotalCents` enthalten: Es steht
+   * meist gar nicht auf dem Papier, und der Summenabgleich würde es sonst als
+   * Abweichung melden.
+   */
+  tipCents: number
   items: ReceiptItem[]
 }
 
@@ -143,7 +170,15 @@ export interface MonthSummary {
   month: string
   /** Day the figures are current as of, ISO. */
   asOf: string
+  /** Lebensmittel **ohne** Gastronomie. */
   foodCents: number
+  /**
+   * Auswärts: alle Positionen von Gastro-Bons plus Trinkgeld. Zusammen mit
+   * `foodCents` und `nonFoodCents` ergibt das exakt die Gesamtsumme — keine
+   * Position zählt doppelt.
+   */
+  diningCents: number
+  /** Non-Food **ohne** Gastronomie. */
   nonFoodCents: number
   budgetCents: number
   /** Projection to month end at the current pace. */

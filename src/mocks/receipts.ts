@@ -22,6 +22,7 @@ export const receipts: Receipt[] = [
     merchantId: 'rewe',
     date: daysAgo(0),
     printedTotalCents: 4217,
+    tipCents: 0,
     items: [
       { id: 'i1', name: 'H-Milch 3,5 %', categoryId: 'dairy', quantity: { kind: 'count', count: 3, unitPriceCents: 129 }, totalCents: 387, traitIds: ['milch'], milkHeat: 'uht', milkHomogenized: 'ja' },
       { id: 'i2', name: 'Butter', categoryId: 'dairy', quantity: { kind: 'count', count: 1, unitPriceCents: 249 }, totalCents: 249, traitIds: ['milch'], milkHeat: 'pasteurisiert', milkHomogenized: 'nein' },
@@ -45,6 +46,7 @@ export const receipts: Receipt[] = [
     merchantId: 'lidl',
     date: daysAgo(2),
     printedTotalCents: 2349,
+    tipCents: 0,
     items: [
       { id: 'i1', name: 'H-Milch 3,5 %', categoryId: 'dairy', quantity: { kind: 'count', count: 4, unitPriceCents: 115 }, totalCents: 460, traitIds: ['milch'], milkHeat: 'uht', milkHomogenized: 'ja' },
       { id: 'i2', name: 'Bananen', categoryId: 'produce', quantity: { kind: 'weight', amount: 1.08, unit: 'kg', pricePerUnitCents: 169 }, totalCents: 183, traitIds: [] },
@@ -61,6 +63,7 @@ export const receipts: Receipt[] = [
     merchantId: 'edeka',
     date: daysAgo(5),
     printedTotalCents: 6130,
+    tipCents: 0,
     items: [
       { id: 'i1', name: 'Hähnchenbrust', categoryId: 'meat', quantity: { kind: 'unknown' }, totalCents: 729, traitIds: [] },
       { id: 'i2', name: 'Sauerteigbrot', categoryId: 'bakery', quantity: { kind: 'count', count: 1, unitPriceCents: 319 }, totalCents: 319, traitIds: ['gluten', 'weizen'] },

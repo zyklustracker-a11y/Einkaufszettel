@@ -1,6 +1,7 @@
 import { functionsUrl, supabase, supabaseAnonKey } from '../lib/supabase'
 import { applyAssignments, withAssignmentFailure } from '../lib/assignments'
 import type { CapturedImage } from '../lib/camera'
+import type { MerchantKind } from '../types'
 import type {
   AssignmentResponse,
   ExtractionPhase,
@@ -191,6 +192,13 @@ export async function extractReceipt(
 
   const open = Array.isArray(structure.offeneRohtexte) ? structure.offeneRohtexte : []
 
+  /*
+   * Die Art des Händlers kommt aus der Datenbank, nicht vom Modell. Kennt der
+   * Haushalt den Laden noch nicht, ist es ein Laden — wer nichts Gegenteiliges
+   * weiß, behauptet nichts.
+   */
+  const merchantKind: MerchantKind = structure.merchantKind === 'gastro' ? 'gastro' : 'retail'
+
   /* --------------------------------------------- Durchgang 2: zuordnen */
 
   if (open.length === 0) {
@@ -203,6 +211,7 @@ export async function extractReceipt(
       durationMs: structure.durationMs,
       raw: structure.raw,
       assignment: null,
+      merchantKind,
     }
   }
 
@@ -232,6 +241,7 @@ export async function extractReceipt(
       durationMs: structure.durationMs,
       raw: structure.raw,
       assignment: null,
+      merchantKind,
     }
   }
 
@@ -248,5 +258,6 @@ export async function extractReceipt(
       durationMs: assignment.durationMs,
       raw: assignment.raw,
     },
+    merchantKind,
   }
 }

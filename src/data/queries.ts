@@ -66,6 +66,7 @@ interface CurrentMonthRow {
   as_of: string
   food_cents: number
   nonfood_cents: number
+  dining_cents: number
   receipt_count: number
   budget_cents: number
   forecast_cents: number
@@ -115,8 +116,17 @@ interface ReceiptRow {
   merchant_id: string | null
   purchased_on: string
   printed_total_cents: number
+  tip_cents: number
   receipt_items: Array<{ count: number }>
 }
+
+/**
+ * Die Spaltenliste für einen Bon-Kopf. Sie steht an drei Stellen und muss
+ * überall gleich sein — `supabase-js` liest sie zur Übersetzungszeit aus und
+ * braucht dafür ein Literal, deshalb eine Konstante statt einer Verkettung.
+ */
+const RECEIPT_COLUMNS =
+  'id, merchant_id, purchased_on, printed_total_cents, tip_cents, receipt_items(count)'
 
 interface ItemRow {
   id: string
@@ -229,7 +239,7 @@ function scoresByMonth(rows: ScoreItemRow[], traits: Trait[]): HealthMonth[] {
     items.push({
       id: row.item_id,
       name: '',
-      categoryId: 'staples',
+      categoryId: '',
       quantity: { kind: 'unknown' },
       totalCents: row.total_cents,
       traitIds: row.trait_keys,
@@ -265,7 +275,7 @@ async function loadCurrentMonth(): Promise<MonthSummary> {
   const row = unwrapMaybe(
     await supabase
       .from('v_current_month_summary')
-      .select('month, as_of, food_cents, nonfood_cents, receipt_count, budget_cents, forecast_cents, previous_month_to_date_cents')
+      .select('month, as_of, food_cents, nonfood_cents, dining_cents, receipt_count, budget_cents, forecast_cents, previous_month_to_date_cents')
       .maybeSingle(),
   ) as CurrentMonthRow | null
 
@@ -277,6 +287,7 @@ async function loadCurrentMonth(): Promise<MonthSummary> {
     month: row.month,
     asOf: row.as_of,
     foodCents: row.food_cents,
+    diningCents: row.dining_cents,
     nonFoodCents: row.nonfood_cents,
     budgetCents: row.budget_cents,
     forecastCents: row.forecast_cents,
@@ -324,7 +335,7 @@ async function loadRecentReceipts(limit: number): Promise<RecentReceipt[]> {
   const rows = unwrap<ReceiptRow[]>(
     await supabase
       .from('receipts')
-      .select('id, merchant_id, purchased_on, printed_total_cents, receipt_items(count)')
+      .select(RECEIPT_COLUMNS)
       .eq('status', 'confirmed')
       .order('purchased_on', { ascending: false })
       .limit(limit),
@@ -333,7 +344,9 @@ async function loadRecentReceipts(limit: number): Promise<RecentReceipt[]> {
     id: row.id,
     merchantId: row.merchant_id,
     date: row.purchased_on,
-    totalCents: row.printed_total_cents,
+    // Mit Trinkgeld: In der Liste steht, was der Einkauf gekostet hat, und das
+    // ist bei einem Restaurantbesuch mehr als die gedruckte Summe.
+    totalCents: row.printed_total_cents + row.tip_cents,
     itemCount: row.receipt_items[0]?.count ?? 0,
   }))
 }
@@ -593,7 +606,7 @@ export async function getReceipt(receiptId: string): Promise<Receipt | null> {
   const head = unwrapMaybe(
     await supabase
       .from('receipts')
-      .select('id, merchant_id, purchased_on, printed_total_cents, receipt_items(count)')
+      .select(RECEIPT_COLUMNS)
       .eq('id', receiptId)
       .maybeSingle(),
   ) as ReceiptRow | null
@@ -659,9 +672,14 @@ async function buildReceipt(head: ReceiptRow): Promise<Receipt> {
     return {
       id: row.id,
       name: row.name,
-      // Ohne Produktzuordnung ist die Kategorie noch offen; bis dahin gilt
-      // `staples` als neutraler Platzhalter in der Anzeige.
-      categoryId: (product?.category_key ?? 'staples') as CategoryId,
+      /*
+       * Ohne Produktzuordnung ist die Kategorie offen. Bis Schritt 5 stand
+       * hier `staples` als Platzhalter — das war eine Behauptung: Der Chip in
+       * der Positionsliste zeigte „Grundnahrungsmittel", obwohl niemand das
+       * entschieden hatte. Jetzt steht dort, was zutrifft. Die Positionsliste
+       * zeigt einen unbekannten Schlüssel unverändert an.
+       */
+      categoryId: (product?.category_key ?? 'Kategorie offen') as CategoryId,
       quantity: toQuantity(row),
       totalCents: row.total_cents,
       traitIds: row.canonical_product_id
@@ -681,6 +699,7 @@ async function buildReceipt(head: ReceiptRow): Promise<Receipt> {
     merchantId: head.merchant_id ?? '',
     date: head.purchased_on,
     printedTotalCents: head.printed_total_cents,
+    tipCents: head.tip_cents,
     items,
   }
 }

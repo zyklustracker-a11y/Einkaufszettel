@@ -26,7 +26,14 @@ import type {
   PrintedTaxGroup,
   TaxGroup,
 } from './extraction'
-import type { CategoryId, MilkHeat, MilkHomogenized, Quantity, TraitId } from '../types'
+import type {
+  CategoryId,
+  MerchantKind,
+  MilkHeat,
+  MilkHomogenized,
+  Quantity,
+  TraitId,
+} from '../types'
 
 /* ============================================================ Die Merkmale,
  * die keine sind
@@ -306,6 +313,29 @@ export function taxReconciliation(
   }
 }
 
+/* =============================================================== Trinkgeld */
+
+/**
+ * Die Schnellwahl aus dem Konzept: „Nein · 5 % · 10 % · Eigener Betrag".
+ *
+ * Fünf und zehn Prozent, weil das die beiden Beträge sind, die man im Kopf
+ * rechnet. Mehr Knöpfe hülfen nicht — wer 12,50 € geben will, tippt sie ein.
+ */
+export const TIP_PERCENTS = [5, 10] as const
+
+/**
+ * Wie viel Trinkgeld ein Prozentsatz auf diesen Bon ergibt, in ganzen Cent.
+ *
+ * Gerechnet wird auf die **gedruckte Summe ohne Trinkgeld** — Trinkgeld auf
+ * Trinkgeld wäre unsinnig. Das Ergebnis füllt nur das Feld vor und ist
+ * überschreibbar: Auf 43,80 € sind 10 % genau 4,38 €, gegeben werden aber meist
+ * 5 €, und das soll dann auch dastehen.
+ */
+export function tipFromPercent(baseCents: number, percent: number): number {
+  if (baseCents <= 0) return 0
+  return roundCents((baseCents * percent) / 100)
+}
+
 /* ====================================================== Entwurf → Speichern */
 
 /**
@@ -336,25 +366,46 @@ export interface SavePosition {
 
 export interface SavePayload {
   haendler: string | null
+  /** `retail` oder `gastro` — die Art hängt am Händler, nicht am Beleg. */
+  haendler_art: MerchantKind
+  /**
+   * `user` heißt: Der Nutzer hat die Art in diesem Screen ausdrücklich gesetzt.
+   * Nur dann stellt die Datenbank einen **bekannten** Händler um. Ohne diese
+   * Unterscheidung setzte jeder weitere Bon eines als Gastro markierten Ladens
+   * ihn wieder auf `retail` zurück.
+   */
+  haendler_art_quelle: 'user' | 'model'
   gekauft_am: string
   summe_cent: number
+  /** Trinkgeld in Cent. Keine Position, sondern eine Eigenschaft des Belegs. */
+  trinkgeld_cent: number
   positionen: SavePosition[]
 }
 
 export function buildSavePayload(input: {
   merchantName: string | null
+  merchantKind: MerchantKind
+  /** Hat der Nutzer die Händlerart in diesem Screen angefasst? */
+  merchantKindEdited: boolean
   purchasedOn: string
   printedTotalCents: number | null
+  tipCents: number
   drafts: DraftItem[]
 }): SavePayload {
   const drafts = input.drafts
 
   return {
     haendler: input.merchantName?.trim() || null,
+    haendler_art: input.merchantKind,
+    haendler_art_quelle: input.merchantKindEdited ? 'user' : 'model',
     gekauft_am: input.purchasedOn,
     // Ohne gelesene Gesamtsumme gilt, was die Positionen ergeben. Der Bon hat
     // dann keine Abweichung — es gibt nichts, wogegen er abweichen könnte.
+    //
+    // Das Trinkgeld steht ausdrücklich NICHT hier drin: `summe_cent` ist die
+    // gedruckte Summe, und gegen sie rechnet der Summenabgleich.
     summe_cent: input.printedTotalCents ?? draftsTotalCents(drafts),
+    trinkgeld_cent: Math.max(0, Math.round(input.tipCents)),
     positionen: drafts.map((draft) => {
       const name = draft.name.trim() || draft.rawText.trim()
       return {

@@ -12,7 +12,7 @@
  * Datum als ISO-String. Formatiert wird ausschließlich in der Oberfläche.
  */
 
-import type { CategoryId, MilkHeat, MilkHomogenized, TraitId } from '../types'
+import type { CategoryId, MerchantKind, MilkHeat, MilkHomogenized, TraitId } from '../types'
 
 /**
  * Die Abschnitte eines Scans, an denen sich ablesen lässt, wie weit es ist.
@@ -181,6 +181,20 @@ export interface StructureResponse {
    * Der Haushalt kennt jeden Artikel auf diesem Bon, es ist nichts mehr zu tun.
    */
   offeneRohtexte: string[]
+  /**
+   * Die gespeicherte Art dieses Händlers — **nachgeschlagen, nicht geraten**.
+   *
+   * Die Funktion sucht den Händlernamen über `merchant_key()` in der Datenbank.
+   * Ist er bekannt, kommt seine Art zurück, und der Korrektur-Screen hat sie
+   * vorausgewählt. Ist er unbekannt, steht hier `retail` — dann tippt der Nutzer
+   * bei einem Restaurant einmal auf „Gastro", und ab dem nächsten Bon dieses
+   * Ladens steht es von selbst da.
+   *
+   * Bewusst fragt hier **niemand das Modell**. Durchgang 1 ist seit Schritt 4d
+   * ein reiner Abschreiber; jede zusätzliche Deutungsaufgabe konkurriert mit dem
+   * Abtippen, und genau daran ist der Prompt schon zweimal gescheitert.
+   */
+  merchantKind: MerchantKind
 }
 
 /** Eine geprüfte Zuordnung aus Durchgang 2, samt ihrem Rohtext. */
@@ -216,4 +230,6 @@ export interface ExtractionResponse {
    * ist — im zweiten Fall steht eine Warnung in `extraction.warnings`.
    */
   assignment: AssignmentInfo | null
+  /** Die gespeicherte Art des Händlers, aus Durchgang 1 durchgereicht. */
+  merchantKind: MerchantKind
 }

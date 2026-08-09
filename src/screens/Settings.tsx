@@ -10,6 +10,7 @@ import {
 } from '../data'
 import { useAppState } from '../state/AppState'
 import { useAuth } from '../state/AuthContext'
+import { CategorySettings } from './CategorySettings'
 import styles from './Settings.module.css'
 
 /** `−3` · `0` · `+2` — the sign carries the meaning, so it is always shown. */
@@ -66,6 +67,13 @@ export function SettingsScreen() {
           </div>
         )}
       </section>
+
+      {/*
+        Die Kategorien stehen über den Merkmalen: Eine Kategorie muss jede
+        Position haben, ein Merkmal keine. Was häufiger gebraucht wird, steht
+        weiter oben.
+      */}
+      <CategorySettings />
 
       <section className={styles.householdCard}>
         <div className={styles.householdTitle}>Merkmale</div>

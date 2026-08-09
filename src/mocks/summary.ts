@@ -29,6 +29,10 @@ export const monthSummary: MonthSummary = {
   month: monthsAgo(0),
   asOf: today,
   foodCents: 23600,
+  // Auswärts kam mit Schritt 5 dazu: Gastro-Positionen plus Trinkgeld. Die drei
+  // Teilbeträge ergeben zusammen die Gesamtsumme, deshalb steckt es nicht in
+  // `foodCents`.
+  diningCents: 0,
   nonFoodCents: 4100,
   budgetCents: 45000,
   forecastCents: 49000,
