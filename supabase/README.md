@@ -455,42 +455,36 @@ select * from public.household_members_list();
 
 ---
 
-## 2k. Die elfte Migration: Monatsreport
+## 2k. Die elfte und zwölfte Migration: Monatsreport, und wieder zurück
 
-`migrations/0011_monatsreport.sql` gehört zu Schritt 13.
+`migrations/0011_monatsreport.sql` hatte die Tabellen für die
+Push-Benachrichtigung angelegt. Die Funktion ist wieder entfernt worden — eine
+Nachricht im Monat rechtfertigt die Einrichtung nicht.
 
-| Was | Wofür |
-|---|---|
-| Tabelle `push_subscriptions` | welches **Gerät** Meldungen bekommt |
-| Sicht `v_last_month_report` | die Zahlen des Vormonats |
-| `mark_report_sent()` | damit derselbe Monat nicht zweimal kommt |
+**Wenn du 0011 schon ausgeführt hast, führ jetzt `0012_ohne_push.sql` aus.** Sie
+räumt `push_subscriptions`, `v_last_month_report` und `mark_report_sent()` wieder
+ab. Erwartet: **Success. No rows returned.**
 
-Genauso ausführen wie oben. Erwartet: **Success. No rows returned.**
+**Wenn du 0011 noch nicht ausgeführt hast**, kannst du beide überspringen — 0012
+ist dann ohne Wirkung und läuft trotzdem fehlerfrei durch.
 
-Danach brauchst du noch **Schlüssel** — das ist der einzige Teil dieses Projekts,
-der ohne dich nicht fertig wird. Die Anleitung steht in
-[`functions/README.md`](functions/README.md) unter „Benachrichtigungen".
+Es gehen dabei **keine Bon-Daten verloren.** Die drei Dinge waren ausschließlich
+für den Versand da.
 
-**Prüfen, sobald der Schalter umgelegt ist:**
-
-```sql
-select endpoint, created_at, last_month, last_sent_at, failed_at, fail_reason
-from public.push_subscriptions;
-```
-
-Erwartet: eine Zeile je Gerät. `failed_at` bleibt leer, solange alles gut geht.
-
-**Und was im Report stehen würde:**
+**Prüfen, dass nichts übrig ist:**
 
 ```sql
-select month, total_cents, receipt_count, budget_cents, previous_total_cents,
-       top_product_name
-from public.v_last_month_report;
+select table_name from information_schema.tables
+where table_schema = 'public' and table_name = 'push_subscriptions';
 ```
 
-Ist die Liste leer, hattest du im Vormonat keine Einkäufe — dann wird auch keine
-Meldung verschickt. „Du hast 0 € ausgegeben" ist keine Nachricht, sondern eine
-Störung.
+Erwartet: keine Zeile.
+
+> **Die Secrets in Supabase kannst du auch löschen**, falls du sie schon angelegt
+> hattest: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`,
+> `REPORT_SECRET`. Dasselbe für `SUPABASE_URL` und `REPORT_SECRET` in den
+> GitHub-Secrets und `VITE_VAPID_PUBLIC_KEY` bei Vercel. Nötig ist das nicht —
+> sie werden von nichts mehr gelesen.
 
 ---
 

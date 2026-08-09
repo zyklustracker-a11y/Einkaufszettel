@@ -17,7 +17,6 @@ import {
   BudgetSettingsScreen,
   CategorySettingsScreen,
   HouseholdSettingsScreen,
-  NotificationSettingsScreen,
   SettingsScreen,
   TraitSettingsScreen,
 } from './screens/Settings'
@@ -101,10 +100,6 @@ export function App() {
             <Route path="/einstellungen/kategorien" element={<CategorySettingsScreen />} />
             <Route path="/einstellungen/merkmale" element={<TraitSettingsScreen />} />
             <Route path="/einstellungen/haushalt" element={<HouseholdSettingsScreen />} />
-            <Route
-              path="/einstellungen/benachrichtigungen"
-              element={<NotificationSettingsScreen />}
-            />
           </Route>
         </Route>
 

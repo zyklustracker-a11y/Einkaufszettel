@@ -1,5 +1,5 @@
 /*
- * Der Service Worker — nur für Benachrichtigungen.
+ * Der Service Worker.
  *
  * Er speichert **nichts** zwischen und fängt **keine** Anfragen ab. Das ist
  * Absicht: Ein Cache würde bedeuten, dass nach einem Ausrollen die alte App
@@ -9,8 +9,13 @@
  * Preis für Offline-Fähigkeit, die hier niemand braucht: Ohne Netz gibt es
  * weder Bons noch Auswertungen.
  *
- * Übrig bleiben zwei Ereignisse, und für die braucht es einen Service Worker
- * zwingend — anders lässt eine Web-Push-Meldung sich nicht empfangen.
+ * Warum es ihn dann überhaupt gibt: Er gehört zur PWA. iOS und Android führen
+ * eine Anwendung erst dann als eigenständig installierbar, wenn Manifest **und**
+ * Service Worker da sind, und er ist die Stelle, an der später einmal etwas
+ * hineinkäme, das wirklich im Hintergrund laufen muss.
+ *
+ * Die beiden Ereignisse unten sind alles, was er tut — und sie sorgen nur dafür,
+ * dass er sich selbst nicht im Weg steht.
  *
  * Diese Datei liegt bewusst in `public/` und wird von Vite unverändert
  * durchgereicht: Sie muss unter `/sw.js` erreichbar sein, damit ihr
@@ -25,60 +30,3 @@
  */
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()))
-
-/**
- * Eine eingetroffene Push-Nachricht anzeigen.
- *
- * Der Inhalt ist Ende-zu-Ende verschlüsselt angekommen; entschlüsselt hat ihn
- * der Browser. Was hier steht, ist genau das, was
- * `supabase/functions/monatsreport/report.ts` gebaut hat.
- *
- * **Anzeigen ist Pflicht, nicht Kür.** Ein Push, der keine Meldung erzeugt,
- * gilt bei den Browsern als Missbrauch und kostet die Berechtigung. Deshalb
- * steht auch für eine unlesbare Nachricht ein Ersatztext bereit, statt sie
- * stillschweigend zu verwerfen.
- */
-self.addEventListener('push', (event) => {
-  let payload = { title: 'Receipt AI', body: 'Dein Monatsreport ist da.', url: '/analysen' }
-
-  try {
-    if (event.data) payload = { ...payload, ...event.data.json() }
-  } catch {
-    // Unlesbarer Inhalt: Es bleibt beim Ersatztext.
-  }
-
-  event.waitUntil(
-    self.registration.showNotification(payload.title, {
-      body: payload.body,
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-      // Ein Kennzeichen, damit zwei Reports desselben Monats einander ersetzen
-      // statt sich zu stapeln.
-      tag: 'monatsreport',
-      data: { url: payload.url },
-    }),
-  )
-})
-
-/**
- * Ein Tipp auf die Meldung führt in die App.
- *
- * Läuft sie schon, wird das vorhandene Fenster nach vorn geholt statt ein
- * zweites geöffnet — sonst hätte man die App danach doppelt.
- */
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close()
-  const target = (event.notification.data && event.notification.data.url) || '/'
-
-  event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if ('focus' in client) {
-          client.navigate(target)
-          return client.focus()
-        }
-      }
-      return self.clients.openWindow(target)
-    }),
-  )
-})

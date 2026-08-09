@@ -42,7 +42,6 @@ wenn sich das Logo ändert).
 | `/einstellungen/kategorien` | Kategorien anlegen, umbenennen, umfärben, abschalten |
 | `/einstellungen/merkmale` | Merkmale anlegen, gewichten, gruppieren, abschalten |
 | `/einstellungen/haushalt` | Wer zum Haushalt gehört, Familie einladen |
-| `/einstellungen/benachrichtigungen` | Monatsreport als Push-Meldung |
 
 Die Tab-Bar (Übersicht · Preise · Zettel · Scan · Analysen · Gesund) liegt über
 allen Tabs-Screens; Scan-Flow und Einstellungen laufen ohne sie.
@@ -64,8 +63,7 @@ src/
 supabase/
   migrations/       Schema und Auswertungs-Sichten
   tests/            Prüfstrecke: Migrationen + Testdaten + Nachrechnen (npm run test:sql)
-  functions/erkennen/      Edge Function: Bon-Foto → geprüfte Bon-Daten (Mistral)
-  functions/monatsreport/  Edge Function: Monatsreport als Push-Meldung
+  functions/erkennen/  Edge Function: Bon-Foto → geprüfte Bon-Daten (Mistral)
 ```
 
 ### Bon-Erkennung

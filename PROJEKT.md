@@ -1140,58 +1140,31 @@ E-Mail-Adressen stehen in `auth.users`; dorthin kommt keine gewöhnliche Abfrage
 `household_members_list()` prüft als Allererstes, ob der Aufrufer selbst
 dazugehört, und gibt nur Name, E-Mail, Rolle und Beitrittsdatum zurück.
 
-### Ergänzt mit Schritt 13 (Monatsreport als Push)
+### Zurückgenommen mit Schritt 15 (Monatsreport als Push)
 
-**Die Verschlüsselung steht von Hand da und kommt nicht aus einer Bibliothek.**
-Für Web Push gibt es `web-push` auf npm, und der übliche Weg wäre, sie zu
-nehmen. Dagegen sprach zweierlei: Die beiden Normen (RFC 8188, RFC 8291)
-enthalten **vollständige Testvektoren**, und was gegen sie geprüft ist, stimmt
-mit der Norm überein statt nur richtig auszusehen — eine Bibliothek könnte man
-nur ausprobieren. Und es kommt keine Abhängigkeit dazu (PROJEKT.md). Es sind rund
-hundertfünfzig Zeilen auf der Web-Crypto-Schnittstelle, die Deno und Node beide
-mitbringen; `push.test.ts` rechnet den Vektor aus RFC 8291 Byte für Byte nach.
+Schritt 13 hatte den Monatsreport als Push-Benachrichtigung gebaut: Service
+Worker, Berechtigungsabfrage, Abos je Gerät, eine eigene Edge Function und einen
+Zeitplan in GitHub Actions. **Der Nutzer will ihn nicht** — eine Nachricht im
+Monat rechtfertigt weder die Einrichtung (VAPID-Schlüsselpaar, vier Secrets in
+Supabase, zwei in GitHub, eines bei Vercel) noch den Schalter in den
+Einstellungen.
 
-**Diese eine Funktion benutzt einen Dienstschlüssel.** Das ist die Ausnahme von
-der Linie „die Funktion arbeitet mit dem Token des Nutzers": Ein Zeitplan hat
-keinen angemeldeten Nutzer, und die Funktion muss die Abos aller Haushalte lesen
-können. Die Abweichung ist deshalb so eng wie möglich gefasst — sie gibt **nichts
-zurück außer einer Zählung**, liest nur `push_subscriptions` und
-`v_last_month_report`, schreibt nur den Sendevermerk, und ohne das gemeinsame
-Geheimnis im Kopf `x-report-secret` kommt sie über Schritt 1 nicht hinaus.
+Entfernt sind damit: der Einstellungsbereich, die Berechtigungsabfrage, die
+Push-Teile des Service Workers, die Edge Function `monatsreport`, der
+GitHub-Workflow, das Skript zur Schlüsselerzeugung und die Dokumentation dazu.
+`0012_ohne_push.sql` räumt `push_subscriptions`, `v_last_month_report` und
+`mark_report_sent()` ab.
 
-**Der Zeitplan liegt in GitHub Actions, nicht in `pg_cron`.** Mit `pg_cron`
-müsste der Dienstschlüssel zusätzlich in der Datenbank liegen, und ein zweiter
-Ort für ein Geheimnis ist ein zweiter Ort, an dem es verloren geht. Actions ist
-ohnehin eingerichtet, kostet nichts und zeigt jeden Lauf mit Protokoll.
+**`0011_monatsreport.sql` bleibt unverändert stehen.** Sie ist bereits
+ausgeführt, und eine Migration nachträglich umzuschreiben hieße, dass zwei
+Datenbanken mit derselben Dateiliste verschieden aussehen können. Was einmal
+lief, bleibt stehen; rückgängig macht es die nächste Datei.
 
-**Am zweiten des Monats, nicht am ersten.** Ein Bon vom Monatsletzten wird oft
-erst am nächsten Tag gescannt; ein Report am Ersten müsste sich später
-korrigieren, und eine Push-Meldung lässt sich nicht zurücknehmen.
-
-**Die Zahlen kommen aus SQL, die Sätze aus dem Code.** `v_last_month_report`
-liefert Beträge und Anzahlen, `report.ts` baut daraus zwei Zeilen — dieselbe
-Trennung wie überall, mit dem Nebennutzen, dass ein Satz aus Code sich testen
-lässt. Es wird **eine** Einordnung gewählt und nicht drei aneinandergehängt:
-Budget gerissen schlägt Vormonatsvergleich schlägt teuerstes Produkt. Ein leerer
-Vormonat wird nicht verglichen — „100 % mehr" wäre richtig gerechnet und
-trotzdem Unsinn.
-
-**Der Service Worker speichert nichts zwischen und fängt keine Anfragen ab.**
-Ein Cache würde bedeuten, dass nach einem Ausrollen die alte App weiterläuft —
-und der Nutzer testet ausschließlich in der laufenden App. Offline-Fähigkeit
-bringt hier ohnehin nichts: Ohne Netz gibt es weder Bons noch Auswertungen.
-
-**Die Berechtigung wird erst beim Umlegen des Schalters erfragt.** Ein Dialog
-ohne Zusammenhang beim Start wird weggetippt, und danach ist er auf iOS dauerhaft
-weg — zurückholen lässt er sich nur in den Geräte-Einstellungen.
-
-**Auf dem iPhone geht Web Push nur in der installierten App.** Safari kann es
-seit iOS 16.4, aber ausschließlich für eine PWA, die über „Zum Home-Bildschirm"
-hinzugefügt wurde; im Tab gibt es die Schnittstelle gar nicht. Der Screen sagt
-deshalb nicht „nicht unterstützt", sondern nennt den Weg.
-
-**Ein Abo je Gerät, nicht je Konto.** Wer die App auf zwei Geräten hat, bekommt
-die Meldung auf beiden — oder eben nur dort, wo er den Schalter umgelegt hat.
+**Der Service Worker selbst bleibt** — er gehört zur PWA. Übrig sind zwei
+Ereignisse, die nur dafür sorgen, dass er sich selbst nicht im Weg steht;
+zwischengespeichert wird weiterhin nichts. Angemeldet wird er jetzt beim Start
+in `main.tsx`, nebenbei und ohne Warten: Bis Schritt 15 tat das die
+Push-Anmeldung, und die gibt es nicht mehr.
 
 ### Ergänzt mit Schritt 14 (drei Kleinigkeiten)
 
@@ -1315,8 +1288,9 @@ nur die Voreinstellung.
 | 10 | Merkmale selbst anlegen und gewichten | erledigt |
 | 11 | Einstellungen als Übersicht mit eigenen Screens | erledigt |
 | 12 | Familie einladen | erledigt |
-| 13 | Monatsreport als Push-Benachrichtigung | erledigt (Schlüssel fehlen) |
+| 13 | Monatsreport als Push-Benachrichtigung | ~~gebaut~~ mit 15 wieder entfernt |
 | 14 | Bon-Summe änderbar, `EXPECTED_MS` misst sich selbst, Modellwechsel | erledigt |
+| 15 | Benachrichtigungen entfernt, Bon-Foto-Schalter entfernt, Bestpreise in die Analysen | erledigt |
 
 Ab Schritt 6 zählt der Fahrplan aus `KONZEPT-ERWEITERUNGEN.md` weiter. Die
 Nummerierung der beiden Dateien ist seit Schritt 5 dieselbe; 11 (Einstellungen)
