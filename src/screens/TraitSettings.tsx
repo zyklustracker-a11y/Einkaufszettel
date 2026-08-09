@@ -15,6 +15,7 @@ import {
   useQuery,
 } from '../data'
 import { DERIVED_TRAIT_KEYS } from '../lib/draft'
+import { DEFAULT_WEIGHT, WEIGHT_LEVELS, weightLevel } from '../lib/weights'
 import type { NewTrait } from '../data'
 import type { Trait } from '../types'
 import styles from './TraitSettings.module.css'
@@ -25,9 +26,10 @@ import styles from './TraitSettings.module.css'
  * Aufgebaut wie die Kategorieverwaltung daneben — dieselbe Zeile, dasselbe
  * Bearbeiten-Blatt, dieselben Pfeile. Drei Dinge sind hier eigen:
  *
- *   * **Das Gewicht** ist die eigentliche Stellschraube. Es reicht von −10 bis
- *     +10; 0 heißt „wird nur beobachtet" und landet im Gesundheits-Screen unter
- *     „Beobachtet" statt unter „Kritisch".
+ *   * **Das Gewicht** ist die eigentliche Stellschraube. Seit Schritt 16 sind es
+ *     sechs benannte Stufen von „Sehr gut" bis „Stark ungünstig"
+ *     (`src/lib/weights.ts`); „Neutral" heißt „wird nur beobachtet" und landet
+ *     im Gesundheits-Screen unter „Beobachtet" statt unter „Kritisch".
  *   * **Die Gruppe** entscheidet über die Doppelzählung: Innerhalb einer Gruppe
  *     zählt im Score nur das Merkmal mit dem größten Betrag (PROJEKT.md). Als
  *     Etikett hängen weiterhin alle am Produkt — sonst stimmte die Frage „wie
@@ -116,7 +118,11 @@ export function TraitSettings() {
               </span>
             </button>
 
-            <span className={styles.weight}>{formatWeight(trait.weight)}</span>
+            <span
+              className={`${styles.levelTag} ${styles[`levelTag--${weightLevel(trait.weight).tone}`]}`}
+            >
+              {weightLevel(trait.weight).label}
+            </span>
 
             <span className={styles.arrows}>
               <button
@@ -185,13 +191,6 @@ export function TraitSettings() {
   )
 }
 
-/** `−3` · `0` · `+2` — das Vorzeichen trägt die Bedeutung und steht deshalb immer. */
-function formatWeight(weight: number): string {
-  if (weight > 0) return `+${weight}`
-  if (weight < 0) return `−${Math.abs(weight)}`
-  return '0'
-}
-
 /* ================================================== Anlegen und Bearbeiten */
 
 /**
@@ -224,7 +223,7 @@ function TraitSheet({
   const [short, setShort] = useState(trait?.short ?? '')
   const [description, setDescription] = useState(trait?.description ?? '')
   const [tip, setTip] = useState(trait?.tip ?? '')
-  const [weight, setWeight] = useState(trait?.weight ?? -2)
+  const [weight, setWeight] = useState(trait?.weight ?? DEFAULT_WEIGHT)
   const [group, setGroup] = useState(trait?.group ?? '')
 
   const creating = trait === undefined
@@ -369,45 +368,48 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /**
- * Das Gewicht.
+ * Das Gewicht — sechs benannte Stufen statt einer Zahl.
  *
- * Zwei Knöpfe und eine Zahl statt eines Schiebereglers: Auf −10 bis +10 trifft
- * ein Daumen den gewünschten Wert nicht, und der Unterschied zwischen −3 und −4
- * ist hier eine Entscheidung und kein Gefühl.
+ * Vorher standen hier zwei Knöpfe und eine Zahl von −10 bis +10. Die Spanne war
+ * zu breit: Niemand kann begründen, warum ein Merkmal −7 statt −6 sein sollte,
+ * und die mitgelieferten Merkmale benutzen ohnehin nur −3 bis +2. Die Zahl ist
+ * geblieben — sie steht in der Datenbank und rechnet im Score —, nur greifbar
+ * ist jetzt ihr Name.
+ *
+ * Die Chips laufen von grün nach rot, in dieser Richtung und nicht umgekehrt:
+ * Eine Reihe, die rot beginnt, liest sich als Warnung, wo nur eine Auswahl steht.
+ * Jeder Chip trägt seine Farbe dauerhaft, damit die Abstufung als Ganzes
+ * sichtbar ist; ausgewählt ist der mit dem Ring.
  */
 function WeightRow({ weight, onChange }: { weight: number; onChange: (weight: number) => void }) {
-  const meaning =
-    weight < 0
-      ? 'zieht den Score herunter'
-      : weight > 0
-        ? 'schreibt dem Score gut'
-        : 'zählt nicht – wird nur beobachtet'
+  const current = weightLevel(weight)
 
   return (
     <div>
       <div className={styles.fieldLabel}>Gewicht im Score</div>
-      <div className={styles.stepper}>
-        <button
-          type="button"
-          className={styles.stepButton}
-          disabled={weight <= -10}
-          aria-label="Gewicht verringern"
-          onClick={() => onChange(Math.max(-10, weight - 1))}
-        >
-          −
-        </button>
-        <span className={styles.stepValue}>{formatWeight(weight)}</span>
-        <button
-          type="button"
-          className={styles.stepButton}
-          disabled={weight >= 10}
-          aria-label="Gewicht erhöhen"
-          onClick={() => onChange(Math.min(10, weight + 1))}
-        >
-          +
-        </button>
-        <span className={styles.stepMeaning}>{meaning}</span>
+      <div className={styles.levels} role="group" aria-label="Gewicht im Score">
+        {WEIGHT_LEVELS.map((level) => (
+          <button
+            key={level.weight}
+            type="button"
+            aria-pressed={level.weight === current.weight}
+            className={
+              level.weight === current.weight
+                ? `${styles.level} ${styles[`level--${level.tone}`]} ${styles['level--selected']}`
+                : `${styles.level} ${styles[`level--${level.tone}`]}`
+            }
+            onClick={() => onChange(level.weight)}
+          >
+            {level.label}
+          </button>
+        ))}
       </div>
+      <p className={styles.fieldHint}>
+        Die Stufe bestimmt, <strong>wie stark</strong> das Merkmal in den Gesundheits-Score
+        einfließt: „Neutral“ zählt gar nicht und wird nur beobachtet, nach unten zieht es den Score
+        herunter, nach oben schreibt es ihm gut. Gerechnet wird nach dem Euro-Anteil der Position –
+        ein Merkmal an einer 12-€-Packung wiegt schwerer als dasselbe an einem 1-€-Brötchen.
+      </p>
     </div>
   )
 }

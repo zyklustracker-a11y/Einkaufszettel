@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "node --test \"src/**/*.test.ts\" \"supabase/functions/**/*.test.ts\"",
     "test:sql": "bash supabase/tests/run.sh",
+    "score:beispiele": "node scripts/score-beispiele.ts",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {

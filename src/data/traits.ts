@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase'
 import { toStableKey } from '../lib/category'
+import { clampWeight } from '../lib/weights'
 import { DataError, germanDataError, unwrap } from './client'
 import { reference, refreshTraits } from './reference'
 import type { Trait } from '../types'
@@ -90,10 +91,13 @@ function normalizeShort(short: string, label: string): string {
   return fallback === '' ? '?' : fallback
 }
 
-function clampWeight(weight: number): number {
-  if (!Number.isFinite(weight)) return 0
-  return Math.max(-10, Math.min(10, Math.round(weight)))
-}
+/*
+ * Das Gewicht auf die sechs Stufen begrenzen — dieselbe Grenze, die
+ * `traits_weight_stufen` in der Datenbank zieht (0013). Die Regel steht in
+ * `src/lib/weights.ts` und nicht hier: Der Screen bietet nur gültige Stufen an,
+ * diese Prüfung ist die zweite Verteidigungslinie und darf sich von der ersten
+ * nicht unterscheiden.
+ */
 
 export async function createTrait(input: NewTrait): Promise<string> {
   const { key, error } = checkNewTraitName(input.label)

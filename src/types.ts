@@ -73,7 +73,11 @@ export interface Trait {
   short: string
   /** Short explanation. Goes to the model as a classification instruction later. */
   description: string
-  /** Score weight, −10…+10. Negative is worse, 0 is merely observed. */
+  /**
+   * Score weight, −3…+2. Negative is worse, 0 is merely observed. The six
+   * values each carry a name (`src/lib/weights.ts`); the number is what gets
+   * stored and what `src/lib/score.ts` computes with.
+   */
   weight: number
   /**
    * Optional group for overlapping traits (`weizen` implies `gluten`). Within a

@@ -416,6 +416,10 @@ Milch-Feldern abgeleitet.
 > müsstest. Der Score wird nirgends gespeichert, sondern bei jeder Anzeige neu
 > gerechnet. Die Verlaufskurve im Gesundheits-Screen ändert sich also sofort
 > mit — auch für vergangene Monate.
+>
+> Seit Schritt 16 wählst du dabei aus sechs benannten Stufen statt einer Zahl
+> (siehe Abschnitt 2l). Wie stark sich eine Stufe im Score auswirkt, lässt sich
+> mit `npm run score:beispiele` an drei Beispiel-Wocheneinkäufen ablesen.
 
 ---
 
@@ -485,6 +489,42 @@ Erwartet: keine Zeile.
 > `REPORT_SECRET`. Dasselbe für `SUPABASE_URL` und `REPORT_SECRET` in den
 > GitHub-Secrets und `VITE_VAPID_PUBLIC_KEY` bei Vercel. Nötig ist das nicht —
 > sie werden von nichts mehr gelesen.
+
+---
+
+## 2l. Die dreizehnte Migration: Gewichtsstufen
+
+`migrations/0013_gewichtsstufen.sql` gehört zu Schritt 16. **Ausführen.**
+
+Das Gewicht eines Merkmals durfte bisher von −10 bis +10 laufen. Ab jetzt wählst
+du in der Verwaltung aus sechs benannten Stufen — Sehr gut (+2), Gut (+1),
+Neutral (0), Leicht ungünstig (−1), Ungünstig (−2), Stark ungünstig (−3). Die
+Datenbank speichert weiterhin die Zahl; die Migration verengt nur die Prüfregel
+und zieht Werte außerhalb auf die nächste Stufe.
+
+**Betroffen sind nur selbst angelegte Merkmale mit einem Wert außerhalb von
+−3…+2.** Alle mitgelieferten liegen längst darin, an ihnen ändert sich nichts —
+auch nicht rückwirkend. Erwartet: **Success. No rows returned.**
+
+**Prüfen, ob etwas gekappt wurde** (vor dem Ausführen):
+
+```sql
+select key, label, weight from public.traits
+where weight < -3 or weight > 2;
+```
+
+Keine Zeile heißt: Die Migration ändert an deinen Daten nichts und setzt nur die
+Regel.
+
+**Prüfen, dass die Regel greift** (nach dem Ausführen):
+
+```sql
+select conname, pg_get_constraintdef(oid)
+from pg_constraint
+where conrelid = 'public.traits'::regclass and contype = 'c';
+```
+
+Erwartet: eine Zeile `traits_weight_stufen` mit `CHECK ((weight >= -3) AND (weight <= 2))`.
 
 ---
 

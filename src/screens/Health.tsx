@@ -6,6 +6,7 @@ import type { HealthData } from '../data'
 import { share } from '../lib/derive'
 import { formatEuro, formatMonthName, formatMonthShort, formatPercent } from '../lib/format'
 import type { TraitSpending } from '../lib/score'
+import { weightLabel } from '../lib/weights'
 import styles from './Health.module.css'
 
 /** How many critical traits are shown before "Alle anzeigen". */
@@ -163,7 +164,14 @@ function HealthBody({ data }: { data: HealthData }) {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className={styles.watchedTitle}>{row.trait.label}</div>
+                  {/*
+                    Bei den positiven Merkmalen steht die Stufe dabei: „Sehr gut"
+                    erklärt, warum Rohmilch hier und nicht unter „Kritisch"
+                    steht. Bei den neutralen bliebe sie stumm — „Neutral" sagt
+                    dasselbe wie die Überschrift „Beobachtet" darüber.
+                  */}
                   <div className={styles.watchedDetail}>
+                    {row.trait.weight > 0 && `${weightLabel(row.trait.weight)} · `}
                     {row.itemCount} {row.itemCount === 1 ? 'Position' : 'Positionen'}
                   </div>
                 </div>
@@ -185,7 +193,17 @@ function ConcernCard({ row }: { row: TraitSpending }) {
         <div className={styles.concernIcon} aria-hidden="true">
           {trait.short}
         </div>
-        <div className={styles.concernTitle}>{trait.label}</div>
+        {/*
+          Die Stufe unter dem Namen, seit Schritt 16. Ohne sie sehen alle
+          kritischen Merkmale gleich schwer aus, obwohl „Stark ungünstig" das
+          Dreifache von „Leicht ungünstig" wiegt — und die Karten sind nach Euro
+          sortiert, nicht nach Gewicht. Gedämpft und nicht in der Farbe der
+          Stufe: In diesem Abschnitt ist Rot schon vergeben.
+        */}
+        <div className={styles.concernTitle}>
+          {trait.label}
+          <span className={styles.concernLevel}>{weightLabel(trait.weight)}</span>
+        </div>
         <div className={styles.concernAmount}>{formatEuro(amountCents)}</div>
       </div>
       <p className={styles.concernDetail}>

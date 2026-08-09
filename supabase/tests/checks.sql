@@ -497,3 +497,42 @@ begin
   raise notice 'Der leere Haushalt wurde beim Beitritt aufgelöst.';
 end
 $$;
+
+-- ============================================================================
+-- Die Gewichtsstufen (0013)
+--
+-- Zwei Zusicherungen: Die mitgelieferten Merkmale liegen im neuen Bereich — wäre
+-- das nicht so, liefe `seed_traits()` bei jedem neuen Haushalt auf einen
+-- Constraint-Fehler —, und die Regel greift wirklich. Der zweite Teil prüft
+-- absichtlich den Fehlerfall: Eine Prüfregel, die nichts ablehnt, ist keine.
+-- ============================================================================
+
+do $$
+declare
+  n           bigint;
+  abgelehnt   boolean := false;
+  haushalt_id uuid;
+begin
+  select count(*) into n from public.traits where weight < -3 or weight > 2;
+  assert n = 0, format('Gewichte außerhalb von −3…+2: %s gefunden', n);
+
+  select count(*) into n from public.traits where weight = -3;
+  assert n > 0, 'Kein Merkmal auf der Stufe „Stark ungünstig" – Testdaten unplausibel';
+
+  select count(*) into n from public.traits where weight = 2;
+  assert n > 0, 'Kein Merkmal auf der Stufe „Sehr gut" – Rohmilch fehlt';
+
+  select id into haushalt_id from public.households limit 1;
+
+  begin
+    update public.traits set weight = -4
+     where household_id = haushalt_id and key = 'verarbeitet';
+  exception when check_violation then
+    abgelehnt := true;
+  end;
+
+  assert abgelehnt, 'Die Prüfregel lässt −4 durch – traits_weight_stufen fehlt';
+
+  raise notice 'Alle Gewichtsstufen-Prüfungen bestanden.';
+end
+$$;

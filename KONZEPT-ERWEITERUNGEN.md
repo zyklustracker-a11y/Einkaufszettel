@@ -487,6 +487,28 @@ betroffen ist.
   *Tab-Leiste*): Die Bestpreise geben ihren Tab ab und werden zum zweiten
   Bereich der Analysen.
 
+# Beim Bauen von Schritt 16 entschieden
+
+**Die Gewichte sind sechs benannte Stufen statt einer Zahl von −10 bis +10.**
+Die Spanne war zu breit — niemand kann begründen, warum ein Merkmal −7 statt −6
+sein sollte —, und die mitgelieferten Merkmale benutzten ohnehin nur −3 bis +2.
+Gespeichert wird weiterhin die Zahl, die Stufen sind ihr Name; umgerechnet wird
+nichts. `0013_gewichtsstufen.sql` verengt die Prüfregel und kappt selbst gesetzte
+Werte außerhalb.
+
+**Die Stufe steht auch im Gesundheits-Screen**, nicht nur in der Verwaltung:
+Unter „Kritische Ausgaben" sahen bisher alle Merkmale gleich schwer aus, obwohl
+die Karten nach Euro sortiert sind.
+
+**`POINTS_PER_WEIGHT` bleibt bei 10 — geprüft statt geglaubt.** Drei
+Wocheneinkäufe von je rund 50 € durch dieselbe Funktion geschickt, die auch die
+App benutzt (`npm run score:beispiele`): Frischware 98, gemischt 77, Fertigware
+43. Die befürchtete Verdünnung über viele Positionen tritt nicht ein. Was
+auffällt, ist das obere Ende: Wer frisch einkauft, liegt immer bei 95–100, weil
+unbelastete Ware kein Merkmal trägt. Das ist ein Argument für **mehr positive
+Merkmale** (bisher gibt es genau eines, `roh` mit +2) und keines für eine andere
+Steilheit.
+
 # Offene Kleinigkeiten
 
 - ~~**„Korrigieren" im Einkaufs-Detail**~~ *Erledigt mit Schritt 5b. Der Knopf

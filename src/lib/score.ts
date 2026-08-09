@@ -22,11 +22,48 @@ const HOMOGENISED_TRAIT: TraitId = 'homogenisiert'
 export const MAX_SCORE = 100
 
 /**
- * How steeply trait load eats into the score. Weights run −10…+10, so one full
- * point of average load per euro costs ten score points: a basket averaging −10
- * lands at 0, one averaging −3 lands at 70.
+ * ---------------------------------------------------------------------------
+ * DIE EINZIGE STELLSCHRAUBE DER SKALA
+ * ---------------------------------------------------------------------------
+ *
+ * Wie steil die Merkmalslast in den Score schneidet: **Ein Punkt
+ * durchschnittlicher Last je Euro kostet zehn Score-Punkte.**
+ *
+ *     Score = 100 − 10 × (euro-gewichtete Durchschnittslast), gekappt auf 0…100
+ *
+ * Diese Zahl ist gesetzt und nicht gemessen — als die Formel entstand, gab es
+ * keine echten Einkäufe, an denen sich etwas hätte eichen lassen. Sie ist
+ * bewusst die **einzige** Konstante der Umrechnung und steht **nur hier**: In
+ * SQL wird der Score nirgends gerechnet (`v_score_items` liefert ausschließlich
+ * die Zutaten), und die Screens zeigen nur das Ergebnis. Wer die Skala
+ * verschieben will, ändert diese eine Zeile — rückwirkend für die ganze
+ * Historie, weil kein Score gespeichert ist.
+ *
+ * **Größenordnung.** `load` ist nicht das Gewicht eines einzelnen Merkmals,
+ * sondern die Summe der (gruppenbereinigten) Gewichte einer Position, gemittelt
+ * über den Euro-Anteil aller Lebensmittel-Positionen. Ein Fertiggericht trägt
+ * leicht vier Merkmale und kommt damit auf −8 bis −9; ein Korb, der zur Hälfte
+ * aus solchen Positionen besteht, landet bei rund −4. Ein Korb aus reiner
+ * Frischware trägt fast keine Merkmale und liegt bei 0.
+ *
+ * **Was das praktisch heißt** — drei Wocheneinkäufe von je rund 50 €,
+ * durchgerechnet in `scripts/score-beispiele.ts` (`npm run score:beispiele`):
+ *
+ *     Frischware   Durchschnittslast −0,20   →   98
+ *     gemischt     Durchschnittslast −2,31   →   77
+ *     Fertigware   Durchschnittslast −5,67   →   43
+ *
+ * Die Spreizung stimmt also; der Score verdünnt sich nicht über viele Positionen
+ * zu einem Einheitsbrei. Was er nicht kann, ist **oben** unterscheiden: Wer
+ * frisch einkauft, liegt immer bei 95–100, weil unbelastete Ware schlicht kein
+ * Merkmal trägt. Das ist keine Frage dieser Konstante, sondern eine der positiven
+ * Merkmale — es gibt bisher nur eines (`roh`, +2).
+ *
+ * Wirkt die Spreizung zu hart oder zu weich, ist **10** die Zahl, an der man
+ * dreht: 8 zieht zusammen (Fertigware 55), 12 spreizt auf (Fertigware 32). Nach
+ * der Änderung das Skript erneut laufen lassen — es liest die Konstante hier.
  */
-const POINTS_PER_WEIGHT = 10
+export const POINTS_PER_WEIGHT = 10
 
 /**
  * Every trait id that applies to an item: the ones tagged directly plus the two

@@ -59,10 +59,17 @@ src/
   data/index.ts     Zugriffsschicht: der einzige Ort, den Supabase ersetzt
   lib/format.ts     Deutsche Darstellung (2,49 € · 14.08.2026 · vor 33 Tagen)
   lib/derive.ts     Alles Abgeleitete: Bestpreise, Sparpotenzial, Charts, Budget
+  lib/score.ts      Gesundheits-Score als Formel – und die einzige Konstante dahinter
+  lib/weights.ts    Die sechs benannten Gewichtsstufen (Sehr gut … Stark ungünstig)
   state/AppState    Erscheinungsbild – die einzige Einstellung, die am Gerät hängt
   components/       Tab-Bar, Bottom-Sheet, Charts, kleine UI-Bausteine
   screens/          Eine Datei pro Screen plus CSS-Modul
   styles/tokens.css Design-Tokens für Light und Dark
+
+scripts/
+  score-beispiele.ts   Drei Beispiel-Wocheneinkäufe durch die Score-Formel
+                       (npm run score:beispiele) – die Grundlage, um
+                       POINTS_PER_WEIGHT in src/lib/score.ts nachzujustieren
 
 supabase/
   migrations/       Schema und Auswertungs-Sichten

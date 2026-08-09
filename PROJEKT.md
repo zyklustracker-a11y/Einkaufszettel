@@ -76,7 +76,7 @@ Gewicht, das der Nutzer einstellen kann.
 | `label` | Anzeigename, z. B. „Industriezucker" |
 | `short` | 1–2 Zeichen für das Badge in der Positionsliste, z. B. `Z` |
 | `description` | Kurze Erklärung. **Geht als Anweisung an das Modell.** |
-| `weight` | Gewicht im Score, −10 bis +10, Standard negativ |
+| `weight` | Gewicht im Score, −3 bis +2 in sechs benannten Stufen, Standard negativ |
 | `group` | optional, für Überlappungen (siehe unten) |
 | `active` | ein/aus, ohne Datenverlust |
 | `is_default` | mitgeliefertes Merkmal oder selbst angelegt |
@@ -133,12 +133,42 @@ Der Nutzer kann sie in den Einstellungen anpassen.
 `milch_basis` (milch, roh, pasteurisiert, esl, uht). Alle übrigen Merkmale sind
 gruppenlos.
 
+### Gewichtsstufen
+
+Das Gewicht ist eine Zahl, aber gewählt wird ein **Name**. Sechs Stufen, mehr gibt es
+nicht:
+
+| Stufe | Wert |
+|---|---|
+| Sehr gut | +2 |
+| Gut | +1 |
+| Neutral | 0 |
+| Leicht ungünstig | −1 |
+| Ungünstig | −2 |
+| Stark ungünstig | −3 |
+
+Die Namen stehen in `src/lib/weights.ts`, die Zahl in `traits.weight`; gerechnet wird mit
+der Zahl. Die Prüfregel `traits_weight_stufen` lässt nichts anderes zu.
+
 ### Health-Score
 
 Der Score ist eine Formel im Code, kein Modell-Urteil. Er wird aus den Merkmalen und ihren
 Gewichten berechnet, gewichtet nach dem **Euro-Anteil** der betroffenen Positionen – nicht
 nach ihrer Anzahl. Grund: Ein 12-Euro-Fertiggericht soll stärker durchschlagen als ein
 Päckchen Toastbrötchen für 1,49 €.
+
+**Die Umrechnung hängt an genau einer Konstante:**
+
+```
+Score = 100 − POINTS_PER_WEIGHT × (euro-gewichtete Durchschnittslast), gekappt auf 0…100
+```
+
+`POINTS_PER_WEIGHT` steht **ausschließlich** in `src/lib/score.ts` und ist mit 10 belegt.
+In SQL wird der Score nirgends gerechnet – `v_score_items` liefert nur die Zutaten –, und
+kein Score ist gespeichert. Eine Änderung dieser Zahl wirkt deshalb sofort und rückwirkend
+auf die ganze Historie. Womit man sie beurteilt, steht in `scripts/score-beispiele.ts`
+(`npm run score:beispiele`): drei Wocheneinkäufe von je rund 50 €, durch dieselbe Funktion
+geschickt, die auch die App benutzt.
 
 Ändert der Nutzer ein Gewicht, werden die Scores **rückwirkend** neu berechnet, damit die
 Verlaufskurve im Gesundheits-Screen konsistent bleibt.
@@ -1065,6 +1095,10 @@ stellt hier das Gewicht. Das Blatt sagt das auch dazu.
 trifft ein Daumen den gewünschten Wert nicht, und der Unterschied zwischen −3 und
 −4 ist eine Entscheidung und kein Gefühl.
 
+> *Mit Schritt 16 ersetzt: Die Frage war falsch gestellt. Der Unterschied
+> zwischen −3 und −4 ist gar keine Entscheidung, die jemand treffen kann — es
+> gibt jetzt sechs benannte Stufen und keine Zahl mehr.*
+
 **Gelöscht wird nie**, wie bei den Kategorien: Produkte hängen über einen
 Fremdschlüssel am Merkmal. Ein abgeschaltetes verschwindet aus Prompt, Auswahl
 und Score; die Zuordnung am Produkt bleibt stehen.
@@ -1145,6 +1179,60 @@ Kontos.
 E-Mail-Adressen stehen in `auth.users`; dorthin kommt keine gewöhnliche Abfrage.
 `household_members_list()` prüft als Allererstes, ob der Aufrufer selbst
 dazugehört, und gibt nur Name, E-Mail, Rolle und Beitrittsdatum zurück.
+
+### Ergänzt mit Schritt 16 (Gewichtsstufen, Score-Konstante)
+
+**Das Gewicht ist eine Auswahl aus sechs benannten Stufen geworden.** Die alte
+Spanne −10…+10 war zu breit: Niemand kann begründen, warum ein Merkmal −7 statt
+−6 sein sollte, und die vierzehn mitgelieferten Merkmale benutzten ohnehin nur
+−3 bis +2. Zwanzig Stufen anzubieten, von denen sechs gebraucht werden, ist
+keine Freiheit, sondern eine Frage ohne Antwort.
+
+**Umgerechnet wird nichts.** Die sechs Werte sind genau die, die vorher schon in
+der Tabelle standen; jede Voreinstellung passt ohne Anfassen hinein. Gespeichert
+wird weiterhin die Zahl — sie ist das, womit `score.ts` rechnet. Die Stufen sind
+ihr Name und stehen in `src/lib/weights.ts`, die Prüfregel zieht
+`0013_gewichtsstufen.sql` von −10…+10 auf −3…+2 nach. Selbst gesetzte Werte
+außerhalb werden dabei **gekappt und nicht skaliert**: Wer −7 gewählt hatte,
+meinte „so schlimm wie es geht", und das ist jetzt −3.
+
+**Die Stufen stehen überall dort, wo vorher eine Zahl oder gar nichts stand.**
+In der Merkmalsliste hat „Stark ungünstig" die nackte −3 ersetzt — die Zahl war
+nur zu lesen, wenn man die Skala im Kopf hatte. Im Gesundheits-Screen ist die
+Stufe **neu**: Unter „Kritische Ausgaben" sahen bisher alle Merkmale gleich
+schwer aus, obwohl die Karten nach Euro sortiert sind und „Stark ungünstig" das
+Dreifache von „Leicht ungünstig" wiegt. Unter „Beobachtet" steht sie nur bei den
+positiven Merkmalen — „Neutral" sagte dort dasselbe wie die Überschrift darüber.
+
+**Die Chips tragen ihre Farbe dauerhaft, ausgewählt wird über einen Ring.** Nur
+so ist die Abstufung von Grün nach Rot als Ganzes zu sehen; die Fläche ist damit
+vergeben und kann die Auswahl nicht mehr anzeigen. Die beiden Enden sind gefüllt
+statt getönt — das ergibt sechs unterscheidbare Stufen aus den drei vorhandenen
+Farbtoken, ohne eine neue Farbe zu erfinden.
+
+**`POINTS_PER_WEIGHT` ist jetzt benannt, kommentiert und durchgerechnet.** Die
+Konstante stand schon vorher an genau einer Stelle — das ist geprüft, nicht
+angenommen: In SQL wird der Score nirgends gerechnet, und gespeichert ist er
+auch nicht. Was fehlte, war die Grundlage, sie zu beurteilen. Die liefert
+`scripts/score-beispiele.ts` (`npm run score:beispiele`): drei Wocheneinkäufe von
+je rund 50 €, durch dieselbe Funktion geschickt, die auch die App benutzt.
+
+| Korb | Durchschnittslast | Score |
+|---|---|---|
+| Frischware | −0,20 | **98** |
+| gemischt | −2,31 | **77** |
+| Fertigware | −5,67 | **43** |
+
+**Die Kurve ist plausibel, die Konstante bleibt bei 10.** Die befürchtete
+Verdünnung tritt nicht ein: Ein Fertiggericht trägt vier bis fünf Merkmale und
+kommt allein auf −8 bis −9, das trägt auch über zwanzig Positionen. Zwei Dinge
+sind trotzdem festzuhalten. Erstens **verdichtet sich das obere Ende**: Wer
+frisch einkauft, liegt immer bei 95–100, weil unbelastete Ware schlicht kein
+Merkmal trägt. Das ist keine Frage der Konstante, sondern der positiven Merkmale
+— es gibt bisher genau eines (`roh`, +2). Zweitens ist **die untere Hälfte der
+Skala praktisch unerreichbar**: Unter 40 kommt nur, wer jeden Euro in
+mehrfach belastete Ware steckt. Beides ist eher ein Argument für neue positive
+Merkmale als für eine andere Steilheit; geändert wurde deshalb nichts.
 
 ### Ergänzt mit Schritt 15 (zurückgenommen und aufgeräumt)
 
@@ -1344,6 +1432,7 @@ nur die Voreinstellung.
 | 13 | Monatsreport als Push-Benachrichtigung | ~~gebaut~~ mit 15 wieder entfernt |
 | 14 | Bon-Summe änderbar, `EXPECTED_MS` misst sich selbst, Modellwechsel | erledigt |
 | 15 | Benachrichtigungen entfernt, Bon-Foto-Schalter entfernt, Bestpreise in die Analysen | erledigt |
+| 16 | Gewichte als benannte Stufen, Score-Konstante dokumentiert und durchgerechnet | erledigt |
 
 Ab Schritt 6 zählt der Fahrplan aus `KONZEPT-ERWEITERUNGEN.md` weiter. Die
 Nummerierung der beiden Dateien ist seit Schritt 5 dieselbe; 11 (Einstellungen)
