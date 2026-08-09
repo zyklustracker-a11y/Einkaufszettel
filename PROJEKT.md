@@ -1193,6 +1193,50 @@ deshalb nicht „nicht unterstützt", sondern nennt den Weg.
 **Ein Abo je Gerät, nicht je Konto.** Wer die App auf zwei Geräten hat, bekommt
 die Meldung auf beiden — oder eben nur dort, wo er den Schalter umgelegt hat.
 
+### Ergänzt mit Schritt 14 (drei Kleinigkeiten)
+
+**Die gedruckte Bon-Summe ist änderbar geworden.** Sie war die einzige Zahl auf
+dem Korrektur-Screen, die nicht aus einer Position stammt, sondern vom Papier
+abgelesen wurde — und genau deshalb bisher unantastbar. Nur wurde sie eben
+manchmal falsch *gelesen*, und dann meldete der Summenabgleich für immer eine
+Abweichung, an die niemand herankam. Geändert wird damit nicht die Tatsache,
+sondern die **Lesung** der Tatsache. Sie steht weiterhin als Zahl da und nicht
+als Eingabefeld — der Normalfall ist, dass sie stimmt —, und darunter steht
+„vom Papier · antippen", nach einer Änderung „von dir korrigiert".
+
+**`EXPECTED_MS` justiert sich jetzt selbst.** Die Zahlen waren geraten, und die
+Konzeptdatei führte das als offene Kleinigkeit. Die tatsächliche Dauer war die
+ganze Zeit bekannt: Die Edge Function gibt sie bei jedem Scan zurück
+(`durationMs` je Durchgang), sie stand nur im Aufklappbereich. Jeder Scan
+hinterlässt sie jetzt in `localStorage`, und die Schätzung ist der **Median der
+letzten acht** (`src/lib/timing.ts`).
+
+Drei Entscheidungen dazu: **Median statt Mittelwert**, damit ein Scan im
+Funkloch den Balken nicht für zehn Scans träge macht. **Nur acht Messungen**,
+damit ein Modell- oder Umzugswechsel sich in ein paar Scans durchsetzt statt in
+Monaten. **`localStorage` statt Datenbank**, weil die Dauer am Gerät und an der
+Leitung hängt und nicht am Haushalt. Erst ab drei Messungen wird gerechnet — bei
+einer wäre die „Schätzung" schlicht der letzte Scan.
+
+**Der Standard war ein abgeschaltetes Modell.** `pixtral-12b-2409` hat Mistral am
+2. Dezember 2025 abgekündigt und zum **31. Dezember 2025 abgeschaltet**. Ein
+Standardwert, der nachweislich nicht mehr existiert, ist kein Standard, sondern
+ein Ausfall — deshalb steht dort jetzt der von Mistral benannte Nachfolger
+`ministral-14b-latest` (bildfähig, Apache 2.0, freier Tarif). Das ist die eine
+Stelle, an der ohne Rückfrage ein Standard geändert wurde, und der Grund ist,
+dass die Alternative eine App gewesen wäre, die gar nichts mehr erkennt.
+
+**`mistral-small-latest` als Bildmodell: eher nicht.** Die Vision-Seite der
+Dokumentation führt `mistral-small-2506` als bildfähig und benutzt im Beispiel
+`mistral-small-latest`; die Modellübersicht beschreibt das aktuelle Mistral Small
+4 dagegen **nicht** als multimodal. Die beiden Seiten widersprechen sich, und der
+Grund liegt nahe: Der Alias zeigte einmal auf ein bildfähiges Modell und zeigt
+jetzt auf ein anderes. Wer Mistral Small ausprobieren will, sollte deshalb
+`mistral-small-2506` festnageln statt den Alias zu nehmen — ein Alias, der
+irgendwann keine Bilder mehr annimmt, erzeugt eine Ablehnung ohne erkennbare
+Ursache. Die Möglichkeiten stehen als Tabelle in
+`supabase/functions/README.md`, Abschnitt 1.1a.
+
 ### Die Sichten werden gegen erzeugte Testdaten geprüft
 
 `supabase/tests/` legt eine wegwerfbare Datenbank an, spielt alle Migrationen
@@ -1272,6 +1316,7 @@ nur die Voreinstellung.
 | 11 | Einstellungen als Übersicht mit eigenen Screens | erledigt |
 | 12 | Familie einladen | erledigt |
 | 13 | Monatsreport als Push-Benachrichtigung | erledigt (Schlüssel fehlen) |
+| 14 | Bon-Summe änderbar, `EXPECTED_MS` misst sich selbst, Modellwechsel | erledigt |
 
 Ab Schritt 6 zählt der Fahrplan aus `KONZEPT-ERWEITERUNGEN.md` weiter. Die
 Nummerierung der beiden Dateien ist seit Schritt 5 dieselbe; 11 (Einstellungen)

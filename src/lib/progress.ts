@@ -119,11 +119,24 @@ export const PROGRESS_STEPS: ReadonlyArray<{
  * oberen Ende. Dieses Stehenbleiben ist der ehrliche Teil: Dauert es länger als
  * geschätzt, wird eben nicht weitergezählt.
  */
-export function estimateProgress(phase: ExtractionPhase, elapsedMs: number): number {
+export function estimateProgress(
+  phase: ExtractionPhase,
+  elapsedMs: number,
+  /**
+   * Die erwarteten Dauern — voreingestellt die geschätzten von oben.
+   *
+   * Seit Schritt 14 reicht der Verarbeitungs-Screen hier die **gemessenen**
+   * hinein (`src/lib/timing.ts`): Jeder Scan meldet, wie lange er wirklich
+   * gebraucht hat. Ein Parameter statt eines Zugriffs auf `localStorage` mitten
+   * in der Rechnung — sonst wäre diese Datei nicht mehr rein und die Tests
+   * daneben bräuchten einen Browser.
+   */
+  expected: Record<ExtractionPhase, number> = EXPECTED_MS,
+): number {
   const step = PROGRESS_STEPS.find((entry) => entry.phase === phase)
   if (!step) return 0
 
-  const share = Math.min(1, Math.max(0, elapsedMs) / EXPECTED_MS[phase])
+  const share = Math.min(1, Math.max(0, elapsedMs) / Math.max(1, expected[phase]))
   return step.from + (step.to - step.from) * share
 }
 
@@ -140,6 +153,7 @@ export function advanceProgress(
   current: number,
   phase: ExtractionPhase,
   elapsedMs: number,
+  expected: Record<ExtractionPhase, number> = EXPECTED_MS,
 ): number {
-  return Math.max(current, estimateProgress(phase, elapsedMs))
+  return Math.max(current, estimateProgress(phase, elapsedMs, expected))
 }

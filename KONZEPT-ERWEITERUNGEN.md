@@ -457,7 +457,16 @@ Ware nach Gewicht ohnehin der Grundpreis ist.
   hält er, was er verspricht: Der gespeicherte Bon wird in dieselbe Entwurfsform
   geladen wie ein frisch gescannter, und beim Sichern wird er aktualisiert statt
   ein zweiter angelegt.*
-- **Zeitschätzung des Fortschrittsbalkens** (`EXPECTED_MS` in `src/lib/progress.ts`) ist
-  geraten. Nachjustieren, sobald die tatsächliche Dauer im Alltag bekannt ist.
-- **`mistral-small-latest` als Modellalternative** testen, falls die Erkennung wieder
-  Zeilen verschluckt. `pixtral-large-latest` ist kostenpflichtig und scheidet aus.
+- ~~**Zeitschätzung des Fortschrittsbalkens**~~ *Erledigt mit Schritt 14. Sie
+  justiert sich selbst: Jeder Scan hinterlässt seine gemessene Dauer, und die
+  Schätzung ist der Median der letzten acht (`src/lib/timing.ts`). `EXPECTED_MS`
+  ist nur noch der Startwert für die ersten drei Scans.*
+- ~~**`mistral-small-latest` als Modellalternative**~~ *Geprüft mit Schritt 14 —
+  und dabei kam etwas Dringenderes heraus: `pixtral-12b-2409`, der bisherige
+  Standard, wurde von Mistral zum 31.12.2025 **abgeschaltet**. Der Standard ist
+  deshalb jetzt `ministral-14b-latest`, der von Mistral benannte Nachfolger.
+  `mistral-small-latest` selbst ist als Bildmodell zweifelhaft geworden: Die
+  Vision-Dokumentation führt `mistral-small-2506` als bildfähig, die
+  Modellübersicht beschreibt das aktuelle Mistral Small 4 nicht als multimodal.
+  Wer es probieren will, nagelt `mistral-small-2506` fest statt den Alias zu
+  nehmen. Tabelle in `supabase/functions/README.md`, Abschnitt 1.1a.*

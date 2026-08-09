@@ -67,10 +67,49 @@
   font-weight: 600;
 }
 
+.totalBlock {
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+/* Sie sieht aus wie eine Zahl und ist ein Knopf: Der Normalfall ist, dass sie
+   stimmt — ein Eingabefeld lädt zum Herumtippen ein. */
 .total {
+  display: block;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
   font-size: 21px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  text-align: right;
+  cursor: pointer;
+}
+
+/* 16px sind auf iOS Pflicht, sonst zoomt Safari beim Fokussieren hinein. Der
+   Rest der Zeile ist so schmal, dass ein verrutschter Screen sofort auffiele. */
+.totalInput {
+  width: 118px;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: 10px;
+  border: 1px solid var(--green);
+  background: var(--card2);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  outline: none;
+}
+
+.totalHint {
+  font-size: 10.5px;
+  color: var(--muted);
+  margin-top: 2px;
+  white-space: nowrap;
 }
 
 /* ------------------------------------------------------------ Händlerart

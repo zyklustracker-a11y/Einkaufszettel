@@ -27,6 +27,7 @@ import {
   TICK_MS,
 } from '../lib/progress'
 import { clearPendingExtraction, setPendingExtraction } from '../lib/scanResult'
+import { expectedDurations, recordPhaseDuration } from '../lib/timing'
 import styles from './ScanProcessing.module.css'
 
 /**
@@ -159,6 +160,14 @@ export function ScanProcessing() {
   const requestRef = useRef<{ attempt: number; promise: Promise<ExtractionResponse> } | null>(null)
 
   /*
+   * Wie lange ein Scan erfahrungsgemäß dauert.
+   *
+   * Einmal beim Betreten gelesen und nicht bei jedem Takt: Die Werte ändern sich
+   * erst, wenn dieser Scan fertig ist — und dann ist der Balken schon weg.
+   */
+  const expectedRef = useRef(expectedDurations())
+
+  /*
    * Der Scan-Job dieses Durchlaufs — der Rettungsweg aus Schritt 6.
    *
    * Wechselt der Nutzer während der vierzehn Sekunden in eine andere App, friert
@@ -185,6 +194,15 @@ export function ScanProcessing() {
       settledRef.current = true
 
       setPendingExtraction(result)
+
+      /*
+       * Was dieser Scan gebraucht hat, geht in die Schätzung für den nächsten
+       * ein. `EXPECTED_MS` war geraten; die Zahlen hier sind gemessen — von
+       * diesem Anschluss, diesem Telefon und diesem Modell.
+       */
+      recordPhaseDuration('lesen', result.durationMs)
+      if (result.assignment) recordPhaseDuration('zuordnen', result.assignment.durationMs)
+
       // Erst jetzt die volle Anzeige — vorher wäre sie eine Behauptung.
       setProgress(COMPLETE)
       setDone(true)
@@ -285,7 +303,7 @@ export function ScanProcessing() {
 
     const tick = () =>
       setProgress((current) =>
-        advanceProgress(current, phase, Date.now() - phaseStartRef.current),
+        advanceProgress(current, phase, Date.now() - phaseStartRef.current, expectedRef.current),
       )
 
     // Sofort einmal, damit der Sprung zum nächsten Abschnitt nicht erst nach

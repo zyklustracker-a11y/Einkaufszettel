@@ -29,14 +29,48 @@ Fehlt er, meldet die App: „Die Bon-Erkennung ist noch nicht eingerichtet."
 
 | Name | Wert | Voreinstellung |
 |---|---|---|
-| `MISTRAL_MODEL` | z. B. `mistral-small-latest` | `pixtral-12b-2409` |
-| `MISTRAL_TEXT_MODEL` | z. B. `open-mistral-7b` | `mistral-small-latest` |
+| `MISTRAL_MODEL` | z. B. `ministral-14b-2512` | `ministral-14b-latest` |
+| `MISTRAL_TEXT_MODEL` | z. B. `ministral-8b-latest` | `mistral-small-latest` |
 
-Ohne diese Secrets nimmt die Funktion `pixtral-12b-2409` für Durchgang 1 (das
-Vision-Modell aus der Pixtral-Familie, das im freien Experiment-Tarif läuft) und
-`mistral-small-latest` für Durchgang 2. Der zweite Durchgang sieht kein Bild
-mehr und braucht deshalb kein Vision-Modell — ein Textmodell ist dort schneller
-und billiger.
+Ohne diese Secrets nimmt die Funktion `ministral-14b-latest` für Durchgang 1 und
+`mistral-small-latest` für Durchgang 2. Der zweite Durchgang sieht kein Bild mehr
+und braucht deshalb kein Vision-Modell — ein Textmodell ist dort schneller und
+billiger.
+
+> **Wichtig, falls du das Secret `MISTRAL_MODEL` gesetzt hast:** Bis Schritt 14
+> stand hier `pixtral-12b-2409`. Mistral hat dieses Modell am 2. Dezember 2025
+> abgekündigt und zum **31. Dezember 2025 abgeschaltet**. Steht der Name noch in
+> deinen Secrets, **entferne ihn** — sonst läuft die Erkennung ins Leere und die
+> App meldet „Die Bon-Erkennung hat die Anfrage abgelehnt". Ohne das Secret gilt
+> die neue Voreinstellung.
+
+### 1.1a Taugt `mistral-small-latest` als Bildmodell?
+
+Kurz: **eher nicht mehr, und `ministral-14b-latest` ist die klarere Wahl.**
+
+Die Vision-Seite der Mistral-Dokumentation führt `mistral-small-2506` unter den
+bildfähigen Modellen und benutzt im Python-Beispiel `mistral-small-latest`. Die
+Modellübersicht beschreibt das aktuelle **Mistral Small 4** (v26.03) dagegen
+**nicht** als multimodal. Die beiden Seiten widersprechen sich, und der Grund
+liegt nahe: `mistral-small-latest` zeigte einmal auf ein bildfähiges Modell und
+zeigt jetzt auf ein anderes.
+
+Daraus folgen drei brauchbare Möglichkeiten, falls die Erkennung wieder Zeilen
+verschluckt:
+
+| `MISTRAL_MODEL` | wofür |
+|---|---|
+| *(nicht gesetzt)* | `ministral-14b-latest` – bildfähig, Apache 2.0, freier Tarif |
+| `mistral-small-2506` | die alte, sicher bildfähige Fassung von Mistral Small, festgenagelt |
+| `mistral-medium-2508` | größer und teurer; nur ausprobieren, wenn die anderen beiden versagen |
+
+`mistral-small-latest` **ohne Datum** ist die schlechteste der drei: Sie kann
+jederzeit auf ein Modell zeigen, das keine Bilder mehr annimmt — und dann meldet
+die App eine Ablehnung, ohne dass sich etwas geändert hätte.
+
+Umgestellt wird in Supabase → Project Settings → Edge Functions → Secrets. Die
+Funktion muss dafür **nicht** neu ausgerollt werden; das Secret wirkt ab dem
+nächsten Aufruf.
 
 > **Nicht jedes Modell ist im freien Tarif erlaubt.** `pixtral-large-latest`
 > etwa gibt es, es gehört aber zum kostenpflichtigen Tarif und wird abgelehnt.

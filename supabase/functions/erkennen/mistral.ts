@@ -11,10 +11,31 @@ const ENDPOINT = 'https://api.mistral.ai/v1/chat/completions'
 
 /**
  * Das Vision-Modell. Über das Secret `MISTRAL_MODEL` austauschbar, ohne den
- * Code anzufassen — praktisch, wenn Mistral die Familie umbenennt oder ein
- * größeres Modell im freien Tarif erscheint.
+ * Code anzufassen.
+ *
+ * ---------------------------------------------------------------------------
+ * GEÄNDERT MIT SCHRITT 14: pixtral-12b-2409 GIBT ES NICHT MEHR
+ * ---------------------------------------------------------------------------
+ *
+ * Hier stand `pixtral-12b-2409`, seit Schritt 4b-1. Mistral hat das Modell am
+ * **2. Dezember 2025 abgekündigt und zum 31. Dezember 2025 abgeschaltet**; als
+ * Nachfolger nennt die Dokumentation ausdrücklich Ministral 3 14B. Ein Aufruf
+ * unter dem alten Namen wird abgelehnt — die App sagt dann seit Schritt 4d
+ * korrekt „Die Bon-Erkennung hat die Anfrage abgelehnt", nennt den Modellnamen
+ * und ist trotzdem nicht mehr zu gebrauchen.
+ *
+ * Ein Standardwert, der nachweislich nicht mehr existiert, ist kein Standard,
+ * sondern ein Ausfall. Deshalb steht hier jetzt der von Mistral benannte
+ * Nachfolger: `ministral-14b-latest` — bildfähig (0,4 B Vision-Encoder neben
+ * dem Sprachmodell), Apache 2.0, und damit im freien Experiment-Tarif.
+ *
+ * **Die `-latest`-Form ist Absicht.** Ein festes Datum im Namen
+ * (`ministral-14b-2512`) altert genauso, wie `pixtral-12b-2409` gealtert ist.
+ * Der Preis ist, dass sich das Modell unter dem Namen ändern kann; bei einer
+ * App, die zwei Jahre ohne Wartung laufen soll, ist das der bessere Tausch. Wer
+ * es festnageln will, setzt das Secret `MISTRAL_MODEL`.
  */
-const DEFAULT_MODEL = 'pixtral-12b-2409'
+const DEFAULT_MODEL = 'ministral-14b-latest'
 
 /**
  * Das Modell für Durchgang 2, die Zuordnung.

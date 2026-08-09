@@ -476,11 +476,23 @@ function ReviewBody({ source }: { source: ReviewSource }) {
 
   const currencyState = useCurrency(source, purchasedOn)
 
+  /*
+   * Die gedruckte Bon-Summe.
+   *
+   * Sie steht auf dem Papier — und genau deshalb war sie bis Schritt 14 nicht
+   * änderbar: Was gedruckt ist, denkt man sich nicht aus. Nur wurde sie eben
+   * manchmal falsch **gelesen**, und dann meldete der Summenabgleich bis in
+   * alle Ewigkeit eine Abweichung, an die niemand herankam. Änderbar ist
+   * deshalb nicht die Tatsache, sondern die Lesung — und der Screen sagt beides
+   * dazu.
+   */
+  const [printed, setPrinted] = useState<number | null>(source.printedTotalCents)
+  const [printedEdited, setPrintedEdited] = useState(false)
+
   const notice = dateNotice(purchasedOn, todayISO())
 
   /* Beides rechnet aus dem aktuellen Stand, nicht aus dem der Erkennung. */
   const itemsTotalCents = draftsTotalCents(drafts)
-  const printed = source.printedTotalCents
   const differenceCents = printed === null ? null : printed - itemsTotalCents
   const reconciles = differenceCents === 0
 
@@ -602,10 +614,15 @@ function ReviewBody({ source }: { source: ReviewSource }) {
                 {items.length === 1 ? 'Position' : 'Positionen'}
               </div>
             </div>
-            <div style={{ textAlign: 'right' }}>
-              <div className={styles.totalLabel}>Bon-Summe</div>
-              <div className={styles.total}>{printed === null ? '—' : money(printed)}</div>
-            </div>
+            <PrintedTotal
+              cents={printed}
+              currency={shownIn}
+              edited={printedEdited}
+              onChange={(next) => {
+                setPrinted(next)
+                setPrintedEdited(true)
+              }}
+            />
           </div>
 
           <div className={reconciles ? `${styles.banner} ${styles['banner--ok']}` : styles.banner}>
@@ -791,6 +808,90 @@ function ReviewBody({ source }: { source: ReviewSource }) {
         </button>
       </div>
     </>
+  )
+}
+
+/* ========================================================== Die Bon-Summe */
+
+/**
+ * Die gedruckte Gesamtsumme — antippbar.
+ *
+ * **Warum sie überhaupt änderbar ist.** Sie ist die einzige Zahl auf diesem
+ * Screen, die nicht aus einer Position stammt, sondern vom Papier abgelesen
+ * wurde. Wurde sie falsch gelesen — ein 8 statt einer 3, eine verrutschte Stelle
+ * —, meldete der Summenabgleich bis in alle Ewigkeit eine Abweichung, die keine
+ * war, und beim Bearbeiten kam man nicht an sie heran. Geändert wird damit nicht
+ * die Tatsache, sondern die **Lesung** dieser Tatsache.
+ *
+ * **Und warum sie trotzdem anders aussieht als ein Eingabefeld.** Sie steht
+ * zunächst als Zahl da, nicht als Formular: Der Normalfall ist, dass sie stimmt,
+ * und ein Feld lädt zum Herumtippen ein. Erst ein Tipp öffnet die Eingabe — und
+ * dann steht darunter, woher der Wert eigentlich kommt.
+ *
+ * **Eine geänderte Summe bleibt sichtbar geändert.** „von dir korrigiert" steht
+ * danach dabei, damit beim nächsten Öffnen niemand rätselt, warum die Zahl nicht
+ * zum Papier passt.
+ */
+function PrintedTotal({
+  cents,
+  currency,
+  edited,
+  onChange,
+}: {
+  cents: number | null
+  currency: string
+  edited: boolean
+  onChange: (cents: number | null) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [field, setField] = useState(() => toPriceField(cents))
+
+  if (!editing) {
+    return (
+      <div className={styles.totalBlock}>
+        <div className={styles.totalLabel}>Bon-Summe</div>
+        <button
+          type="button"
+          className={styles.total}
+          aria-label="Gedruckte Bon-Summe ändern"
+          onClick={() => {
+            setField(toPriceField(cents))
+            setEditing(true)
+          }}
+        >
+          {cents === null ? '—' : formatMoney(cents, currency)}
+        </button>
+        <div className={styles.totalHint}>
+          {edited ? 'von dir korrigiert' : cents === null ? 'nicht gelesen · antippen' : 'vom Papier · antippen'}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className={styles.totalBlock}>
+      <div className={styles.totalLabel}>Bon-Summe</div>
+      <input
+        className={styles.totalInput}
+        type="text"
+        inputMode="decimal"
+        autoFocus
+        value={field}
+        placeholder="0,00"
+        aria-label={`Gedruckte Bon-Summe in ${currency}`}
+        onChange={(event) => {
+          setField(event.target.value)
+          onChange(event.target.value.trim() === '' ? null : parsePrice(event.target.value))
+        }}
+        onBlur={() => setEditing(false)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') setEditing(false)
+        }}
+      />
+      <div className={styles.totalHint}>
+        Diese Zahl steht so auf dem Papier. Ändere sie nur, wenn sie falsch gelesen wurde.
+      </div>
+    </div>
   )
 }
 
