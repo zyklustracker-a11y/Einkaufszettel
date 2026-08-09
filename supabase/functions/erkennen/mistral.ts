@@ -50,9 +50,23 @@ const BACKOFF_MS = [1_000, 2_500, 5_000]
 /** Obergrenze für die Antwort. Ein sehr langer Bon braucht Platz. */
 const MAX_TOKENS = 4_000
 
+export type MistralFailure =
+  | 'kontingent'
+  | 'zeitueberschreitung'
+  | 'modell_fehler'
+  /**
+   * Die Schnittstelle hat die Anfrage abgelehnt (4xx außer 429).
+   *
+   * Das ist fast immer ein Einrichtungsfehler und keine Störung — allen voran
+   * ein Modellname, den es nicht gibt oder den der eigene Tarif nicht freigibt.
+   * Er bekommt einen eigenen Grund, weil „nicht erreichbar" hier in die Irre
+   * führt: Es liegt nicht an Mistral, sondern am Secret.
+   */
+  | 'modell_abgelehnt'
+
 export type MistralOutcome =
   | { ok: true; text: string; model: string; durationMs: number }
-  | { ok: false; reason: 'kontingent' | 'zeitueberschreitung' | 'modell_fehler'; detail: string }
+  | { ok: false; reason: MistralFailure; detail: string; model: string }
 
 export interface MistralRequest {
   apiKey: string
@@ -185,6 +199,7 @@ export async function callMistral(request: MistralRequest): Promise<MistralOutco
           ok: false,
           reason: 'zeitueberschreitung',
           detail: `Zeitlimit von ${TIMEOUT_MS} ms überschritten.`,
+          model,
         }
       }
       lastDetail = `Netzwerkfehler: ${String((cause as { message?: string }).message ?? cause)}`
@@ -201,6 +216,7 @@ export async function callMistral(request: MistralRequest): Promise<MistralOutco
           ok: false,
           reason: 'modell_fehler',
           detail: 'Die Antwort von Mistral enthielt keinen Text.',
+          model,
         }
       }
       return { ok: true, text, model, durationMs: Date.now() - started }
@@ -212,7 +228,7 @@ export async function callMistral(request: MistralRequest): Promise<MistralOutco
     // Kontingent bzw. zu schnell: warten und noch einmal.
     if (response.status === 429) {
       if (i === MAX_ATTEMPTS - 1) {
-        return { ok: false, reason: 'kontingent', detail: lastDetail }
+        return { ok: false, reason: 'kontingent', detail: lastDetail, model }
       }
       await sleep(retryDelay(response, i))
       continue
@@ -235,8 +251,46 @@ export async function callMistral(request: MistralRequest): Promise<MistralOutco
       continue
     }
 
-    return { ok: false, reason: 'modell_fehler', detail: lastDetail }
+    /*
+     * Jedes andere 4xx ist eine abgelehnte Anfrage und keine Störung: Der
+     * Server hat verstanden und Nein gesagt. Der mit Abstand häufigste Grund
+     * ist ein Modellname, den es nicht gibt oder den der Tarif nicht freigibt.
+     * Der Grund bekommt deshalb einen eigenen Namen, und der Text der
+     * Schnittstelle wird durchgereicht — er sagt genau, was fehlt.
+     */
+    if (response.status >= 400 && response.status < 500) {
+      return { ok: false, reason: 'modell_abgelehnt', detail: apiMessage(detail), model }
+    }
+
+    return { ok: false, reason: 'modell_fehler', detail: lastDetail, model }
   }
 
-  return { ok: false, reason: 'modell_fehler', detail: lastDetail }
+  return { ok: false, reason: 'modell_fehler', detail: lastDetail, model }
+}
+
+/**
+ * Der Klartext aus einer Fehlerantwort von Mistral.
+ *
+ * Die Schnittstelle antwortet mal `{"message":"..."}`, mal
+ * `{"detail":[{"msg":"..."}]}`, mal mit reinem Text. Gesucht ist der eine Satz,
+ * der dem Nutzer weiterhilft — nicht das ganze JSON.
+ */
+function apiMessage(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as {
+      message?: unknown
+      error?: { message?: unknown }
+      detail?: unknown
+    }
+    if (typeof parsed.message === 'string' && parsed.message) return parsed.message
+    if (typeof parsed.error?.message === 'string' && parsed.error.message) return parsed.error.message
+    if (Array.isArray(parsed.detail)) {
+      const first = parsed.detail[0] as { msg?: unknown } | undefined
+      if (typeof first?.msg === 'string') return first.msg
+    }
+    if (typeof parsed.detail === 'string' && parsed.detail) return parsed.detail
+  } catch {
+    // Kein JSON — dann ist der Rohtext das Beste, was wir haben.
+  }
+  return body.slice(0, 200) || 'ohne nähere Angabe'
 }

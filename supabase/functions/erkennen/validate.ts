@@ -23,6 +23,8 @@
  * Funktionen, die aus Eingabe Ausgabe machen.
  */
 
+import { parseLines } from './lines.ts'
+
 /* ============================================================================
  * DIE FORMEN
  *
@@ -70,6 +72,16 @@ export interface ModelReceipt {
   datum?: unknown
   uhrzeit?: unknown
   summe_cent?: unknown
+  /**
+   * Die abgetippten Zeilen des Artikelbereichs — seit Schritt 4d der Weg, auf
+   * dem Positionen entstehen. Was davon eine Position ist, entscheidet
+   * `lines.ts` und nicht mehr das Modell.
+   */
+  zeilen?: unknown
+  /**
+   * Fertige Positionen. Der alte Weg, den das Modell nicht mehr gefragt wird —
+   * er bleibt als Rückfallebene, falls eine Antwort doch noch so aussieht.
+   */
   positionen?: unknown
   steuerblock?: unknown
 }
@@ -139,6 +151,14 @@ export interface ExtractedItem {
    * Durchgang 2 (`assign.ts`). Bei Pfand- und Rabattzeilen bleibt sie null.
    */
   suggestion: ExtractedSuggestion | null
+  /**
+   * Die gedruckten Zeilen, aus denen diese Position entstanden ist.
+   *
+   * Sie bleiben erhalten, damit im Korrektur-Screen nachsehbar ist, welche
+   * Zeile wohin geflossen ist — die beste Fehlermeldung, die sich bauen lässt,
+   * wenn der Steuerklassen-Abgleich anschlägt.
+   */
+  sourceLines: string[]
 }
 
 /**
@@ -195,6 +215,9 @@ export interface ExtractionWarning {
     // betroffen — die Beträge stimmen auch dann, wenn die Zuordnung ausfällt.
     | 'zuordnung_ausgefallen'
     | 'zuordnung_unvollstaendig'
+    // Aus Durchgang 1, seit Schritt 4d: Das Abtippen selbst war lückenhaft.
+    | 'zeile_nicht_zugeordnet'
+    | 'zeilen_fehlen'
   /** Bereits auf Deutsch und direkt anzeigbar. */
   message: string
   lineNo?: number
@@ -225,6 +248,14 @@ export interface Extraction {
    * rechnet daraus bei jeder Änderung neu.
    */
   printedTaxGroups: PrintedTaxGroup[]
+  /** Alles, was das Modell abgetippt hat — in gedruckter Reihenfolge. */
+  lines: string[]
+  /**
+   * Abgetippte Zeilen, aus denen keine Position wurde. Sie werden angezeigt
+   * statt verschwiegen: Eine Zeile, die nirgends auftaucht, ist genau das, was
+   * man sehen will, wenn eine Summe nicht aufgeht.
+   */
+  unassignedLines: string[]
   warnings: ExtractionWarning[]
 }
 
@@ -652,6 +683,7 @@ function resolveItem(
   raw: ModelItem,
   lineNo: number,
   warnings: ExtractionWarning[],
+  sourceLines: string[] = [],
 ): ExtractedItem {
   const kind = toKind(raw.art)
   const rawText = text(raw.rohtext)
@@ -708,6 +740,7 @@ function resolveItem(
     // Zugeordnet wird später — aus der Datenbank oder in Durchgang 2. Pfand und
     // Rabatt sind keine Produkte und bleiben ohne Zuordnung.
     suggestion: null,
+    sourceLines,
   }
 }
 
@@ -728,15 +761,48 @@ function resolveItem(
 export function validateExtraction(model: ModelReceipt): Extraction {
   const warnings: ExtractionWarning[] = []
 
-  const rawItems = Array.isArray(model.positionen) ? model.positionen : []
+  /*
+   * Seit Schritt 4d kommt aus dem Modell eine Liste **abgetippter Zeilen**, und
+   * was davon eine Position ist, entscheidet `lines.ts`. Der alte Weg über
+   * fertige `positionen` bleibt als Rückfallebene stehen — er kostet drei
+   * Zeilen und fängt eine Antwort ab, die noch der alten Form folgt.
+   */
+  const lines = Array.isArray(model.zeilen)
+    ? model.zeilen.filter((line): line is string => typeof line === 'string')
+    : []
+
+  const parsed = lines.length > 0 ? parseLines(lines) : null
+  const rawItems: Array<{ item: ModelItem; sourceLines: string[] }> = parsed
+    ? parsed.items.map((item) => ({ item, sourceLines: item.sourceLines }))
+    : (Array.isArray(model.positionen) ? model.positionen : []).map((entry) => ({
+        item: (entry ?? {}) as ModelItem,
+        sourceLines: [],
+      }))
+
   /*
    * Neu durchnummeriert statt die Nummern des Modells zu übernehmen: In der
    * Datenbank ist (receipt_id, line_no) eindeutig, und ein Modell, das zweimal
    * „3" schreibt, würde das Speichern in 4b-2 zum Scheitern bringen.
    */
   const items = rawItems.map((entry, index) =>
-    resolveItem((entry ?? {}) as ModelItem, index + 1, warnings),
+    resolveItem(entry.item, index + 1, warnings, entry.sourceLines),
   )
+
+  /*
+   * Gesammelt in einer Meldung statt eine je Zeile: Auf einem Bon mit Fußtext
+   * wären das schnell fünf gleichlautende Warnungen, und die Zeilen selbst
+   * stehen ohnehin im Aufklappbereich „Abgetippte Zeilen".
+   */
+  const unassignedLines = parsed?.unassigned ?? []
+  if (unassignedLines.length > 0) {
+    warnings.push({
+      code: 'zeile_nicht_zugeordnet',
+      message:
+        `${unassignedLines.length} abgetippte ${unassignedLines.length === 1 ? 'Zeile trug' : 'Zeilen trugen'} ` +
+        `keinen Betrag und ${unassignedLines.length === 1 ? 'wurde' : 'wurden'} keine Position: ` +
+        `„${unassignedLines.join('", „')}".`,
+    })
+  }
 
   const itemsTotalCents = items.reduce((sum, item) => sum + item.totalCents, 0)
   const printedTotalCents = toCents(model.summe_cent)
@@ -763,6 +829,26 @@ export function validateExtraction(model: ModelReceipt): Extraction {
         code: 'summe_weicht_ab',
         message: `Die Positionen ergeben ${euro(itemsTotalCents)}, gedruckt sind ${euro(printedTotalCents)} — ${euro(Math.abs(discrepancyCents))} Unterschied.`,
       })
+
+      /*
+       * Seit Schritt 4d ist diese Aussage möglich — und sie ist die
+       * nützlichste im ganzen Screen: Die Positionen entstehen im Code aus den
+       * abgetippten Zeilen, und dabei geht kein Betrag verloren. Fehlt also
+       * etwas, dann schon beim **Abtippen**. Der Nutzer weiß damit sofort, dass
+       * es am Lesen liegt und nicht am Deuten — und dass ein besseres Foto oder
+       * ein größeres Modell hilft, kein Prompt-Satz.
+       */
+      if (parsed) {
+        warnings.push({
+          code: 'zeilen_fehlen',
+          message:
+            `Aufgeteilt wurden ${lines.length} abgetippte Zeilen zu ${items.length} ` +
+            `${items.length === 1 ? 'Position' : 'Positionen'} — dabei geht kein Betrag ` +
+            'verloren, das rechnet die App selbst. Der Unterschied entsteht also schon beim ' +
+            'Abtippen: Mindestens eine gedruckte Zeile hat das Modell nicht gelesen. Sieh unter ' +
+            '„Abgetippte Zeilen" nach, welche fehlt, und ergänze sie von Hand.',
+        })
+      }
     }
   }
 
@@ -781,6 +867,8 @@ export function validateExtraction(model: ModelReceipt): Extraction {
     discrepancyCents,
     taxGroups: tax.groups,
     printedTaxGroups: tax.printed,
+    lines,
+    unassignedLines,
     warnings,
   }
 }

@@ -212,6 +212,87 @@ test('Einzelpreis gegen die Zeilensumme', async (t) => {
   })
 })
 
+/* ------------------------------------------------- Der Weg über die Zeilen */
+
+test('aus abgetippten Zeilen werden Positionen', async (t) => {
+  /** Der REWE-Bon vom 23.06.2017, an dem das Modell dreimal gescheitert ist. */
+  const zeilen = [
+    'SPRUEHSAHNE 30%',
+    '  2 Stk x   0,99          1,98 B',
+    'VANILLE                   1,99 B',
+    'MILCHSCHOKOSTR            0,99 B',
+    'KL.PAPIERTASCHE           0,10 A',
+    'TRINKHALME                1,49 A',
+  ]
+
+  const bon = validateExtraction({
+    lesbar: true,
+    haendler: 'REWE CITY',
+    datum: '2017-06-23',
+    summe_cent: 655,
+    steuerblock: [
+      { kennzeichen: 'A', brutto_cent: 159 },
+      { kennzeichen: 'B', brutto_cent: 496 },
+    ],
+    zeilen,
+  })
+
+  await t.test('fünf Positionen, keine Warnung', () => {
+    assert.equal(bon.items.length, 5)
+    assert.equal(bon.itemsTotalCents, 655)
+    assert.equal(bon.discrepancyCents, 0)
+    assert.deepEqual(bon.warnings, [])
+  })
+
+  await t.test('beide Steuerklassen stimmen', () => {
+    assert.deepEqual(
+      bon.taxGroups.map((group) => group.differenceCents),
+      [0, 0],
+    )
+  })
+
+  await t.test('die Mengenzeile landet bei der Sprühsahne', () => {
+    const sahne = bon.items[0]
+    assert.equal(sahne.quantityBase, 2)
+    assert.equal(sahne.quantityUnit, 'stk')
+    assert.equal(sahne.unitPriceCents, 99)
+    assert.equal(sahne.totalCents, 198)
+  })
+
+  await t.test('die Zeilen bleiben erhalten', () => {
+    assert.equal(bon.lines.length, 6)
+    assert.deepEqual(bon.unassignedLines, [])
+    assert.deepEqual(bon.items[2].sourceLines, ['MILCHSCHOKOSTR 0,99 B'])
+  })
+
+  await t.test('eine verschluckte Zeile wird als Lesefehler benannt', () => {
+    // Dasselbe ohne die Milchschokostreusel: Die App kann jetzt sagen, dass es
+    // am Abtippen liegt und nicht am Deuten — die Aufteilung rechnet sie selbst.
+    const luecke = validateExtraction({
+      lesbar: true,
+      haendler: 'REWE CITY',
+      datum: '2017-06-23',
+      summe_cent: 655,
+      zeilen: zeilen.filter((line) => !line.startsWith('MILCHSCHOKOSTR')),
+    })
+    assert.equal(luecke.discrepancyCents, 99)
+    assert.ok(luecke.warnings.some((w) => w.code === 'zeilen_fehlen'))
+  })
+
+  await t.test('eine Zeile ohne Betrag wird gemeldet statt verschluckt', () => {
+    const rest = validateExtraction({
+      lesbar: true,
+      haendler: 'REWE',
+      datum: '2017-06-23',
+      summe_cent: 249,
+      zeilen: ['BROT 2,49 B', 'VIELEN DANK'],
+    })
+    assert.equal(rest.items.length, 1)
+    assert.deepEqual(rest.unassignedLines, ['VIELEN DANK'])
+    assert.ok(rest.warnings.some((w) => w.code === 'zeile_nicht_zugeordnet'))
+  })
+})
+
 /* ------------------------------------------------- Struktur bleibt Struktur */
 
 test('Durchgang 1 ordnet nichts zu', async (t) => {

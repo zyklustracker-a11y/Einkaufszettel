@@ -29,7 +29,7 @@ Fehlt er, meldet die App: „Die Bon-Erkennung ist noch nicht eingerichtet."
 
 | Name | Wert | Voreinstellung |
 |---|---|---|
-| `MISTRAL_MODEL` | z. B. `pixtral-large-latest` | `pixtral-12b-2409` |
+| `MISTRAL_MODEL` | z. B. `mistral-small-latest` | `pixtral-12b-2409` |
 | `MISTRAL_TEXT_MODEL` | z. B. `open-mistral-7b` | `mistral-small-latest` |
 
 Ohne diese Secrets nimmt die Funktion `pixtral-12b-2409` für Durchgang 1 (das
@@ -37,6 +37,12 @@ Vision-Modell aus der Pixtral-Familie, das im freien Experiment-Tarif läuft) un
 `mistral-small-latest` für Durchgang 2. Der zweite Durchgang sieht kein Bild
 mehr und braucht deshalb kein Vision-Modell — ein Textmodell ist dort schneller
 und billiger.
+
+> **Nicht jedes Modell ist im freien Tarif erlaubt.** `pixtral-large-latest`
+> etwa gibt es, es gehört aber zum kostenpflichtigen Tarif und wird abgelehnt.
+> Passiert das, sagt die App es seit Schritt 4d klar: Sie nennt den benutzten
+> Modellnamen und den Wortlaut der Schnittstelle, statt „nicht erreichbar" zu
+> melden. Secret wieder entfernen, und es läuft mit der Voreinstellung weiter.
 
 > `SUPABASE_URL` und `SUPABASE_ANON_KEY` brauchst du **nicht** anzulegen. Die
 > setzt Supabase in jeder Edge Function von selbst.
@@ -87,8 +93,9 @@ geht nichts nach Supabase.
 
 **Über die Weboberfläche:** Supabase → **Edge Functions** → **Deploy a new
 function** → **Via Editor**, Name `erkennen` (genau so, klein geschrieben — die
-App ruft diese Adresse auf), dann die sechs Dateien anlegen: `index.ts`,
-`prompt.ts`, `mistral.ts`, `validate.ts`, `assign.ts`, `mappings.ts`. Die
+App ruft diese Adresse auf), dann die sieben Dateien anlegen: `index.ts`,
+`prompt.ts`, `mistral.ts`, `validate.ts`, `lines.ts`, `assign.ts`,
+`mappings.ts`. Die
 `*.test.ts` werden nicht gebraucht, die Tests laufen auf deinem Rechner.
 
 **Mit der Supabase-CLI:**
@@ -148,13 +155,22 @@ Backticks ist normaler Text ans Modell, alles hinter `//` sind Notizen für dich
 
 | Was schiefging | Welcher Prompt |
 |---|---|
-| Eine Zeile fehlt, zwei Zeilen verschmolzen, Betrag oder Menge falsch, Pfand übersehen | **Durchgang 1 — Struktur** |
+| Eine gedruckte Zeile fehlt in der Abschrift, Text falsch gelesen, Betrag verlesen | **Durchgang 1 — Struktur** |
 | Name unschön, falsche Kategorie, fehlendes oder erfundenes Merkmal, Milch falsch eingeordnet | **Durchgang 2 — Zuordnung** |
 
-Die Faustregel: Geht es um **Geld oder Zeilen**, ist es Durchgang 1. Geht es um
-**Bedeutung**, ist es Durchgang 2. Im Korrektur-Screen stehen unter „Rohantworten
-des Modells" beide Antworten getrennt untereinander — daran siehst du sofort,
-welcher der beiden danebenlag.
+Die Faustregel: Geht es um **das, was auf dem Papier steht**, ist es Durchgang 1.
+Geht es um **Bedeutung**, ist es Durchgang 2. Im Korrektur-Screen stehen unter
+„Rohantworten des Modells" beide Antworten getrennt untereinander — daran siehst
+du sofort, welcher der beiden danebenlag.
+
+**Wie Positionen entstehen, ist seit Schritt 4d kein Prompt-Thema mehr.** Das
+Modell tippt nur noch Zeilen ab; was davon eine Position ist, entscheidet
+`lines.ts` im Code. Wenn also zwei Artikel zu einem verschmelzen oder eine
+Mengenzeile falsch hängt, ist das **kein** Fall für den Prompt, sondern für
+`lines.ts` — und dort gehört ein Test dazu. Im Korrektur-Screen zeigt der
+Aufklappbereich „Abgetippte Zeilen", welche gedruckte Zeile zu welcher Position
+wurde. Fehlt eine Zeile schon dort, hat das Modell sie übersehen: Dann hilft ein
+besseres Foto oder ein anderes Modell, kein zusätzlicher Satz im Prompt.
 
 Der Ablauf:
 
@@ -186,6 +202,7 @@ Bons unter keinen Umständen beeinflussen können.
 | `index.ts` | Der Ablauf beider Durchgänge: Anmeldung prüfen, Modell rufen, Antwort prüfen, zurückgeben |
 | `prompt.ts` | **Die beiden Prompts.** Hier schärfst du nach |
 | `mistral.ts` | Der Netz-Teil: Zeitlimit, Wiederholung bei 429, Antwort auspacken |
+| `lines.ts` | **Die Aufteilung:** aus abgetippten Zeilen werden Positionen. Hier, nicht im Prompt |
 | `validate.ts` | Durchgang 1 prüfen: Schema, Beträge, Mengen, Summenabgleich — und die Formen, die dabei entstehen |
 | `assign.ts` | Durchgang 2 prüfen: Kategorien und Merkmale gegen die Liste des Haushalts |
 | `mappings.ts` | Das Gedächtnis: bekannte Rohtexte aus der Datenbank einsetzen |

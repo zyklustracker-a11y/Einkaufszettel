@@ -50,6 +50,7 @@ import {
   buildAssignmentUserPrompt,
 } from './prompt.ts'
 import { DEFAULT_TEXT_MODEL, callMistral } from './mistral.ts'
+import type { MistralFailure } from './mistral.ts'
 import { isUnreadable, parseModelJson, validateExtraction } from './validate.ts'
 import type {
   ExtractedSuggestion,
@@ -108,6 +109,7 @@ type ExtractionErrorCode =
   | 'kontingent'
   | 'zeitueberschreitung'
   | 'modell_fehler'
+  | 'modell_abgelehnt'
   | 'modell_json'
   | 'bild_unlesbar'
   | 'unbekannt'
@@ -162,7 +164,23 @@ function fail(code: ExtractionErrorCode, message: string, status: number, raw?: 
 }
 
 /** Aus einem Fehlschlag beim Modell wird eine Antwort für den Nutzer. */
-function failFromMistral(reason: 'kontingent' | 'zeitueberschreitung' | 'modell_fehler'): Response {
+function failFromMistral(reason: MistralFailure, model: string, detail: string): Response {
+  /*
+   * Der Unterschied, der beim Suchen Stunden spart: Eine abgelehnte Anfrage ist
+   * keine Störung bei Mistral, sondern fast immer ein Modellname im Secret, den
+   * es nicht gibt oder den der eigene Tarif nicht freigibt. Deshalb stehen hier
+   * der benutzte Name und der Wortlaut der Schnittstelle in der Meldung — sonst
+   * sucht der Nutzer den Fehler bei Mistral statt in seiner Einrichtung.
+   */
+  if (reason === 'modell_abgelehnt') {
+    return fail(
+      'modell_abgelehnt',
+      `Mistral hat die Anfrage abgelehnt. Benutztes Modell: „${model}". Antwort der ` +
+        `Schnittstelle: ${detail} — wenn du MISTRAL_MODEL oder MISTRAL_TEXT_MODEL gesetzt hast, ` +
+        'prüfe den Namen oder entferne das Secret wieder.',
+      502,
+    )
+  }
   if (reason === 'kontingent') {
     return fail(
       'kontingent',
@@ -327,7 +345,7 @@ async function handleStructure(
     // `detail` ist die technische Ursache. Sie geht ins Funktions-Protokoll,
     // aber nie in die Oberfläche.
     console.error('Mistral (Struktur):', outcome.reason, outcome.detail)
-    return failFromMistral(outcome.reason)
+    return failFromMistral(outcome.reason, outcome.model, outcome.detail)
   }
 
   const parsed = parseModelJson(outcome.text)
@@ -412,7 +430,7 @@ async function handleAssignment(
 
   if (!outcome.ok) {
     console.error('Mistral (Zuordnung):', outcome.reason, outcome.detail)
-    return failFromMistral(outcome.reason)
+    return failFromMistral(outcome.reason, outcome.model, outcome.detail)
   }
 
   const result = validateAssignments(outcome.text, {

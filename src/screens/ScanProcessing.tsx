@@ -36,7 +36,15 @@ const PATIENCE_MS = 18_000
  * oder eine Einrichtung, und die repariert kein Knopfdruck. Dann verschwindet
  * „Noch einmal versuchen", statt in eine Sackgasse zu führen.
  */
-const HOPELESS = ['nicht_angemeldet', 'kein_schluessel', 'kein_haushalt', 'nicht_eingerichtet']
+const HOPELESS = [
+  'nicht_angemeldet',
+  'kein_schluessel',
+  'kein_haushalt',
+  'nicht_eingerichtet',
+  // Ein abgelehntes Modell bleibt beim zweiten Versuch abgelehnt. Da hilft nur,
+  // das Secret zu ändern — und die Meldung sagt inzwischen genau das.
+  'modell_abgelehnt',
+]
 
 interface ScanError {
   /** Bereits auf Deutsch und direkt anzeigbar. */

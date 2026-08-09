@@ -42,6 +42,7 @@ function item(overrides: Partial<ExtractedItem> = {}): ExtractedItem {
     depositCents: 0,
     discountCents: 0,
     taxCode: 'B',
+    sourceLines: [],
     suggestion: {
       name: 'H-Milch 1,5 % Fett',
       categoryKey: 'dairy',
@@ -66,6 +67,8 @@ function extraction(items: ExtractedItem[]): Extraction {
     discrepancyCents: 0,
     taxGroups: [],
     printedTaxGroups: [],
+    lines: [],
+    unassignedLines: [],
     warnings: [],
   }
 }
