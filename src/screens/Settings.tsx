@@ -11,6 +11,7 @@ import { useAuth } from '../state/AuthContext'
 import { CategorySettings } from './CategorySettings'
 import { HouseholdSettings } from './HouseholdSettings'
 import { TraitSettings } from './TraitSettings'
+import { UnassignedSettings } from './UnassignedSettings'
 import styles from './Settings.module.css'
 
 /**
@@ -70,6 +71,16 @@ export function SettingsScreen() {
           to="/einstellungen/merkmale"
           title="Merkmale"
           hint="Gewichte, Gruppen und die Erklärung fürs Modell"
+        />
+        {/*
+          Die einzige Stelle, an der Datenqualität dauerhaft verlorengeht: Eine
+          Position ohne Kategorie bekommt kein Produkt und taucht danach in
+          keiner Auswertung mehr auf. Hier lässt sie sich nachträglich einsammeln.
+        */}
+        <Row
+          to="/einstellungen/zuordnung"
+          title="Positionen ohne Zuordnung"
+          hint="Bontexte nachträglich einem Produkt zuordnen – rückwirkend"
         />
       </nav>
 
@@ -188,6 +199,14 @@ export function TraitSettingsScreen() {
   return (
     <SettingsPage title="Merkmale">
       <TraitSettings />
+    </SettingsPage>
+  )
+}
+
+export function UnassignedSettingsScreen() {
+  return (
+    <SettingsPage title="Positionen ohne Zuordnung">
+      <UnassignedSettings />
     </SettingsPage>
   )
 }

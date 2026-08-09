@@ -19,6 +19,7 @@ import {
   HouseholdSettingsScreen,
   SettingsScreen,
   TraitSettingsScreen,
+  UnassignedSettingsScreen,
 } from './screens/Settings'
 import { useAuth } from './state/AuthContext'
 
@@ -115,6 +116,7 @@ export function App() {
             <Route path="/einstellungen/kategorien" element={<CategorySettingsScreen />} />
             <Route path="/einstellungen/merkmale" element={<TraitSettingsScreen />} />
             <Route path="/einstellungen/haushalt" element={<HouseholdSettingsScreen />} />
+            <Route path="/einstellungen/zuordnung" element={<UnassignedSettingsScreen />} />
           </Route>
         </Route>
 

@@ -114,6 +114,8 @@ export {
 } from './shopping'
 
 export {
+  assignRawText,
+  getUnassignedItems,
   getDashboardData,
   getAnalyticsData,
   getHealthData,

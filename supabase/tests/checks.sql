@@ -137,8 +137,17 @@ begin
   select count(*) into n from public.v_savings_current_month;
   assert n = 2, format('Sparpotenzial: 2 Zeilen erwartet, %s', n);
 
+  /*
+   * 96 statt der 60, die hier bis Schritt 19 standen.
+   *
+   * Die Sicht summierte damals Differenzen von **Einzelpreisen**. Bei den
+   * Testdaten steht H-Milch mit zwei Stück je Bon, also war die Hälfte des
+   * Betrags unterschlagen. Gerechnet wird jetzt in Geld: gezahlter
+   * Zeilenbetrag minus dem, was dieselbe Menge zum Bestpreis gekostet hätte.
+   * Die 60 waren nicht falsch abgeschrieben — sie waren die falsche Frage.
+   */
   select sum(excess_cents) into n from public.v_savings_current_month;
-  assert n = 60, format('Sparpotenzial gesamt: 60 erwartet, %s', n);
+  assert n = 96, format('Sparpotenzial gesamt: 96 erwartet, %s', n);
 
   -- Die Schwelle „mindestens zwei Läden": Sprit gab es nur bei Shell, also
   -- taucht er nie im Sparpotenzial auf — auch dann nicht, wenn eine Füllung
@@ -231,12 +240,12 @@ begin
   where cp.name = 'Super E10';
   assert r.price_cents = 178, format('Bestpreis Sprit: 178 Cent/l erwartet, %s', r.price_cents);
 
-  /* ========================================================= Top-Produkte */
-
-  select * into r from public.v_top_products
-  where month = date_trunc('month', current_date)::date and rank = 1;
-  assert r.name = 'Pizza Margherita', format('Top 1: Pizza Margherita erwartet, %s', r.name);
-  assert r.amount_cents = 2400, format('Top 1 Betrag: 2400 erwartet, %s', r.amount_cents);
+  /*
+   * Die Liste „Top 10 teuerste Produkte" ist mit Schritt 19 entfallen, samt
+   * ihrer Sicht: Sie beantwortete die schwächere Frage als „Häufigste Käufe"
+   * darunter, und Rabattzeilen standen mit **negativem** Betrag darin. Dass sie
+   * wirklich weg ist, prüft der Block ganz unten.
+   */
 
   /* =========================================================== Scan-Jobs */
 
@@ -534,5 +543,136 @@ begin
   assert abgelehnt, 'Die Prüfregel lässt −4 durch – traits_weight_stufen fehlt';
 
   raise notice 'Alle Gewichtsstufen-Prüfungen bestanden.';
+end
+$$;
+
+-- ============================================================================
+-- Sparpotenzial in Geld, Pfand raus, Nachpflege (0014 und 0016)
+--
+-- Der wichtigste Satz hier ist der erste: Bis Schritt 19 summierte die Sicht
+-- Differenzen von Einzelpreisen und die App schrieb „Mehrkosten" darüber. Bei
+-- einer Menge ungleich 1 war das systematisch zu wenig. Geprüft wird deshalb
+-- gegen die Zeilenbeträge, die wirklich bezahlt wurden.
+-- ============================================================================
+
+do $$
+declare
+  n           bigint;
+  i           integer;
+  produkt_id  uuid;
+  gezahlt     bigint;
+  bestpreis   bigint;
+begin
+
+  /*
+   * Pfand und Rabatt sind keine Produkte.
+   *
+   * Geprüft mit zwei eigens angelegten Bons: Zwei Pfandzeilen reichen für die
+   * Schwelle „mindestens zwei Käufe", und genau so käme „Pfand" im Alltag auf
+   * Rang 1 der häufigsten Käufe — auf deutschen Bons steht es fast immer. Die
+   * Bons werden danach wieder gelöscht, damit die Summen oben stimmen.
+   */
+  for i in 1..2 loop
+    perform public.save_receipt(jsonb_build_object(
+      'haendler', 'REWE', 'gekauft_am', current_date::text, 'summe_cent', 150,
+      'notiz', 'pfandprobe',
+      'positionen', jsonb_build_array(
+        jsonb_build_object('rohtext', 'PFAND 0,25', 'art', 'pfand', 'name', 'Pfand',
+          'zeilensumme_cent', 25, 'pfand_cent', 25),
+        jsonb_build_object('rohtext', 'RABATT', 'art', 'rabatt', 'name', 'Rabatt',
+          'zeilensumme_cent', -25, 'rabatt_cent', 25))));
+  end loop;
+
+  select count(*) into n from public.v_items where is_adjustment;
+  assert n = 4, format('Vier Pfand-/Rabattzeilen erwartet, %s', n);
+
+  select count(*) into n from public.v_frequent_products where name in ('Pfand', 'Rabatt');
+  assert n = 0, 'Pfand oder Rabatt steht in den häufigsten Käufen';
+
+  delete from public.receipts where note = 'pfandprobe';
+
+  -- Die Top-10-Sicht ist abgeräumt.
+  select count(*) into n from information_schema.views
+   where table_schema = 'public' and table_name = 'v_top_products';
+  assert n = 0, 'v_top_products existiert noch';
+
+  -- Mehrkosten sind Geld: gezahlt minus Bestpreis mal derselben Menge.
+  for produkt_id, gezahlt, bestpreis in
+    select s.product_id, s.excess_cents, s.best_price_cents
+    from public.v_savings_current_month s
+  loop
+    select coalesce(sum(
+             greatest(0, o.line_total_cents - round(bestpreis * o.quantity_factor))
+           ), 0)
+      into n
+      from public.v_price_observations o
+     where o.product_id = produkt_id
+       and o.purchased_on >= date_trunc('month', current_date)::date
+       and o.price_cents > bestpreis;
+
+    assert n = gezahlt,
+      format('Mehrkosten für %s: %s erwartet, %s in der Sicht', produkt_id, n, gezahlt);
+  end loop;
+
+  raise notice 'Alle Sparpotenzial-Prüfungen bestanden.';
+end
+$$;
+
+-- ============================================================================
+-- Nachpflege: einen Rohtext zuordnen
+-- ============================================================================
+
+do $$
+declare
+  n         bigint;
+  vorher    bigint;
+  bon       uuid;
+  abgelehnt boolean := false;
+begin
+  select count(*) into vorher from public.v_unassigned_items;
+
+  -- Eine Position ohne Kategorie anlegen, wie sie im Alltag entsteht.
+  bon := public.save_receipt(jsonb_build_object(
+    'haendler', 'REWE', 'gekauft_am', current_date::text, 'summe_cent', 500,
+    'positionen', jsonb_build_array(
+      jsonb_build_object('rohtext', 'UNBEKANNT XY', 'art', 'artikel', 'name', 'UNBEKANNT XY',
+        'menge_basis', 1, 'menge_einheit', 'stk', 'einzelpreis_cent', 250,
+        'zeilensumme_cent', 250),
+      jsonb_build_object('rohtext', 'UNBEKANNT XY', 'art', 'artikel', 'name', 'UNBEKANNT XY',
+        'menge_basis', 1, 'menge_einheit', 'stk', 'einzelpreis_cent', 250,
+        'zeilensumme_cent', 250))));
+
+  select count(*) into n from public.v_unassigned_items;
+  assert n = vorher + 1, format('Offener Rohtext fehlt: %s statt %s', n, vorher + 1);
+
+  select item_count into n from public.v_unassigned_items where raw_text = 'UNBEKANNT XY';
+  assert n = 2, format('Zwei Positionen erwartet, %s', n);
+
+  -- Beide Zeilen auf einen Streich.
+  select public.assign_raw_text('UNBEKANNT XY', 'Haferdrink', 'dairy', array['milch']) into n;
+  assert n = 2, format('assign_raw_text sollte 2 Zeilen ziehen, es waren %s', n);
+
+  select count(*) into n from public.v_unassigned_items where raw_text = 'UNBEKANNT XY';
+  assert n = 0, 'Der Rohtext ist nach der Zuordnung immer noch offen';
+
+  -- Der Lernkreis: ab jetzt kennt die App den Text.
+  select count(*) into n from public.product_mappings
+   where lower(btrim(raw_text)) = 'unbekannt xy' and source = 'user';
+  assert n = 1, 'Die Zuordnung wurde nicht als Nutzerkorrektur gelernt';
+
+  -- Und sie zählt jetzt in die Kategorien.
+  select count(*) into n from public.v_items
+   where product_name = 'Haferdrink' and category_key = 'dairy';
+  assert n = 2, format('Zwei zugeordnete Positionen erwartet, %s', n);
+
+  -- Ein Text ohne offene Position wird abgelehnt, statt ein Produkt zu erfinden.
+  begin
+    perform public.assign_raw_text('GIBT ES NICHT', 'Karteileiche', 'dairy');
+  exception when others then
+    abgelehnt := true;
+  end;
+  assert abgelehnt, 'assign_raw_text legt für unbekannte Texte stillschweigend ein Produkt an';
+
+  raise notice 'Alle Zuordnungs-Prüfungen bestanden.';
 end
 $$;

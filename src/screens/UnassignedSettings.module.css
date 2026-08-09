@@ -1,0 +1,191 @@
+/* Die Nachpflege offener Positionen. Optisch dieselbe Karte wie die Kategorie-
+   und Merkmalsverwaltung — sie liegt im selben Bereich und soll nicht wie ein
+   Fremdkörper wirken. */
+
+.card {
+  background: var(--card);
+  border-radius: 18px;
+  padding: 6px 16px 14px;
+  box-shadow: var(--shadow);
+  margin-bottom: 14px;
+}
+
+.cardTitle {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 12px 0 8px;
+}
+
+.intro {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.error {
+  margin: 4px 0 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--red);
+}
+
+/* ---------------------------------------------------------------- die Liste */
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.rowMain {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Der Bontext steht so da, wie er auf dem Papier stand — in Monospace, damit
+   Abkürzungen und Ziffern lesbar bleiben. Er darf umbrechen: Diese Zeile ist
+   der Wiedererkennungswert, ein abgeschnittener Rohtext hilft niemandem. */
+.rawText {
+  display: block;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  display: block;
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.amount {
+  flex: 0 0 auto;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- das Blatt */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.rawLine {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.rawLine code {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+}
+
+.field {
+  display: block;
+}
+
+.fieldLabel {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.fieldHint {
+  display: block;
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* 16px ist auf iOS Pflicht: Alles darunter lässt Safari beim Fokussieren
+   hineinzoomen, und der Screen sitzt danach schief. */
+.input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--card2);
+  color: var(--text);
+  font-size: 16px;
+  font-family: inherit;
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--green);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--card2);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.chip--on {
+  border-color: var(--green);
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.apply {
+  width: 100%;
+  height: 50px;
+  border-radius: 16px;
+  border: none;
+  background: var(--green);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.apply:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

@@ -239,6 +239,23 @@ export interface TrendBucket {
   amountCents: number
 }
 
+/**
+ * Ein Bontext, dem noch ein Produkt fehlt.
+ *
+ * Gruppiert über den Rohtext: Dieselbe Zeile steht meist auf mehreren Bons, und
+ * zugeordnet wird sie einmal für alle (`assign_raw_text`).
+ */
+export interface UnassignedText {
+  /** So stand es auf dem Papier. */
+  rawText: string
+  /** Der Name, den die Erkennung damals vergeben hat — als Vorschlag im Feld. */
+  sampleName: string
+  itemCount: number
+  amountCents: number
+  firstPurchasedOn: string
+  lastPurchasedOn: string
+}
+
 export interface HealthMonth {
   /** First day of the month, ISO. */
   month: string

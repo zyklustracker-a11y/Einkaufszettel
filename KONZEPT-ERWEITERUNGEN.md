@@ -509,6 +509,35 @@ unbelastete Ware kein Merkmal trägt. Das ist ein Argument für **mehr positive
 Merkmale** (bisher gibt es genau eines, `roh` mit +2) und keines für eine andere
 Steilheit.
 
+# Nach der Prüfung entschieden (Schritte 17–19)
+
+Eine Durchsicht der ganzen App gegen einen selbst erzeugten Mehrmonats-Bestand
+hat zwanzig Stellen gefunden. Was davon dieses Konzept berührt:
+
+- **Das Sparpotenzial rechnet jetzt in Geld.** Es summierte Differenzen von
+  Einzelpreisen und hieß trotzdem „Mehrkosten"; bei zwei Flaschen Milch war die
+  Zahl halb so groß wie die Wirklichkeit. Der Vergleich selbst bleibt ein
+  Vergleich von Einzelpreisen („1,79 €/kg statt 2,19 €/kg") — nur die Summe
+  darunter ist Geld.
+- **Pfand und Rabatt sind keine Produkte** und fallen aus den Produktlisten.
+  Drei Pfandzeilen reichten, um „Pfand" in die häufigsten Käufe zu heben — in
+  die Liste, die dieses Konzept als Vorstufe zum Einkaufszettel beschreibt.
+- **Der Einkaufszettel sagt, warum er schweigt.** Abschnitt 6 beschreibt den
+  Fortschritt bis zur Schwelle und die Liste danach; dazwischen fehlte der Fall
+  „Schwelle erreicht, aber kein stabiler Rhythmus". Genau der ist bei
+  unregelmäßigen Einkäufen der Normalfall.
+- **Der Zeitraum „Eigen" ist gestrichen** (vierzehn Tage in zwei Balken, an
+  nichts anpassbar), ebenso die Liste „Top 10 teuerste Produkte" und die
+  Händlerliste unter jeder Bestpreis-Karte.
+- **Positionen ohne Zuordnung lassen sich nachpflegen.** Das Konzept sieht in
+  Abschnitt 2 vor, dass eine neue Kategorie „nicht rückwirkend" wirkt und der
+  Einstellungsbereich anbieten soll, betroffene Produkte zu suchen. Genau das
+  ist jetzt gebaut — für den härteren Fall: Positionen, die überhaupt kein
+  Produkt haben.
+- **Zwei positive Merkmale und ein neutraler Punkt.** `bio` und `vollkorn` mit
+  je +1, und `NEUTRAL_SCORE = 92` — ohne den hätten sie nichts gebracht, weil
+  ein Korb ohne Merkmale schon bei 100 stand.
+
 # Offene Kleinigkeiten
 
 - ~~**„Korrigieren" im Einkaufs-Detail**~~ *Erledigt mit Schritt 5b. Der Knopf

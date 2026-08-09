@@ -528,6 +528,58 @@ Erwartet: eine Zeile `traits_weight_stufen` mit `CHECK ((weight >= -3) AND (weig
 
 ---
 
+## 2m. Die Migrationen 14 bis 16: die Befunde der Prüfung
+
+**Alle drei ausführen, der Reihe nach.** Sie hängen aufeinander auf.
+
+### `0014_sparpotenzial.sql`
+
+Das Sparpotenzial rechnet ab jetzt in **Geld** statt in Preisdifferenzen: Was
+eine Zeile wirklich zu viel gekostet hat, ist der gezahlte Betrag minus dem, was
+dieselbe Menge zum Bestpreis gekostet hätte. Vorher war die Zahl bei jeder Menge
+über 1 zu niedrig — bei zwei Flaschen Milch um die Hälfte. Dazu fallen Pfand- und
+Rabattzeilen aus den Produktlisten, `v_top_products` wird abgeräumt, und
+`v_household_stats` bekommt eine Spalte dazu.
+
+**Danach prüfen:** Die Zahl im Sparpotenzial sollte steigen, wenn du Produkte
+mehrfach pro Bon kaufst. Erwartet: **Success. No rows returned.**
+
+### `0015_positive_merkmale.sql`
+
+Legt die Merkmale **Bio** (+1) und **Vollkorn** (+1) an und zieht bestehende
+Haushalte nach. Beide gelten ab dem nächsten Scan; an vorhandenen Produkten
+ändert sich nichts, bis du sie dort anhakst.
+
+```sql
+select key, label, weight from public.traits where key in ('bio', 'vollkorn');
+```
+
+Erwartet: zwei Zeilen mit Gewicht 1.
+
+### `0016_zuordnung.sql`
+
+Legt `v_unassigned_items` und `assign_raw_text()` an — die Nachpflege für
+Positionen, die kein Produkt haben. Räumt außerdem `v_product_merchant_latest`
+ab und streicht die Töpfe `custom` aus dem Ausgabenverlauf.
+
+**Danach prüfen**, ob es bei dir überhaupt offene Positionen gibt:
+
+```sql
+select raw_text, item_count, amount_cents from public.v_unassigned_items
+order by amount_cents desc;
+```
+
+Was hier steht, findest du in der App unter **Einstellungen → Positionen ohne
+Zuordnung**.
+
+> **Der Gesundheits-Score verschiebt sich mit dieser Runde.** Nicht wegen einer
+> Migration, sondern wegen `NEUTRAL_SCORE` im Code: Ein Korb, in dem nichts
+> auffällt, steht jetzt bei 92 statt bei 100. Ein Monat, der 98 zeigte, zeigt
+> etwa 90. Die Reihenfolge der Monate untereinander bleibt gleich — das obere
+> Ende der Skala unterscheidet dafür wieder etwas.
+
+---
+
 ## 3. Prüfen, ob alles angekommen ist
 
 Öffne eine neue Abfrage und führe diese vier Blöcke nacheinander aus.

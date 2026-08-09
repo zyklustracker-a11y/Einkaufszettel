@@ -3,7 +3,7 @@ import { shiftMonth, toISO } from '../lib/format'
 import { healthScore } from '../lib/score'
 import type { TraitSpending } from '../lib/score'
 import type { SavedItem } from '../lib/draft'
-import { DataError, unwrap, unwrapMaybe } from './client'
+import { DataError, germanDataError, unwrap, unwrapMaybe } from './client'
 import { reference } from './reference'
 import type {
   CategoryId,
@@ -27,6 +27,7 @@ import type {
   SavingsRow,
   Trait,
   TrendBucket,
+  UnassignedText,
 } from '../types'
 
 /**
@@ -726,6 +727,67 @@ export async function getProductPriceDetail(
     firstPurchasedOn: row.first_purchased_on,
     purchases: purchases.map(toPricePoint),
   }
+}
+
+/* ================================================ Positionen ohne Zuordnung */
+
+interface UnassignedRow {
+  raw_text: string
+  sample_name: string
+  item_count: number
+  amount_cents: number
+  first_purchased_on: string
+  last_purchased_on: string
+}
+
+/**
+ * Die offenen Rohtexte, teuerster zuerst.
+ *
+ * Gruppiert über den Rohtext und nicht über die einzelne Zeile: Zugeordnet wird
+ * der Text, und damit alle Positionen, die ihn tragen (`assign_raw_text`).
+ */
+export async function getUnassignedItems(): Promise<UnassignedText[]> {
+  const rows = unwrap<UnassignedRow[]>(
+    await supabase
+      .from('v_unassigned_items')
+      .select('raw_text, sample_name, item_count, amount_cents, first_purchased_on, last_purchased_on')
+      .order('amount_cents', { ascending: false }),
+  )
+
+  return rows.map((row) => ({
+    rawText: row.raw_text,
+    sampleName: row.sample_name,
+    itemCount: row.item_count,
+    amountCents: row.amount_cents,
+    firstPurchasedOn: row.first_purchased_on,
+    lastPurchasedOn: row.last_purchased_on,
+  }))
+}
+
+/**
+ * Einen Rohtext nachträglich zuordnen.
+ *
+ * Die ganze Arbeit macht `assign_raw_text` in der Datenbank — Produkt anlegen
+ * oder finden, Merkmale hängen, die Zuordnung lernen und jede bereits
+ * gespeicherte Position mitziehen. Als **eine** Transaktion, aus demselben
+ * Grund wie bei `save_receipt`: Ein halb zugeordneter Rohtext wäre schlimmer
+ * als ein gar nicht zugeordneter.
+ */
+export async function assignRawText(
+  rawText: string,
+  name: string,
+  categoryId: CategoryId,
+  traitKeys: string[],
+): Promise<number> {
+  const { data, error } = await supabase.rpc('assign_raw_text', {
+    p_raw_text: rawText,
+    p_name: name,
+    p_category: categoryId,
+    p_traits: traitKeys,
+  })
+
+  if (error) throw new DataError(germanDataError(error))
+  return typeof data === 'number' ? data : 0
 }
 
 /* ================================================================ Einkäufe */

@@ -34,7 +34,7 @@ wenn sich das Logo ändert).
 | `/bestpreise` | Analysen › Bestpreise: durchsuchbare Produktliste mit Bestpreis je Produkt |
 | `/bestpreise/:productId` | Preisverlauf und alle Käufe eines Produkts |
 | `/zettel` | Einkaufszettel: Vorschläge aus dem Kaufrhythmus, Abhaken, eigene Einträge |
-| `/analysen` | Analysen › Auswertung: Verlauf, Kategorien, Sparpotenzial, Top 10, Kraftstoff |
+| `/analysen` | Analysen › Auswertung: Verlauf, Kategorien, Sparpotenzial, Kraftstoff, häufigste Käufe |
 | `/gesundheit` | Score-Verlauf, verarbeitet/unverarbeitet, kritische Ausgaben |
 | `/einkauf/:receiptId` | Gespeicherter Bon mit Positionen, korrigieren oder löschen |
 | `/einstellungen` | Übersicht: Bereiche mit Erklärung, Erscheinungsbild, Abmelden |
@@ -42,6 +42,7 @@ wenn sich das Logo ändert).
 | `/einstellungen/kategorien` | Kategorien anlegen, umbenennen, umfärben, abschalten |
 | `/einstellungen/merkmale` | Merkmale anlegen, gewichten, gruppieren, abschalten |
 | `/einstellungen/haushalt` | Wer zum Haushalt gehört, Familie einladen |
+| `/einstellungen/zuordnung` | Bontexte ohne Produkt nachträglich zuordnen |
 
 Die Tab-Bar (Übersicht · Zettel · **Scan** · Analysen · Gesundheit) liegt über
 allen Tab-Screens; Scan-Flow und Einstellungen laufen ohne sie. Vier Tabs, zwei
@@ -59,7 +60,7 @@ src/
   data/index.ts     Zugriffsschicht: der einzige Ort, den Supabase ersetzt
   lib/format.ts     Deutsche Darstellung (2,49 € · 14.08.2026 · vor 33 Tagen)
   lib/derive.ts     Alles Abgeleitete: Bestpreise, Sparpotenzial, Charts, Budget
-  lib/score.ts      Gesundheits-Score als Formel – und die einzige Konstante dahinter
+  lib/score.ts      Gesundheits-Score als Formel – neutraler Punkt und Steilheit
   lib/weights.ts    Die sechs benannten Gewichtsstufen (Sehr gut … Stark ungünstig)
   state/AppState    Erscheinungsbild – die einzige Einstellung, die am Gerät hängt
   components/       Tab-Bar, Bottom-Sheet, Charts, kleine UI-Bausteine

@@ -96,6 +96,8 @@ abschaltbar:
 | `weizen` | Weizen | W | getreide | −3 |
 | `milch` | Milch | M | milch_basis | 0 (neutral) |
 | `zusatzstoffe` | Zusatzstoffe | E | – | −2, standardmäßig aus |
+| `bio` | Bio | B | – | +1 |
+| `vollkorn` | Vollkorn | VK | – | +1 |
 
 Weitere Merkmale legt der Nutzer in den Einstellungen selbst an (z. B. Palmöl, Soja,
 Fruktosesirup, Bio).
@@ -160,9 +162,11 @@ Päckchen Toastbrötchen für 1,49 €.
 **Die Umrechnung hängt an genau einer Konstante:**
 
 ```
-Score = 100 − POINTS_PER_WEIGHT × (euro-gewichtete Durchschnittslast), gekappt auf 0…100
+Score = NEUTRAL_SCORE + POINTS_PER_WEIGHT × (euro-gewichtete Durchschnittslast)
 ```
 
+`NEUTRAL_SCORE` (92) ist der Score eines Korbs, in dem nichts auffällt — bewusst
+**nicht** 100, sonst hätte ein positives Merkmal keinen Platz mehr nach oben.
 `POINTS_PER_WEIGHT` steht **ausschließlich** in `src/lib/score.ts` und ist mit 10 belegt.
 In SQL wird der Score nirgends gerechnet – `v_score_items` liefert nur die Zutaten –, und
 kein Score ist gespeichert. Eine Änderung dieser Zahl wirkt deshalb sofort und rückwirkend
@@ -1180,6 +1184,118 @@ E-Mail-Adressen stehen in `auth.users`; dorthin kommt keine gewöhnliche Abfrage
 `household_members_list()` prüft als Allererstes, ob der Aufrufer selbst
 dazugehört, und gibt nur Name, E-Mail, Rolle und Beitrittsdatum zurück.
 
+### Ergänzt mit Schritt 17–19 (die Befunde der Prüfung)
+
+Eine Durchsicht der ganzen App gegen einen selbst erzeugten Mehrmonats-Bestand
+(elf Bons, fünf Händler, Pfand, Rabatt, Gewichtsware, Tankbeleg, Franken-Bon,
+Gastro, ein leerer Monat) hat zwanzig Stellen gefunden. Die wichtigsten:
+
+**Die Tab-Leiste lag über dem Speichern-Knopf.** Auf `/einkauf/…/bearbeiten`
+traf `startsWith('/einkauf')` auch die Bearbeiten-Route. Gemessen bei 393 × 852:
+Ein Tipper in die Mitte des Knopfes landete auf dem Scan-Knopf der Leiste und
+warf die Bearbeitung weg. `showsTabBar()` nimmt Adressen auf `/bearbeiten` jetzt
+aus.
+
+**Das Sparpotenzial war kein Geldbetrag.** Die Sicht summierte Differenzen von
+Einzelpreisen und die App schrieb „Mehrkosten" darüber. Bei zwei Flaschen Milch
+war die Zahl halb so groß wie die Wirklichkeit; im Prüfbestand 1,56 € statt
+1,96 €. Gerechnet wird jetzt so, wie man es von Hand täte: **gezahlter
+Zeilenbetrag minus dem, was dieselbe Menge zum Bestpreis gekostet hätte**
+(`0014_sparpotenzial.sql`). Nicht `(Preis − Bestpreis) × Menge` — der gezahlte
+Betrag steht als Tatsache auf dem Bon, während `Preis × Menge` wegen der Rundung
+ein, zwei Cent danebenliegen kann.
+
+**Pfand und Rabatt waren Produkte.** Beide Zeilenarten haben planmäßig kein
+kanonisches Produkt, und die Listen gruppieren über den Namen — schon drei
+Pfandzeilen setzten „Pfand" auf Rang 5 der häufigsten Käufe. Erkannt werden sie
+jetzt an `deposit_cents`/`discount_cents`; das ist der genauere Filter als „hat
+kein Produkt", der auch Artikel träfe, denen nur die Zuordnung fehlt.
+
+**Die Score-Kurve übersprang leere Monate.** Sie zeigte „Mai · Juli · August"
+mit gleichen Abständen, obwohl Juni dazwischenlag. Die Reihe läuft jetzt
+lückenlos; ein Monat ohne Einkäufe bekommt `null` und keine 0 — Null wäre der
+schlechteste Score, den es gibt, und behauptete etwas über einen Monat, über den
+die Daten schweigen. Die Linie setzt dort aus, statt durchzuzeichnen.
+
+**Der Kategorien-Ring zeigte eine fremde Zahl.** In der Mitte stand die
+Monatssumme, die Segmente kamen aus den Kategorien — Trinkgeld, Pfand und
+Positionen ohne Produkt gehören zu keiner. Wer die Legende addierte, kam auf
+etwas anderes. Die Mitte ist jetzt die Summe der Segmente, und was nicht
+hineinpasst, steht als eigene Zeile darunter.
+
+**Die Bestpreise führten mit dem Unnützen.** `.order('product_name')` und keine
+Grenze: Bei 61 Produkten öffnete der Screen mit 57 Karten „Erst einmal gekauft",
+bevor die vier mit echtem Vergleich kamen. Sortiert wird jetzt nach
+Vergleichbarkeit, Einmalkäufe liegen hinter einem Knopf, und die Suche geht
+weiterhin über alles.
+
+**Der Einkaufszettel behauptete zu viel.** „Alles, was du regelmäßig kaufst, ist
+noch frisch" stand auch dann da, wenn gar kein stabiler Rhythmus erkannt war —
+zwei völlig verschiedene Lagen. Der Leerzustand unterscheidet sie jetzt und
+zeigt die erkannten Abstände.
+
+**Drei Dinge sind ersatzlos entfallen:** die Liste „Top 10 teuerste Produkte"
+(sie beantwortete die schwächere Frage als „Häufigste Käufe" direkt darunter,
+und Rabattzeilen standen mit negativem Betrag darin), der Zeitraum-Reiter
+„Eigen" (vierzehn Tage in zwei Balken, an nichts anpassbar) und die
+Händlerliste unter jeder Bestpreis-Karte (eine Zeile Auskunft auf drei Zeilen
+Fläche; der vollständige Verlauf steht im Produkt-Detail).
+
+**Kleinere Stellen:** Die Hochrechnung erscheint erst ab dem 7. des Monats — am
+1. hieß der Dreisatz „mal 31", und ein Wocheneinkauf ergab „ca. 1.550 €" in Rot.
+Der Reiter „Jahr" heißt „6 Monate", weil er sechs zeigt. Die Monatsbalken tragen
+den Tagesbereich statt der Kalenderwoche: „KW53" über einem Januarbalken ist
+ISO-korrekt und trotzdem falsch zu lesen. Die Fehlermeldung des Einkaufszettels
+schickt nur noch bei einem fehlenden Datenbankobjekt in den SQL-Editor und nicht
+mehr bei jedem Funkloch. „Beitreten" ist gesperrt, wenn der Screen daneben sagt,
+dass die App den Beitritt ablehnt. Gruppenschlüssel stehen lesbar da statt als
+`milch_basis`.
+
+**Positionen ohne Zuordnung lassen sich nachpflegen** — der einzige Ort, an dem
+Datenqualität dauerhaft verlorenging. Eine Position ohne Kategorie bekommt kein
+Produkt (richtig so, geraten wird nicht), taucht danach aber in keiner
+Auswertung mehr auf und war nirgends wiederzufinden. Ein neuer
+Einstellungsbereich sammelt die offenen Bontexte; `assign_raw_text()` ordnet
+**den Rohtext** zu und zieht alle Zeilen mit, die ihn tragen — rückwirkend, samt
+Lernkreis (`0016_zuordnung.sql`). Zugeordnet wird der Text und nicht die
+einzelne Zeile: „G&G H-MILCH 1,5%" steht auf zwölf Bons, und zwölfmal dasselbe
+zu tippen wäre Arbeit ohne Erkenntnis.
+
+**Was die Prüfung nicht beanstandet hat:** Monatssummen, Kategoriensummen,
+Vormonatsvergleich über Monatsgrenzen, Trinkgeld, Fremdwährung, Löschen samt
+Erhalt des Gelernten, rückwirkende Kategorie- und Gewichtsänderungen, leere
+Datenbank, ein einzelner Bon — alles auf den Cent wie dokumentiert. Und die
+Zugriffsregeln: Ein fremder Haushalt ist über keine Sicht erreichbar, `update`
+und `delete` auf fremde Zeilen treffen null Zeilen, `receipts.image_path` ist in
+jedem Bon null.
+
+### Ergänzt mit Schritt 18 (positive Merkmale und Platz für sie)
+
+**Der Score hatte ein einziges positives Merkmal** (`roh`, +2). Alles andere
+konnte ihn nur senken, und ein frischer Einkauf landete immer bei 95–100. Dazu
+kamen zwei, die auf einem Bon wirklich ablesbar sind: **`bio` (+1)** und
+**`vollkorn` (+1)**, beide ohne Gruppe (in einer Gruppe verlöre ein
+Vollkorn-Weizenbrot seinen Pluspunkt an `weizen`).
+
+**Das allein hätte nichts gebracht** — und das ist der Teil, der beim Bauen
+auffiel und in der Prüfung noch falsch eingeschätzt war: Solange ein Korb ohne
+Merkmale schon bei 100 steht, läuft jeder Pluspunkt gegen die Decke. Deshalb
+gibt es jetzt `NEUTRAL_SCORE = 92`: den Score eines Korbs, in dem nichts
+auffällt. Acht Punkte Luft nach oben, und die obere Hälfte der Skala sagt wieder
+etwas.
+
+| Korb | Durchschnittslast | Score | vorher |
+|---|---|---|---|
+| Frischware | −0,20 | **90** | 98 |
+| Frischware mit Bio | +0,62 | **98** | 100 |
+| gemischt | −2,31 | **69** | 77 |
+| Fertigware | −5,67 | **35** | 43 |
+
+**Das verschiebt die Vergangenheit**, weil kein Score gespeichert ist: Ein
+Monat, der 98 zeigte, zeigt jetzt 90. Die Reihenfolge der Monate untereinander
+ändert sich nicht — es ist dieselbe Aussage auf einer Skala, die oben wieder
+unterscheidet.
+
 ### Ergänzt mit Schritt 16 (Gewichtsstufen, Score-Konstante)
 
 **Das Gewicht ist eine Auswahl aus sechs benannten Stufen geworden.** Die alte
@@ -1433,6 +1549,9 @@ nur die Voreinstellung.
 | 14 | Bon-Summe änderbar, `EXPECTED_MS` misst sich selbst, Modellwechsel | erledigt |
 | 15 | Benachrichtigungen entfernt, Bon-Foto-Schalter entfernt, Bestpreise in die Analysen | erledigt |
 | 16 | Gewichte als benannte Stufen, Score-Konstante dokumentiert und durchgerechnet | erledigt |
+| 17 | Prüfung der ganzen App; Sparpotenzial in Geld, Pfand raus, Top-10 entfernt | erledigt |
+| 18 | Positive Merkmale (`bio`, `vollkorn`) und `NEUTRAL_SCORE` | erledigt |
+| 19 | Befunde der Prüfung behoben, Positionen ohne Zuordnung nachpflegbar | erledigt |
 
 Ab Schritt 6 zählt der Fahrplan aus `KONZEPT-ERWEITERUNGEN.md` weiter. Die
 Nummerierung der beiden Dateien ist seit Schritt 5 dieselbe; 11 (Einstellungen)
