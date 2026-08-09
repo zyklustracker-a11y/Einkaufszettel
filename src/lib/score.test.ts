@@ -1,7 +1,14 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { traits } from '../mocks/traits.ts'
-import { healthScore, itemScore, itemTraitIds, itemTraits, traitSpending } from './score.ts'
+import {
+  NEUTRAL_SCORE,
+  healthScore,
+  itemScore,
+  itemTraitIds,
+  itemTraits,
+  traitSpending,
+} from './score.ts'
 import type { MilkHeat, MilkHomogenized, ReceiptItem, TraitId } from '../types.ts'
 
 /**
@@ -185,12 +192,29 @@ describe('Milch-Eigenschaften', () => {
 })
 
 describe('Health-Score', () => {
-  test('ohne Positionen ist der Score 100', () => {
-    assert.equal(healthScore([], traits), 100)
+  test('ohne Positionen steht der Score auf dem neutralen Punkt', () => {
+    assert.equal(healthScore([], traits), NEUTRAL_SCORE)
   })
 
-  test('ohne Merkmale ist der Score 100', () => {
-    assert.equal(healthScore([item('Bananen', 200, []), item('Eier', 349, [])], traits), 100)
+  /*
+   * Seit Schritt 18 ist ein Korb ohne Merkmale **nicht** die Bestnote, sondern
+   * der neutrale Punkt. Vorher stand er bei 100, und damit konnte ein positives
+   * Merkmal nichts mehr gutschreiben — es lief gegen die Decke.
+   */
+  test('ohne Merkmale steht der Score auf dem neutralen Punkt', () => {
+    assert.equal(
+      healthScore([item('Bananen', 200, []), item('Eier', 349, [])], traits),
+      NEUTRAL_SCORE,
+    )
+  })
+
+  test('positive Merkmale haben jetzt Luft nach oben', () => {
+    const plain = [item('Bananen', 200, []), item('Brot', 200, [])]
+    const better = [item('Bananen Bio', 200, ['bio']), item('Vollkornbrot', 200, ['vollkorn'])]
+    assert.equal(healthScore(plain, traits), NEUTRAL_SCORE)
+    // Beide +1 → Last +1 → 92 + 10 = 102, gedeckelt auf 100.
+    assert.equal(healthScore(better, traits), 100)
+    assert.ok(healthScore(better, traits) > healthScore(plain, traits))
   })
 
   test('gewichtet nach Euro-Anteil, nicht nach Anzahl', () => {
@@ -206,12 +230,13 @@ describe('Health-Score', () => {
       `teure Position muss stärker wirken (${expensiveFlagged} vs. ${cheapFlagged})`,
     )
 
-    // 1200 ct mit −3 und 1200 ct mit 0 → Mittel −1,5 → 100 − 15 = 85.
-    assert.equal(expensiveFlagged, 85)
+    // 1200 ct mit −3 und 1200 ct mit 0 → Mittel −1,5 → 92 − 15 = 77.
+    assert.equal(expensiveFlagged, 77)
   })
 
   test('positive Merkmale heben den Score, gedeckelt bei 100', () => {
     const rohmilch = item('Rohmilch', 500, ['milch'], { milkHeat: 'roh', milkHomogenized: 'nein' })
+    // +2 → 92 + 20 = 112, gedeckelt auf 100.
     assert.equal(healthScore([rohmilch], traits), 100)
   })
 
@@ -219,7 +244,7 @@ describe('Health-Score', () => {
     const awful = item('x', 100, ['verarbeitet', 'industriezucker', 'samenoel', 'weizen'])
     const score = healthScore([awful], traits)
     assert.ok(score >= 0 && score <= 100, `Score ${score} außerhalb 0…100`)
-    // −3 −3 −3 −3 = −12 → 100 − 120 → gedeckelt auf 0.
+    // −3 −3 −3 −3 = −12 → 92 − 120 → gedeckelt auf 0.
     assert.equal(score, 0)
   })
 })

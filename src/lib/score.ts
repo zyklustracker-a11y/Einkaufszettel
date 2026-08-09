@@ -18,8 +18,44 @@ const MILK_HEAT_TRAIT: Record<MilkHeat, TraitId | null> = {
 
 const HOMOGENISED_TRAIT: TraitId = 'homogenisiert'
 
-/** Highest attainable score — a basket with nothing flagged. */
+/** Obere Grenze der Skala. Erreichbar, aber nicht der Normalfall — siehe unten. */
 export const MAX_SCORE = 100
+
+/**
+ * Der Score eines Korbs, in dem **nichts** auffällt: kein negatives Merkmal,
+ * aber auch kein positives.
+ *
+ * ---------------------------------------------------------------------------
+ * WARUM DAS NICHT 100 IST
+ * ---------------------------------------------------------------------------
+ *
+ * Bis Schritt 18 war es 100, und damit war die obere Hälfte der Skala tot: Wer
+ * frisch einkauft, trägt schlicht keine Merkmale und stand deshalb immer bei
+ * 95–100. Zwischen „ordentlich" und „richtig gut" konnte der Score nicht
+ * unterscheiden — dazwischen lagen zwei Punkte.
+ *
+ * Positive Merkmale allein reparieren das **nicht**. Das war die Annahme in der
+ * Prüfung, und sie war falsch: Solange ein leerer Korb schon oben steht, kann
+ * ein Pluspunkt nichts mehr gutschreiben, er läuft gegen die Decke. Erst ein
+ * neutraler Punkt **unterhalb** der Decke gibt ihm Platz.
+ *
+ * 92 ist so gewählt, dass acht Punkte Luft nach oben bleiben — genug, um einen
+ * durchgehend biologischen Einkauf von einem gewöhnlichen zu unterscheiden, und
+ * wenig genug, dass ein unbelasteter Korb weiterhin als sehr gut dasteht.
+ *
+ * **Das verschiebt die Vergangenheit.** Der Score ist nirgends gespeichert, also
+ * zieht die ganze Verlaufskurve mit: Ein Monat, der bisher 98 zeigte, zeigt
+ * jetzt 90. Es ist dieselbe Aussage auf einer Skala, die oben wieder etwas
+ * aussagt — die Reihenfolge der Monate untereinander ändert sich nicht.
+ *
+ * Durchgerechnet (`npm run score:beispiele`):
+ *
+ *     Frischware              −0,20  →  90
+ *     Frischware mit Bio      +0,62  →  98
+ *     gemischt                −2,31  →  69
+ *     Fertigware              −5,67  →  35
+ */
+export const NEUTRAL_SCORE = 92
 
 /**
  * ---------------------------------------------------------------------------
@@ -29,7 +65,7 @@ export const MAX_SCORE = 100
  * Wie steil die Merkmalslast in den Score schneidet: **Ein Punkt
  * durchschnittlicher Last je Euro kostet zehn Score-Punkte.**
  *
- *     Score = 100 − 10 × (euro-gewichtete Durchschnittslast), gekappt auf 0…100
+ *     Score = NEUTRAL_SCORE + 10 × (euro-gewichtete Durchschnittslast), gekappt auf 0…100
  *
  * Diese Zahl ist gesetzt und nicht gemessen — als die Formel entstand, gab es
  * keine echten Einkäufe, an denen sich etwas hätte eichen lassen. Sie ist
@@ -46,21 +82,20 @@ export const MAX_SCORE = 100
  * aus solchen Positionen besteht, landet bei rund −4. Ein Korb aus reiner
  * Frischware trägt fast keine Merkmale und liegt bei 0.
  *
- * **Was das praktisch heißt** — drei Wocheneinkäufe von je rund 50 €,
- * durchgerechnet in `scripts/score-beispiele.ts` (`npm run score:beispiele`):
+ * **Was das praktisch heißt** — Wocheneinkäufe von je rund 50 €, durchgerechnet
+ * in `scripts/score-beispiele.ts` (`npm run score:beispiele`):
  *
- *     Frischware   Durchschnittslast −0,20   →   98
- *     gemischt     Durchschnittslast −2,31   →   77
- *     Fertigware   Durchschnittslast −5,67   →   43
+ *     Frischware          Durchschnittslast −0,20   →   90
+ *     Frischware mit Bio  Durchschnittslast +0,62   →   98
+ *     gemischt            Durchschnittslast −2,31   →   69
+ *     Fertigware          Durchschnittslast −5,67   →   35
  *
- * Die Spreizung stimmt also; der Score verdünnt sich nicht über viele Positionen
- * zu einem Einheitsbrei. Was er nicht kann, ist **oben** unterscheiden: Wer
- * frisch einkauft, liegt immer bei 95–100, weil unbelastete Ware schlicht kein
- * Merkmal trägt. Das ist keine Frage dieser Konstante, sondern eine der positiven
- * Merkmale — es gibt bisher nur eines (`roh`, +2).
+ * Die Spreizung stimmt: Der Score verdünnt sich nicht über viele Positionen zu
+ * einem Einheitsbrei, und seit Schritt 18 unterscheidet auch das obere Ende
+ * wieder — dafür sorgen `NEUTRAL_SCORE` und die beiden positiven Merkmale.
  *
  * Wirkt die Spreizung zu hart oder zu weich, ist **10** die Zahl, an der man
- * dreht: 8 zieht zusammen (Fertigware 55), 12 spreizt auf (Fertigware 32). Nach
+ * dreht: 8 zieht zusammen (Fertigware 47), 12 spreizt auf (Fertigware 24). Nach
  * der Änderung das Skript erneut laufen lassen — es liest die Konstante hier.
  */
 export const POINTS_PER_WEIGHT = 10
@@ -139,12 +174,14 @@ export function itemScore(item: ReceiptItem, traits: Trait[]): number {
  */
 export function healthScore(items: ReceiptItem[], traits: Trait[]): number {
   const totalCents = items.reduce((sum, item) => sum + item.totalCents, 0)
-  if (totalCents === 0) return MAX_SCORE
+  // Nichts erfasst heißt nichts aufgefallen — also der neutrale Punkt und nicht
+  // die Bestnote. Ein leerer Korb hat sich keine 100 verdient.
+  if (totalCents === 0) return NEUTRAL_SCORE
 
   const load =
     items.reduce((sum, item) => sum + itemScore(item, traits) * item.totalCents, 0) / totalCents
 
-  const score = MAX_SCORE + load * POINTS_PER_WEIGHT
+  const score = NEUTRAL_SCORE + load * POINTS_PER_WEIGHT
   return Math.max(0, Math.min(MAX_SCORE, Math.round(score)))
 }
 

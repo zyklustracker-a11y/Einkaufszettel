@@ -30,7 +30,7 @@
  * deshalb steht dieses Skript im Verzeichnis und nicht das Ergebnis in einer
  * Konstante.
  */
-import { itemScore, healthScore, POINTS_PER_WEIGHT, MAX_SCORE } from '../src/lib/score.ts'
+import { itemScore, healthScore, POINTS_PER_WEIGHT, MAX_SCORE, NEUTRAL_SCORE } from '../src/lib/score.ts'
 import { traits } from '../src/mocks/traits.ts'
 import type { ReceiptItem, TraitId } from '../src/types.ts'
 
@@ -91,6 +91,38 @@ const BASKETS: Basket[] = [
       item('Roggen-Sauerteigbrot', 349, ['gluten']),
       item('Hartweizennudeln 500 g', 149, ['gluten', 'weizen']),
       item('Passierte Tomaten', 99, []),
+    ],
+  },
+  {
+    /*
+     * Derselbe Korb wie oben, nur so eingekauft, wie es die beiden positiven
+     * Merkmale aus Schritt 18 belohnen: Bio dort, wo es auf dem Bon steht, und
+     * Vollkorn statt Auszugsmehl. Er zeigt, wofür die Gegengewichte da sind —
+     * vorher war das obere Ende der Skala nicht zu unterscheiden.
+     */
+    title: 'Frischware · Bio',
+    note: 'derselbe Korb, mit Bio-Ware und Vollkorn statt Weißmehl',
+    items: [
+      item('Rispentomaten Bio', 289, ['bio']),
+      item('Äpfel Elstar Bio', 389, ['bio']),
+      item('Bananen Bio', 249, ['bio']),
+      item('Kartoffeln 2,5 kg Bio', 299, ['bio']),
+      item('Zwiebeln', 129, []),
+      item('Möhren Bio', 179, ['bio']),
+      item('Feldsalat', 199, []),
+      item('Hähnchenbrust Bio', 999, ['bio']),
+      item('Rinderhack', 549, []),
+      item('Eier 10er Bio', 399, ['bio']),
+      item('Butter 250 g Bio', 289, ['milch', 'bio'], { heat: 'pasteurisiert' }),
+      item('Frischmilch 1 l Bio', 139, ['milch', 'bio'], { heat: 'pasteurisiert', homogenized: 'nein' }),
+      item('Gouda am Stück', 276, ['milch'], { heat: 'pasteurisiert' }),
+      item('Naturjoghurt 500 g Bio', 149, ['milch', 'bio'], { heat: 'pasteurisiert' }),
+      item('Olivenöl 500 ml Bio', 799, ['bio']),
+      item('Linsen 500 g Bio', 229, ['bio']),
+      item('Haferflocken 500 g Bio', 199, ['bio']),
+      item('Roggen-Vollkornbrot', 379, ['gluten', 'vollkorn']),
+      item('Vollkornnudeln 500 g', 179, ['gluten', 'weizen', 'vollkorn']),
+      item('Passierte Tomaten Bio', 119, ['bio']),
     ],
   },
   {
@@ -159,7 +191,7 @@ function averageLoad(items: ReceiptItem[]): number {
 }
 
 function scoreAt(load: number, pointsPerWeight: number): number {
-  return Math.max(0, Math.min(MAX_SCORE, Math.round(MAX_SCORE + load * pointsPerWeight)))
+  return Math.max(0, Math.min(MAX_SCORE, Math.round(NEUTRAL_SCORE + load * pointsPerWeight)))
 }
 
 function euro(cents: number): string {
@@ -169,8 +201,8 @@ function euro(cents: number): string {
 /* ================================================================= Ausgabe */
 
 console.log('')
-console.log(`Gesundheits-Score · POINTS_PER_WEIGHT = ${POINTS_PER_WEIGHT}`)
-console.log('Score = 100 − POINTS_PER_WEIGHT × Durchschnittslast je Euro, gekappt auf 0…100')
+console.log(`Gesundheits-Score · NEUTRAL_SCORE = ${NEUTRAL_SCORE} · POINTS_PER_WEIGHT = ${POINTS_PER_WEIGHT}`)
+console.log('Score = NEUTRAL_SCORE + POINTS_PER_WEIGHT × Durchschnittslast je Euro, gekappt auf 0…100')
 console.log('')
 
 for (const basket of BASKETS) {

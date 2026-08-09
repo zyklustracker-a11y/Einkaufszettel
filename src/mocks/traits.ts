@@ -163,4 +163,34 @@ export const traits: Trait[] = [
     active: true,
     isDefault: true,
   },
+  /*
+   * Die beiden Gegengewichte aus Schritt 18 (`0015_positive_merkmale.sql`).
+   *
+   * Ohne sie kann ein Merkmal den Score nur senken, und jeder frische Einkauf
+   * landet bei 95–100. Beide stehen bewusst **ohne Gruppe**: In einer Gruppe
+   * zählte nur das Merkmal mit dem größten Betrag, und ein Vollkorn-Weizenbrot
+   * verlöre seinen Pluspunkt an `weizen` (−3).
+   */
+  {
+    id: 'bio',
+    label: 'Bio',
+    short: 'B',
+    description:
+      'Zertifizierte Bio-Ware. Nur vergeben, wenn es auf dem Bon steht – als „Bio", „Öko", „Demeter", „Bioland" oder „Naturland". Aus dem Produkt selbst darf nicht auf Bio geschlossen werden.',
+    weight: 1,
+    tip: 'Bio ist ein Pluspunkt, kein Freibrief – eine Bio-Fertigpizza bleibt eine Fertigpizza.',
+    active: true,
+    isDefault: true,
+  },
+  {
+    id: 'vollkorn',
+    label: 'Vollkorn',
+    short: 'VK',
+    description:
+      'Vollkorn-Getreide: Das Wort „Vollkorn" steht im Artikelnamen, etwa „Vollkornbrot", „Vollkornnudeln", „Vollkornmehl". Nicht bei „Mehrkorn", „Körner", „Kraftkorn" oder „dunkel" – die sagen nichts über den Ausmahlungsgrad.',
+    weight: 1,
+    tip: 'Vollkorn statt Auszugsmehl ist die kleinste Umstellung mit der größten Wirkung.',
+    active: true,
+    isDefault: true,
+  },
 ]
