@@ -10,6 +10,7 @@ import { useAppState } from '../state/AppState'
 import { useAuth } from '../state/AuthContext'
 import { CategorySettings } from './CategorySettings'
 import { HouseholdSettings } from './HouseholdSettings'
+import { NotificationSettings } from './NotificationSettings'
 import { TraitSettings } from './TraitSettings'
 import styles from './Settings.module.css'
 
@@ -79,7 +80,12 @@ export function SettingsScreen() {
           to="/einstellungen/haushalt"
           title="Haushalt"
           value={user?.name ?? undefined}
-          hint="Wer dazugehört"
+          hint="Wer dazugehört, Familie einladen"
+        />
+        <Row
+          to="/einstellungen/benachrichtigungen"
+          title="Benachrichtigungen"
+          hint="Monatsreport aufs Telefon"
         />
       </nav>
 
@@ -188,6 +194,14 @@ export function TraitSettingsScreen() {
   return (
     <SettingsPage title="Merkmale">
       <TraitSettings />
+    </SettingsPage>
+  )
+}
+
+export function NotificationSettingsScreen() {
+  return (
+    <SettingsPage title="Benachrichtigungen">
+      <NotificationSettings />
     </SettingsPage>
   )
 }

@@ -142,6 +142,9 @@ export type {
  * Kategorie zeigen, die es in der Auswahl nicht mehr gibt — sein Name soll
  * trotzdem dastehen und nicht der rohe Schlüssel.
  */
+/** Der Haushalt, zu dem der angemeldete Nutzer gehört. */
+export const getHouseholdId = (): string => reference().householdId
+
 export const getCategories = (): Category[] => reference().categories
 
 /** Nur aktive Kategorien erreichen die Auswahl. Das ist der Sinn von „aus". */

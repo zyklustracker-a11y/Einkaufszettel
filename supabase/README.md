@@ -455,6 +455,45 @@ select * from public.household_members_list();
 
 ---
 
+## 2k. Die elfte Migration: Monatsreport
+
+`migrations/0011_monatsreport.sql` gehört zu Schritt 13.
+
+| Was | Wofür |
+|---|---|
+| Tabelle `push_subscriptions` | welches **Gerät** Meldungen bekommt |
+| Sicht `v_last_month_report` | die Zahlen des Vormonats |
+| `mark_report_sent()` | damit derselbe Monat nicht zweimal kommt |
+
+Genauso ausführen wie oben. Erwartet: **Success. No rows returned.**
+
+Danach brauchst du noch **Schlüssel** — das ist der einzige Teil dieses Projekts,
+der ohne dich nicht fertig wird. Die Anleitung steht in
+[`functions/README.md`](functions/README.md) unter „Benachrichtigungen".
+
+**Prüfen, sobald der Schalter umgelegt ist:**
+
+```sql
+select endpoint, created_at, last_month, last_sent_at, failed_at, fail_reason
+from public.push_subscriptions;
+```
+
+Erwartet: eine Zeile je Gerät. `failed_at` bleibt leer, solange alles gut geht.
+
+**Und was im Report stehen würde:**
+
+```sql
+select month, total_cents, receipt_count, budget_cents, previous_total_cents,
+       top_product_name
+from public.v_last_month_report;
+```
+
+Ist die Liste leer, hattest du im Vormonat keine Einkäufe — dann wird auch keine
+Meldung verschickt. „Du hast 0 € ausgegeben" ist keine Nachricht, sondern eine
+Störung.
+
+---
+
 ## 3. Prüfen, ob alles angekommen ist
 
 Öffne eine neue Abfrage und führe diese vier Blöcke nacheinander aus.

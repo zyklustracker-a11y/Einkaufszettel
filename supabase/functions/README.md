@@ -248,3 +248,77 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 ihn trotzdem abweisen, in den Funktionseinstellungen **„Verify JWT"**
 abschalten. Das ist hier gefahrlos: Die Funktion prüft die Anmeldung ohnehin
 selbst, in Schritt 1 vor allem anderen.
+
+---
+
+## 6. Benachrichtigungen einrichten (Schritt 13)
+
+Die zweite Edge Function heißt `monatsreport`. Sie verschickt am zweiten Tag
+jedes Monats eine kurze Meldung mit der Summe des Vormonats. Ausgerollt wird sie
+automatisch mit demselben Workflow wie `erkennen` — einzurichten sind nur die
+Schlüssel.
+
+**Das ist der einzige Teil des Projekts, der ohne dich nicht fertig wird.**
+
+### 6.1 Schlüsselpaar erzeugen
+
+Auf deinem Rechner, im Projektordner:
+
+```bash
+node scripts/vapid-keys.mjs
+```
+
+Der Befehl gibt drei Zeilen aus. Er braucht kein zusätzliches Paket und schickt
+nichts irgendwohin — die Schlüssel entstehen auf deinem Rechner.
+
+### 6.2 Die Werte eintragen
+
+**In Supabase** → Project Settings → Edge Functions → Secrets:
+
+| Name | Wert |
+|---|---|
+| `VAPID_PUBLIC_KEY` | der öffentliche Schlüssel aus dem Befehl |
+| `VAPID_PRIVATE_KEY` | der private Schlüssel aus dem Befehl |
+| `VAPID_SUBJECT` | `mailto:deine-adresse@example.com` |
+| `REPORT_SECRET` | eine selbst ausgedachte Zeichenfolge |
+
+`REPORT_SECRET` erzeugst du zum Beispiel mit
+`node -e "console.log(crypto.randomUUID())"`. Es ist das gemeinsame Geheimnis
+zwischen GitHub und Supabase — ohne es antwortet die Funktion mit 401, damit
+nicht jeder, der die Adresse kennt, der Familie eine Meldung schicken kann.
+
+**Bei Vercel** → Settings → Environment Variables (Production **und** Preview):
+
+| Name | Wert |
+|---|---|
+| `VITE_VAPID_PUBLIC_KEY` | derselbe öffentliche Schlüssel |
+
+Danach einmal neu deployen, sonst steckt der leere Wert noch im Build. Lokal
+gehört derselbe Wert in die `.env`.
+
+**In GitHub** → Settings → Secrets and variables → Actions:
+
+| Name | Wert |
+|---|---|
+| `SUPABASE_URL` | `https://DEIN-PROJEKT.supabase.co` |
+| `REPORT_SECRET` | **derselbe** Wert wie in Supabase |
+
+### 6.3 Einschalten und ausprobieren
+
+1. Die App auf dem iPhone über **Teilen → Zum Home-Bildschirm** hinzufügen.
+   **Das ist Pflicht:** Web Push gibt es auf iOS nur in der installierten App,
+   im Safari-Tab existiert die Schnittstelle gar nicht.
+2. In der App: **Einstellungen → Benachrichtigungen → Schalter umlegen.** iOS
+   fragt einmal nach der Erlaubnis.
+3. GitHub → **Actions** → **Monatsreport verschicken** → **Run workflow**.
+
+Die Ausgabe des Laufs zeigt `{"sent":1,"skipped":0,"failed":0}`. Kommt
+`skipped: 1`, hattest du im Vormonat keine Einkäufe oder die Meldung war für
+diesen Monat schon draußen.
+
+> **Wenn der Schalter grau bleibt** und ein Satz daneben steht: Der sagt, was
+> fehlt — meistens der fehlende `VITE_VAPID_PUBLIC_KEY` oder die noch nicht
+> installierte App.
+
+> **Wenn du die Erlaubnis einmal abgelehnt hast**, lässt sie sich in der App
+> nicht mehr erfragen. Nur am Gerät: Einstellungen → Receipt AI → Mitteilungen.
