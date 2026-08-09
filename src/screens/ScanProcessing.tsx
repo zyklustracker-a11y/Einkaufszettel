@@ -121,6 +121,14 @@ export function ScanProcessing() {
    * eine kleine Lüge — der Schritt bekommt stattdessen „entfällt".
    */
   const [visited, setVisited] = useState<ExtractionPhase[]>(['vorbereiten'])
+  /**
+   * Das Ergebnis ist da.
+   *
+   * Ohne diesen Zustand bekäme der letzte Abschnitt nie sein Häkchen: Er ist
+   * der laufende, wenn der Screen verschwindet. Mit ihm sind am Ende alle vier
+   * abgehakt — und das ist keine Behauptung, sondern der Tatbestand.
+   */
+  const [done, setDone] = useState(false)
 
   const enterPhase = (next: ExtractionPhase) => {
     setPhase(next)
@@ -197,6 +205,7 @@ export function ScanProcessing() {
       setSlow(false)
       setPhase('vorbereiten')
       setVisited(['vorbereiten'])
+      setDone(false)
       setProgress(0)
       phaseStartRef.current = Date.now()
       requestRef.current = { attempt, promise: extractReceipt(capture, enterPhase) }
@@ -208,6 +217,7 @@ export function ScanProcessing() {
         setPendingExtraction(result)
         // Erst jetzt die volle Anzeige — vorher wäre sie eine Behauptung.
         setProgress(COMPLETE)
+        setDone(true)
         finishTimer = window.setTimeout(
           () => navigate('/scan/pruefen', { replace: true }),
           FINISH_MS,
@@ -292,18 +302,28 @@ export function ScanProcessing() {
         <div className={styles.progressValue}>{formatPercent(progress / 100)}</div>
       </div>
 
+      {/*
+        Vier Zustände, und jeder ist an dem zu erkennen, was er bedeutet:
+        erledigt (Häkchen), läuft gerade (gefüllter Punkt, Text hervorgehoben),
+        entfällt (Strich), kommt noch (leerer Kreis, gedämpft).
+
+        Der laufende Abschnitt braucht seine eigene Anzeige, weil einer von
+        ihnen vierzehn Sekunden dauert: Ohne sie stünde die Liste die längste
+        Zeit des Scans regungslos da.
+      */}
       <ol className={styles.steps} aria-live="polite">
         {PROGRESS_STEPS.map((step, index) => {
-          const passed = index < current
+          const passed = done || index < current
           // Vorbei, aber nie betreten: Der Abschnitt ist entfallen.
           const skipped = passed && !visited.includes(step.phase)
           const complete = passed && !skipped
+          const running = !done && index === current
+
+          const state = complete ? 'done' : skipped ? 'skipped' : running ? 'running' : 'pending'
+
           return (
-            <li
-              key={step.phase}
-              className={passed ? styles.step : `${styles.step} ${styles['step--pending']}`}
-            >
-              <span className={complete ? styles.tick : `${styles.tick} ${styles['tick--pending']}`}>
+            <li key={step.phase} className={`${styles.step} ${styles[`step--${state}`]}`}>
+              <span className={`${styles.tick} ${styles[`tick--${state}`]}`} aria-hidden="true">
                 {complete ? '✓' : skipped ? '–' : ''}
               </span>
               {step.label}
