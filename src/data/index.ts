@@ -92,6 +92,17 @@ export { saveReceipt, deleteReceipt } from './save'
  * Der Einkaufszettel. Die Rechenarbeit steckt in den Sichten
  * (`v_product_rhythm`, `v_shopping_suggestions`); hier steht das Bedienen.
  */
+/** Haushalt und Einladungen — der Weg von drei Konten zu einem Haushalt. */
+export {
+  createInvite,
+  getHouseholdMembers,
+  getInvite,
+  getOwnReceiptCount,
+  joinHousehold,
+  revokeInvite,
+} from './household'
+export type { HouseholdMember, Invite } from './household'
+
 export {
   getShoppingList,
   setShoppingItemChecked,

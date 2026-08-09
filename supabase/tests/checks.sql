@@ -381,4 +381,119 @@ begin
 end
 $$;
 
+
+-- ============================================================================
+-- Einladungen
+--
+-- Haushalt A lädt ein, ein vierter Nutzer tritt bei. Geprüft wird beides: dass
+-- der Beitritt funktioniert und dass er **nicht** funktioniert, wenn der eigene
+-- Haushalt schon Bons enthält.
+-- ============================================================================
+
+-- Anlegen darf ein Nutzer sich nicht selbst; das macht in Supabase die
+-- Anmeldung. Deshalb kurz zurück in die Verwaltungsrolle.
 reset role;
+insert into auth.users (id, email, raw_user_meta_data)
+values ('44444444-4444-4444-4444-444444444444', 'd@example.test', '{"full_name": "Marie"}'::jsonb);
+set role pruefer;
+
+select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', false);
+
+do $$
+declare
+  v_code   text;
+  v_code2  text;
+  v_house  uuid;
+  n        bigint;
+begin
+  v_code := public.create_household_invite();
+  assert length(v_code) = 8, format('Code: 8 Zeichen erwartet, %s', length(v_code));
+  assert v_code ~ '^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$',
+    format('Code enthält verwechselbare Zeichen: %s', v_code);
+
+  -- Ein zweiter Aufruf gibt denselben Code zurück, statt einen zweiten gültigen
+  -- in Umlauf zu bringen.
+  assert public.create_household_invite() = v_code, 'Zweiter gültiger Code angelegt';
+
+  -- „Neuen Code erzeugen" zieht den alten zurück.
+  v_code2 := public.create_household_invite(true);
+  assert v_code2 <> v_code, 'Neuer Code ist derselbe';
+
+  select count(*) into n
+  from public.household_invites
+  where revoked_at is null and expires_at > now();
+  assert n = 1, format('Gültige Codes: 1 erwartet, %s', n);
+
+  select household_id into v_house from public.household_members
+  where user_id = '11111111-1111-1111-1111-111111111111';
+
+  /* ------------------------------------------------- Marie tritt bei */
+
+  perform set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', false);
+
+  -- Ein falscher Code ist eine klare Absage und kein stiller Fehlschlag.
+  begin
+    perform public.redeem_household_invite('XXXXXXXX');
+    assert false, 'Ungültiger Code wurde angenommen';
+  exception
+    when no_data_found then null;
+  end;
+
+  assert public.redeem_household_invite(v_code2) = v_house, 'Beitritt ging in den falschen Haushalt';
+
+  select count(*) into n from public.household_members
+  where user_id = '44444444-4444-4444-4444-444444444444';
+  assert n = 1, format('Marie ist in %s Haushalten', n);
+
+  -- Sie sieht genau einen Haushalt: den, dem sie beigetreten ist. Dass ihr
+  -- alter wirklich gelöscht wurde, prüft die Abfrage weiter unten — dafür
+  -- braucht es einen Blick ohne Zeilensicherheit.
+  select count(*) into n from public.households;
+  assert n = 1, format('Marie sieht %s Haushalte, 1 erwartet', n);
+
+  -- Und noch einmal einlösen ist kein Fehler, sondern ein No-Op.
+  assert public.redeem_household_invite(v_code2) = v_house, 'Zweites Einlösen schlug fehl';
+
+  /* ------------------- Ein Haushalt mit Bons wird nicht aufgelöst */
+
+  perform set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', false);
+  begin
+    perform public.redeem_household_invite(v_code2);
+    assert false, 'Haushalt mit Einkäufen wurde aufgelöst';
+  exception
+    when raise_exception then null;
+  end;
+
+  perform set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', false);
+
+  /* ------------------------------------------------ Die Mitgliederliste */
+
+  select count(*) into n from public.household_members_list();
+  assert n = 2, format('Mitglieder: 2 erwartet, %s', n);
+
+  select count(*) into n from public.household_members_list() where is_self;
+  assert n = 1, format('„Ich" genau einmal erwartet, %s', n);
+
+  select count(*) into n from public.household_members_list() where name = 'Marie';
+  assert n = 1, 'Der Anzeigename aus den Google-Daten fehlt';
+
+  raise notice 'Alle Einladungs-Prüfungen bestanden.';
+end
+$$;
+
+reset role;
+
+-- Ohne Zeilensicherheit: Maries leerer Haushalt ist wirklich weg. Übrig sind
+-- die drei aus den Testdaten (A, B, C).
+do $$
+declare n bigint;
+begin
+  select count(*) into n from public.households;
+  assert n = 3, format('Haushalte insgesamt: 3 erwartet, %s', n);
+
+  select count(*) into n from public.household_members;
+  assert n = 4, format('Mitgliedschaften: 4 erwartet, %s', n);
+
+  raise notice 'Der leere Haushalt wurde beim Beitritt aufgelöst.';
+end
+$$;

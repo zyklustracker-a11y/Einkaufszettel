@@ -1,0 +1,167 @@
+/* Haushalt und Familie. Dieselben Karten wie in den übrigen Einstellungen —
+   nur der Code selbst darf auffallen, er wird schließlich vorgelesen. */
+
+.card {
+  background: var(--card);
+  border-radius: 18px;
+  padding: 6px 16px 16px;
+  box-shadow: var(--shadow);
+  margin-bottom: 14px;
+}
+
+.cardTitle {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 12px 0 8px;
+}
+
+.note {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.warn {
+  margin: 10px 0 0;
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: var(--amber-soft);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.error {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--red);
+}
+
+/* ------------------------------------------------------------- Mitglieder */
+
+.member {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding: 13px 0;
+}
+
+.memberName {
+  display: block;
+  font-size: 15.5px;
+  font-weight: 600;
+}
+
+.memberMail {
+  display: block;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 99px;
+  background: var(--chip);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.badge--current {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+/* ----------------------------------------------------------------- Code
+
+   Groß, einzeln stehend, mit weiten Zeichenabständen: Er wird abgetippt und
+   vorgelesen, und beides ist der einzige Zweck dieser Zeichenfolge. */
+
+.code {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 16px 8px;
+  border-radius: 14px;
+  border: 1px dashed var(--line);
+  background: var(--card2);
+  color: var(--text);
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-align: center;
+  cursor: pointer;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.primary {
+  width: 100%;
+  height: 48px;
+  margin-top: 12px;
+  border-radius: 15px;
+  border: none;
+  background: var(--green);
+  color: #fff;
+  font-size: 15.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.secondary {
+  flex: 1;
+  height: 44px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.secondary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 16px Schriftgröße ist auf iOS Pflicht: Alles darunter lässt Safari beim
+   Fokussieren hineinzoomen. Der Code selbst steht größer und einzeln. */
+.input {
+  width: 100%;
+  height: 50px;
+  margin-top: 12px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--card2);
+  color: var(--text);
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 18px;
+  letter-spacing: 0.12em;
+  text-align: center;
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--green);
+}

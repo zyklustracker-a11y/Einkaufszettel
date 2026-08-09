@@ -1092,6 +1092,54 @@ dann was die Erkennung steuert (Kategorien, Merkmale), dann der Haushalt, dann
 die Darstellung. „Konto abmelden" steht ganz unten — der einzige Eintrag, den man
 nicht versehentlich treffen soll.
 
+### Ergänzt mit Schritt 12 (Familie einladen)
+
+**Ein Code zum Abtippen, kein Link.** Ein Einladungslink müsste den Code aus der
+Adresszeile lesen — und der Eingeladene muss sich vorher trotzdem anmelden, sonst
+gibt es niemanden, den man eintragen könnte. Nach dem Rücksprung von Google wäre
+der Code wieder weg, es sei denn, die App legte ihn irgendwo ab. Für drei
+Familienmitglieder ist der kürzere Weg: anmelden, Code eingeben, fertig. Er lässt
+sich auch vorlesen.
+
+Acht Zeichen aus einem Alphabet **ohne 0/O und 1/I/L**. Die verwechselt man beim
+Abtippen, und „ungültiger Code" wäre hier sonst die häufigste Meldung statt der
+seltensten.
+
+**Ein Code je Haushalt, mehrfach einlösbar, sieben Tage gültig.** Nicht einer je
+Person: Eine Familie mit zwei weiteren Mitgliedern bräuchte sonst zwei Codes, und
+der zweite ginge verloren. Der Preis ist, dass ein durchgesickerter Code bis zum
+Ablauf gilt — dagegen stehen die sieben Tage und ein Knopf zum Zurückziehen.
+
+**`redeem_household_invite()` ist die einzige Nutzerfunktion mit `SECURITY
+DEFINER`, und sie braucht es zwingend:** Wer beitritt, darf die Einladungszeile
+des fremden Haushalts nicht sehen — sonst könnte er auch alles andere dort sehen.
+Die Prüfung, ob er darf, *ist* der Code. Der Rumpf ist entsprechend eng: Der Code
+muss gültig sein, geschrieben wird ausschließlich in `household_members` und
+ausschließlich für `auth.uid()`, und `search_path` ist fixiert.
+
+**Der eigene leere Haushalt wird beim Beitreten aufgelöst.** Das ist der
+Normalfall — er entstand beim Anmelden und enthält nur die mitgelieferten
+Kategorien und Merkmale. Gelöscht wird er nur, wenn danach wirklich niemand mehr
+darin sitzt.
+
+**Enthält er schon Bons, wird abgelehnt.** Zusammenführen wäre die Alternative
+und ist bewusst nicht gebaut: Es müsste Produkte, Zuordnungen, Händler und
+Kategorien zweier Haushalte verschmelzen, jede mit eigenen Schlüsseln, und ein
+Fehler dabei wäre nicht rückgängig zu machen. Ein Haushalt mit Daten gehört nicht
+stillschweigend gelöscht. Der Screen sagt das **vorher** und nicht als
+Fehlermeldung hinterher.
+
+**Nach dem Beitritt lädt die App vollständig neu.** Der Haushalt wechselt, und
+daran hängt buchstäblich alles: Kategorien, Merkmale, Händler, jede Abfrage,
+jedes Zwischenlager. Ein Neuladen ist ehrlicher als ein Dutzend Auffrischungen,
+von denen eine vergessen würde — und es passiert genau einmal im Leben eines
+Kontos.
+
+**Die Mitgliederliste kommt aus einer Funktion, nicht aus einer Sicht.** Die
+E-Mail-Adressen stehen in `auth.users`; dorthin kommt keine gewöhnliche Abfrage.
+`household_members_list()` prüft als Allererstes, ob der Aufrufer selbst
+dazugehört, und gibt nur Name, E-Mail, Rolle und Beitrittsdatum zurück.
+
 ### Die Sichten werden gegen erzeugte Testdaten geprüft
 
 `supabase/tests/` legt eine wegwerfbare Datenbank an, spielt alle Migrationen
@@ -1169,7 +1217,7 @@ nur die Voreinstellung.
 | 9 | Einkaufszettel | erledigt |
 | 10 | Merkmale selbst anlegen und gewichten | erledigt |
 | 11 | Einstellungen als Übersicht mit eigenen Screens | erledigt |
-| 12 | Familie einladen | offen |
+| 12 | Familie einladen | erledigt |
 | 13 | Monatsreport als Push-Benachrichtigung | offen |
 
 Ab Schritt 6 zählt der Fahrplan aus `KONZEPT-ERWEITERUNGEN.md` weiter. Die

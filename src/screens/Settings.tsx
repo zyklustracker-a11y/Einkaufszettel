@@ -3,12 +3,13 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Async } from '../components/states'
 import { ChevronRightIcon } from '../components/icons'
-import { Avatar, BackLink, Toggle } from '../components/ui'
+import { BackLink, Toggle } from '../components/ui'
 import { germanDataError, getMonthlyBudgetCents, saveMonthlyBudgetCents, useQuery } from '../data'
 import { formatEuroWhole } from '../lib/format'
 import { useAppState } from '../state/AppState'
 import { useAuth } from '../state/AuthContext'
 import { CategorySettings } from './CategorySettings'
+import { HouseholdSettings } from './HouseholdSettings'
 import { TraitSettings } from './TraitSettings'
 import styles from './Settings.module.css'
 
@@ -192,23 +193,9 @@ export function TraitSettingsScreen() {
 }
 
 export function HouseholdSettingsScreen() {
-  const { user } = useAuth()
-
   return (
     <SettingsPage title="Haushalt">
-      <section className={styles.householdCard}>
-        <div className={styles.householdTitle}>Mitglieder</div>
-        {user && (
-          <div className={styles.member}>
-            <Avatar name={user.name} src={user.avatarUrl} round />
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <span className={styles.memberName}>{user.name}</span>
-              <span className={styles.memberMail}>{user.email}</span>
-            </span>
-            <span className={`${styles.badge} ${styles['badge--current']}`}>Angemeldet</span>
-          </div>
-        )}
-      </section>
+      <HouseholdSettings />
     </SettingsPage>
   )
 }

@@ -419,6 +419,42 @@ Milch-Feldern abgeleitet.
 
 ---
 
+## 2j. Die zehnte Migration: Familie einladen
+
+`migrations/0010_einladungen.sql` gehört zu Schritt 12 und ersetzt die drei
+SQL-Abfragen aus Abschnitt 5 weiter unten.
+
+| Was | Wofür |
+|---|---|
+| Tabelle `household_invites` | ein Code je Haushalt, sieben Tage gültig |
+| `create_household_invite()` | Code erzeugen oder den vorhandenen zurückgeben |
+| `redeem_household_invite()` | beitreten; löst den eigenen leeren Haushalt auf |
+| `household_members_list()` | wer dazugehört, mit Name und E-Mail |
+
+Genauso ausführen wie oben. Erwartet: **Success. No rows returned.**
+
+Danach steht der ganze Ablauf in der App: **Einstellungen → Haushalt.**
+
+1. Du erzeugst dort einen Code und gibst ihn weiter.
+2. Das Familienmitglied meldet sich mit seinem **eigenen** Google-Konto an.
+3. Es öffnet Einstellungen → Haushalt und trägt den Code ein.
+
+> **Wichtig:** Das klappt nur, solange der Haushalt des Familienmitglieds noch
+> **leer** ist — also solange es noch keinen Bon gescannt hat. Sonst lehnt die
+> App ab und sagt, wie viele Einkäufe im Weg stehen. Zusammenführen zweier
+> Haushalte ist bewusst nicht gebaut: Es wäre nicht rückgängig zu machen.
+
+**Prüfen:**
+
+```sql
+select code, expires_at, revoked_at from public.household_invites
+order by created_at desc limit 5;
+
+select * from public.household_members_list();
+```
+
+---
+
 ## 3. Prüfen, ob alles angekommen ist
 
 Öffne eine neue Abfrage und führe diese vier Blöcke nacheinander aus.
@@ -544,8 +580,9 @@ where not exists (select 1 from public.household_members m where m.household_id 
 
 Danach steht ihr zu dritt in einem Haushalt und seht dieselben Daten.
 
-> Ein richtiger Einladungs-Ablauf kommt später. Für drei Personen, die sich
-> einmal anmelden, sind diese drei Abfragen der kürzere Weg.
+> **Seit Schritt 12 brauchst du das nicht mehr.** Der Einladungs-Ablauf steht in
+> der App: Einstellungen → Haushalt → Code erzeugen. Die drei Abfragen hier
+> bleiben als Notweg stehen, falls einmal etwas schiefgeht.
 
 ---
 

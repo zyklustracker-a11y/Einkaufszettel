@@ -31,8 +31,11 @@ $$;
 create schema if not exists auth;
 
 create table if not exists auth.users (
-  id    uuid primary key default gen_random_uuid(),
-  email text
+  id                  uuid primary key default gen_random_uuid(),
+  email               text,
+  -- Supabase legt hier ab, was Google beim Login mitschickt. Die
+  -- Mitgliederliste liest daraus den Anzeigenamen.
+  raw_user_meta_data  jsonb not null default '{}'::jsonb
 );
 
 /*
