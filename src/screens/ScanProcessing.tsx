@@ -1,7 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ProgressBar } from '../components/ui'
-import { ExtractionError, extractReceipt } from '../data'
+import {
+  ExtractionError,
+  consumeScanJob,
+  extractReceipt,
+  getScanJob,
+  resumeScan,
+  startScanJob,
+} from '../data'
 import type { CapturedImage } from '../lib/camera'
 import type { ExtractionPhase, ExtractionResponse } from '../lib/extraction'
 import { getPendingCapture } from '../lib/capture'
@@ -46,6 +53,9 @@ const HOPELESS = [
   'modell_abgelehnt',
 ]
 
+/** Der Satz für einen Fehlschlag, zu dem der Server nichts Genaueres gesagt hat. */
+const GENERIC_FAIL = 'Die Erkennung hat nicht geklappt. Bitte versuch es noch einmal.'
+
 interface ScanError {
   /** Bereits auf Deutsch und direkt anzeigbar. */
   message: string
@@ -69,11 +79,7 @@ function describe(cause: unknown): ScanError {
       raw: cause.raw,
     }
   }
-  return {
-    message: 'Die Erkennung hat nicht geklappt. Bitte versuch es noch einmal.',
-    retryable: true,
-    raw: null,
-  }
+  return { message: GENERIC_FAIL, retryable: true, raw: null }
 }
 
 /** Dateigröße in KB – nur zur Kontrolle, dass das Verkleinern wirkt. */
@@ -152,6 +158,103 @@ export function ScanProcessing() {
    */
   const requestRef = useRef<{ attempt: number; promise: Promise<ExtractionResponse> } | null>(null)
 
+  /*
+   * Der Scan-Job dieses Durchlaufs — der Rettungsweg aus Schritt 6.
+   *
+   * Wechselt der Nutzer während der vierzehn Sekunden in eine andere App, friert
+   * Safari die Seite ein: Die Anfrage steht, die Zeitgeber stehen, und wenn er
+   * zurückkommt, ist die Antwort niemandem mehr zustellbar. Die Edge Function
+   * hat ihr Ergebnis dann aber in den Job geschrieben, und von dort wird es hier
+   * abgeholt (KONZEPT-ERWEITERUNGEN.md, Abschnitt 3).
+   */
+  const jobIdRef = useRef<string | null>(null)
+
+  /**
+   * Der Screen ist fertig — egal, über welchen der beiden Wege.
+   *
+   * Ohne diese Sperre könnten Antwort und Rettungsweg zugleich ankommen (die
+   * eingefrorene Anfrage löst sich manchmal doch noch auf) und der Screen würde
+   * zweimal weiterspringen.
+   */
+  const settledRef = useRef(false)
+  const finishTimerRef = useRef(0)
+
+  const finish = useCallback(
+    (result: ExtractionResponse) => {
+      if (settledRef.current) return
+      settledRef.current = true
+
+      setPendingExtraction(result)
+      // Erst jetzt die volle Anzeige — vorher wäre sie eine Behauptung.
+      setProgress(COMPLETE)
+      setDone(true)
+
+      // Der Job hat seine Aufgabe erfüllt und soll sich nicht als offener Scan
+      // melden, während der Nutzer den Korrektur-Screen vor sich hat.
+      if (jobIdRef.current) void consumeScanJob(jobIdRef.current)
+
+      finishTimerRef.current = window.setTimeout(
+        () => navigate('/scan/pruefen', { replace: true }),
+        FINISH_MS,
+      )
+    },
+    [navigate],
+  )
+
+  const failWith = useCallback((cause: unknown) => {
+    if (settledRef.current) return
+    settledRef.current = true
+    setError(describe(cause))
+  }, [])
+
+  /**
+   * Nachsehen, ob der Server inzwischen fertig ist.
+   *
+   * Wird an zwei Stellen aufgerufen: wenn die Seite wieder sichtbar wird, und
+   * wenn die Anfrage fehlgeschlagen ist. Beides sind genau die Fälle, in denen
+   * das Ergebnis serverseitig fertig sein kann, ohne dass es hier ankam.
+   */
+  const recover = useCallback(async (): Promise<boolean> => {
+    const jobId = jobIdRef.current
+    if (!jobId || settledRef.current) return false
+
+    const job = await getScanJob(jobId)
+    if (!job || settledRef.current) return false
+
+    if (job.status === 'done' && job.result) {
+      try {
+        finish(await resumeScan(job.result, enterPhase))
+        return true
+      } catch (cause) {
+        failWith(cause)
+        return true
+      }
+    }
+
+    if (job.status === 'failed') {
+      failWith(new ExtractionError(job.errorCode ?? 'unbekannt', job.errorMessage ?? GENERIC_FAIL))
+      return true
+    }
+
+    // `running`: Die Erkennung läuft noch. Nichts tun — der Balken wartet.
+    return false
+    // `enterPhase` wird bei jedem Rendern neu erzeugt, ist aber nur ein Melder
+    // und trägt keinen Zustand.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finish, failWith])
+
+  /*
+   * Zurück aus dem Hintergrund: einmal nachfragen. Das ist der eigentliche
+   * Zweck des Jobs — ohne diesen Haken wäre er nur eine Zeile in der Datenbank.
+   */
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void recover()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [recover])
+
   useEffect(() => {
     if (!capture) return
     const url = URL.createObjectURL(capture.blob)
@@ -196,7 +299,6 @@ export function ScanProcessing() {
     if (!capture) return
 
     let cancelled = false
-    let finishTimer = 0
 
     if (requestRef.current?.attempt !== attempt) {
       // Ein Ergebnis aus einem früheren Durchlauf hat hier nichts zu suchen.
@@ -207,33 +309,50 @@ export function ScanProcessing() {
       setVisited(['vorbereiten'])
       setDone(false)
       setProgress(0)
+      settledRef.current = false
+      jobIdRef.current = null
       phaseStartRef.current = Date.now()
-      requestRef.current = { attempt, promise: extractReceipt(capture, enterPhase) }
+
+      /*
+       * Erst der Job, dann das Bild. Der Job kostet eine kurze Anfrage und darf
+       * scheitern: Kommt keine id zurück (fehlende Migration, kein Netz), läuft
+       * die Erkennung wie vor Schritt 6 — sie überlebt dann nur keinen
+       * App-Wechsel. Ein Rettungsweg, der den Normalfall blockiert, wäre ein
+       * schlechter Tausch.
+       */
+      requestRef.current = {
+        attempt,
+        promise: startScanJob().then((jobId) => {
+          jobIdRef.current = jobId
+          return extractReceipt(capture, enterPhase, jobId)
+        }),
+      }
     }
 
     requestRef.current.promise.then(
       (result) => {
         if (cancelled) return
-        setPendingExtraction(result)
-        // Erst jetzt die volle Anzeige — vorher wäre sie eine Behauptung.
-        setProgress(COMPLETE)
-        setDone(true)
-        finishTimer = window.setTimeout(
-          () => navigate('/scan/pruefen', { replace: true }),
-          FINISH_MS,
-        )
+        finish(result)
       },
       (cause: unknown) => {
         if (cancelled) return
-        setError(describe(cause))
+        /*
+         * Bevor hier ein Fehler steht: nachsehen, ob der Server fertig ist. Genau
+         * das ist der Fall nach einem App-Wechsel — die Anfrage bricht ab, das
+         * Ergebnis liegt aber im Job. Ein „Erkennung fehlgeschlagen" wäre dann
+         * schlicht falsch, und der Nutzer verbrennte einen zweiten Modellaufruf.
+         */
+        void recover().then((rescued) => {
+          if (!rescued && !cancelled) failWith(cause)
+        })
       },
     )
 
     return () => {
       cancelled = true
-      window.clearTimeout(finishTimer)
+      window.clearTimeout(finishTimerRef.current)
     }
-  }, [capture, attempt, navigate])
+  }, [capture, attempt, finish, failWith, recover])
 
   if (!capture) {
     return (

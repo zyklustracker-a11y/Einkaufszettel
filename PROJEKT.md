@@ -822,6 +822,75 @@ schließen ist ausdrücklich verboten: Ein aus dem Kontext erschlossenes „CHF"
 die Sorte plausibler Fehler, die niemand bemerkt und die jede Monatssumme um
 sieben Prozent verschiebt. Steht nichts da, ist der Bon ein Euro-Bon.
 
+### Ergänzt mit Schritt 6 (Verarbeitung im Hintergrund)
+
+**Das Ergebnis liegt ab jetzt auch auf dem Server.** Wechselt der Nutzer während
+des Scans die App, friert Safari die Seite ein: Die Edge Function rechnet weiter,
+aber ihre Antwort hat beim Zurückkommen niemanden mehr, dem sie zugestellt werden
+könnte. Bei rund fünfzehn Sekunden Scan-Dauer ist das kein Randfall. Deshalb legt
+die App vor dem Scan einen Job in `scan_jobs` an, und Durchgang 1 schreibt sein
+Ergebnis **zusätzlich** dorthin (`supabase/migrations/0005_hintergrund.sql`).
+
+**Im Job liegt nur Durchgang 1.** Durchgang 2 — die Namensgebung — läuft erst,
+wenn die App wieder wach ist. Zwei Gründe: Er ist billig und braucht kein Bild,
+und er soll mit den Merkmalen laufen, die *jetzt* gelten. Ein zweiter
+Zwischenspeicher für ein Zwischenergebnis wäre eine zweite Stelle, an der
+derselbe Ablauf hängt.
+
+**Das Bon-Foto liegt weiterhin nirgends.** In `scan_jobs.result` stehen nur die
+erkannten Daten — dieselbe Struktur, die sonst über die Leitung ginge.
+
+**Zwei Rettungswege, weil es zwei Fälle gibt.** Lebt die Seite noch (der
+Verarbeitungs-Screen steht im Hintergrund), fragt sie bei `visibilitychange`
+selbst nach und macht dort weiter, wo sie war. Hat iOS sie ganz aus dem Speicher
+geworfen, ist beim nächsten Start alles weg — dann steht der Hinweis auf der
+Übersicht (`OpenScanNotice`). **Das Foto ist in diesem zweiten Fall verloren, das
+Ergebnis nicht.** Das ist die Grenze, die bleibt, und sie ist hinnehmbar: Das
+Ergebnis ist der teure Teil.
+
+**Bevor ein Fehler auf dem Screen steht, wird nachgefragt.** Eine abgebrochene
+Anfrage nach einem App-Wechsel sieht aus wie ein Netzfehler und ist keiner. Ohne
+diesen Zwischenschritt stünde „Erkennung fehlgeschlagen" da, und der Nutzer
+verbrennte einen zweiten Modellaufruf für ein Ergebnis, das längst fertig ist.
+
+**Der Job darf scheitern, der Scan nicht.** Kommt keine Job-id zurück — fehlende
+Migration, kein Netz —, läuft die Erkennung wie vor Schritt 6; sie überlebt dann
+nur keinen App-Wechsel. Ein Rettungsweg, der den Normalfall blockiert, wäre ein
+schlechter Tausch.
+
+**Ein offener Job gehört dem Gerät, nicht dem Haushalt.** `created_by` filtert
+mit: Sonst bekäme das ganze Haus die Meldung „Ein Scan ist fertig", sobald
+irgendwer irgendwo einen Bon fotografiert.
+
+**Aufgeräumt wird beim Anlegen des nächsten Jobs**, nicht nach Zeitplan. Jobs
+älter als 24 Stunden verschwinden dabei. Ein eigener `pg_cron`-Auftrag wäre für
+einen Zwischenspeicher zu viel Maschinerie — Zeilen entstehen ohnehin nur, wenn
+jemand die App benutzt.
+
+### Die Sichten werden gegen erzeugte Testdaten geprüft
+
+`supabase/tests/` legt eine wegwerfbare Datenbank an, spielt alle Migrationen
+ein, schreibt vier Bons über `save_receipt` und rechnet die Sichten nach
+(`npm run test:sql`). Der Grund: Die Auswertungen sind reine SQL-Logik — Summen,
+Vergleiche, Zeitfenster, Schwellen —, und genau die lässt sich mit einer fast
+leeren echten Datenbank *nicht* prüfen, weil der interessante Fall (zwei Läden,
+ein Sonderangebot, ein Restaurantbesuch, ein Vormonat) darin gar nicht vorkommt.
+
+Zwei Entscheidungen dazu:
+
+- **Geschrieben wird über `save_receipt`, nicht mit `insert`.** Damit prüft schon
+  das Anlegen der Testdaten den Schreibweg mit: Händler zusammenführen, Produkte
+  anlegen, Merkmale hängen, Zuordnungen lernen. Ein `insert` von Hand stellte
+  einen Zustand her, den die App nie erzeugt.
+- **Gelaufen wird als eigene Rolle, nicht als Superuser.** Ein Superuser umgeht
+  die Zeilensicherheit; dann prüfte man die Sichten ohne genau das, was sie
+  absichern. So prüft jede Abfrage die Haushaltstrennung gleich mit — im
+  Datenbestand steht ein zweiter Haushalt, dessen Zeilen nirgends auftauchen
+  dürfen.
+
+Der Lauf hängt an einer lokalen PostgreSQL-Instanz und gehört deshalb **nicht** in
+`npm test`. Der bleibt, was er ist: Er läuft überall und ohne Einrichtung.
+
 ## Datenmodell-Grundsätze
 
 - **Haushalt statt Einzelnutzer.** Alle Familienmitglieder sehen dieselben Daten. Jede
@@ -868,11 +937,19 @@ nur die Voreinstellung.
 | 5a | Migration `0004` (alle Schemaänderungen), Kategorieverwaltung, Auswärts essen mit Trinkgeld | erledigt |
 | 5b | Fremdwährung mit EZB-Kurs, gespeicherte Bons bearbeiten | erledigt |
 | — | Bestpreis- und Analyse-Logik als SQL-Views | mit 2c vorgezogen |
-| 6 | Health-Score, Merkmals-Verwaltung in den Einstellungen, Sparhinweise, Push zum Monatsreport | Score erledigt, Rest offen |
+| — | Health-Score als Formel in `src/lib/score.ts` | erledigt |
+| 6 | Verarbeitung im Hintergrund (`scan_jobs`) | erledigt |
+| 7 | Spritkosten | offen |
+| 8 | Bestpreise und Analysen scharf schalten | offen |
+| 9 | Einkaufszettel | offen |
+| 10 | Merkmale selbst anlegen und gewichten | offen |
+| 11 | Einstellungen als Übersicht mit eigenen Screens | offen |
+| 12 | Familie einladen | offen |
+| 13 | Monatsreport als Push-Benachrichtigung | offen |
 
-Ab hier zählt der Fahrplan aus `KONZEPT-ERWEITERUNGEN.md` weiter (Verarbeitung
-im Hintergrund, Spritkosten, Einkaufszettel …). Die Nummerierung der beiden
-Dateien ist seit Schritt 5 dieselbe.
+Ab Schritt 6 zählt der Fahrplan aus `KONZEPT-ERWEITERUNGEN.md` weiter. Die
+Nummerierung der beiden Dateien ist seit Schritt 5 dieselbe; 11 (Einstellungen)
+kam dazu und stand in keinem der beiden Konzepte.
 
 Der ursprüngliche Schritt 3 (Google-Login) wurde als 2b vorgezogen, weil ohne
 Anmeldung keine Abfrage eine Zeile zurückgibt: Die Zugriffsregeln hängen am

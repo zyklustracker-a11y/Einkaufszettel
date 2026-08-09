@@ -1,0 +1,66 @@
+/* Der Hinweis auf einen Scan, dessen Ergebnis auf dem Server liegengeblieben
+   ist. Bewusst dieselbe Karte wie alles andere auf der Übersicht — er ist keine
+   Störung, sondern ein Angebot. */
+
+.card {
+  background: var(--card);
+  border-radius: 18px;
+  padding: 14px 16px 16px;
+  box-shadow: var(--shadow);
+  margin-bottom: 14px;
+  /* Der einzige Unterschied zur normalen Karte: eine grüne Kante, damit der
+     Hinweis beim Öffnen der App auffällt, ohne zu blinken. */
+  border-left: 3px solid var(--green);
+}
+
+.card--failed {
+  border-left-color: var(--red);
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.text {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.primary {
+  flex: 1;
+  height: 42px;
+  border-radius: 13px;
+  border: none;
+  background: var(--green);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.secondary {
+  height: 42px;
+  padding: 0 16px;
+  border-radius: 13px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}

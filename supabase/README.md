@@ -206,6 +206,45 @@ Erwartet: eine Zeile mit `A`, Gewicht `0`, aktiv.
 
 ---
 
+## 2e. Die fünfte Migration: Verarbeitung im Hintergrund
+
+`migrations/0005_hintergrund.sql` gehört zu Schritt 6. Sie sorgt dafür, dass ein
+Scan nicht mehr verlorengeht, wenn du während der fünfzehn Sekunden kurz in eine
+andere App wechselst.
+
+| Was | Wofür |
+|---|---|
+| Tabelle `scan_jobs` | das Ergebnis liegt zusätzlich auf dem Server |
+| Funktion `start_scan_job()` | legt einen Job an und räumt die alten weg |
+| Sicht `v_open_scan_job` | „liegt für mich noch ein Scan bereit?" |
+
+Genauso ausführen wie oben: **SQL Editor → New query → Datei einfügen → Run.**
+Erwartet: **Success. No rows returned.** Die Datei ist mehrfach ausführbar.
+
+**Prüfen:**
+
+```sql
+select public.start_scan_job() as job;
+select id, status, created_at from public.scan_jobs order by created_at desc limit 5;
+```
+
+Erwartet: eine id und eine Zeile mit `status = running`. Die kannst du danach
+gleich wieder wegräumen:
+
+```sql
+delete from public.scan_jobs where status = 'running' and result is null;
+```
+
+> **Das Bon-Foto liegt weiterhin nirgends.** In `result` stehen nur die erkannten
+> Daten — Positionen, Beträge, Steuerkennzeichen. Das Bild geht wie bisher durch
+> die Funktion und wird danach verworfen.
+
+Jobs, die älter als 24 Stunden sind, verschwinden beim nächsten Scan von selbst.
+Es gibt dafür keinen Zeitplan und keine Aufräum-Automatik, um die du dich kümmern
+müsstest.
+
+---
+
 ## 3. Prüfen, ob alles angekommen ist
 
 Öffne eine neue Abfrage und führe diese vier Blöcke nacheinander aus.

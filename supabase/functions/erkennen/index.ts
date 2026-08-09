@@ -36,10 +36,24 @@
  * von Durchgang 1 bereits in der Hand und kann den Korrektur-Screen auch ohne
  * Zuordnung zeigen. Der teure Teil ist ja geschafft.
  *
- * **Gespeichert wird hier nichts.** Geschrieben wird erst beim „Speichern" im
- * Korrektur-Screen, und zwar über die Datenbankfunktion `save_receipt` — in
- * einer Transaktion, damit kein halber Bon zurückbleiben kann. Diese Funktion
- * liest nur.
+ * **Ein Bon wird hier nicht gespeichert.** Geschrieben wird erst beim
+ * „Speichern" im Korrektur-Screen, und zwar über die Datenbankfunktion
+ * `save_receipt` — in einer Transaktion, damit kein halber Bon zurückbleiben
+ * kann.
+ *
+ * ---------------------------------------------------------------------------
+ * SEIT SCHRITT 6: DAS ERGEBNIS LANDET AUCH IM JOB
+ * ---------------------------------------------------------------------------
+ *
+ * Schickt die App eine `jobId` mit, schreibt Durchgang 1 sein Ergebnis
+ * zusätzlich in `scan_jobs`. Der Grund steht im Kopf von
+ * `supabase/migrations/0005_hintergrund.sql`: Wechselt der Nutzer während des
+ * Scans die App, friert Safari die Seite ein, und die Antwort kommt nirgends an
+ * — obwohl sie fertig war. Über den Job holt die App sie beim Zurückkommen ab.
+ *
+ * **Das Bild wird dabei nicht abgelegt**, nur das Erkannte. Und ein Fehlschlag
+ * beim Schreiben reißt den Scan nicht mit: Der Job ist ein Rettungsweg, kein
+ * Bestandteil der Erkennung.
  */
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
@@ -201,8 +215,18 @@ function fail(code: ExtractionErrorCode, message: string, status: number, raw?: 
   return json(body, status)
 }
 
-/** Aus einem Fehlschlag beim Modell wird eine Antwort für den Nutzer. */
-function failFromMistral(reason: MistralFailure, model: string, detail: string): Response {
+/**
+ * Aus einem Fehlschlag beim Modell wird das, was der Nutzer zu lesen bekommt.
+ *
+ * Bewusst ein Wertepaar und keine fertige `Response`: Seit Schritt 6 muss
+ * derselbe Grund an zwei Stellen landen — in der Antwort **und** im Scan-Job.
+ * Zweimal formuliert wären das zwei Texte, die auseinanderlaufen.
+ */
+function mistralFailure(
+  reason: MistralFailure,
+  model: string,
+  detail: string,
+): { code: ExtractionErrorCode; message: string; status: number } {
   /*
    * Der Unterschied, der beim Suchen Stunden spart: Eine abgelehnte Anfrage ist
    * keine Störung bei Mistral, sondern fast immer ein Modellname im Secret, den
@@ -211,40 +235,99 @@ function failFromMistral(reason: MistralFailure, model: string, detail: string):
    * sucht der Nutzer den Fehler bei Mistral statt in seiner Einrichtung.
    */
   if (reason === 'modell_abgelehnt') {
-    return fail(
-      'modell_abgelehnt',
-      `Die Bon-Erkennung hat die Anfrage abgelehnt. Benutztes Modell: „${model}". Antwort der ` +
+    return {
+      code: 'modell_abgelehnt',
+      message:
+        `Die Bon-Erkennung hat die Anfrage abgelehnt. Benutztes Modell: „${model}". Antwort der ` +
         `Schnittstelle: ${detail} — wenn du MISTRAL_MODEL oder MISTRAL_TEXT_MODEL gesetzt hast, ` +
         'prüfe den Namen oder entferne das Secret wieder.',
-      502,
-    )
+      status: 502,
+    }
   }
   if (reason === 'kontingent') {
-    return fail(
-      'kontingent',
-      'Das Kontingent für die Bon-Erkennung ist gerade erschöpft. Bitte in ein paar Minuten ' +
+    return {
+      code: 'kontingent',
+      message:
+        'Das Kontingent für die Bon-Erkennung ist gerade erschöpft. Bitte in ein paar Minuten ' +
         'noch einmal versuchen.',
-      429,
-    )
+      status: 429,
+    }
   }
   if (reason === 'zeitueberschreitung') {
-    return fail(
-      'zeitueberschreitung',
-      'Die Erkennung hat zu lange gedauert. Bitte noch einmal versuchen.',
-      504,
-    )
+    return {
+      code: 'zeitueberschreitung',
+      message: 'Die Erkennung hat zu lange gedauert. Bitte noch einmal versuchen.',
+      status: 504,
+    }
   }
-  return fail(
-    'modell_fehler',
-    'Die Bon-Erkennung ist gerade nicht erreichbar. Bitte später noch einmal versuchen.',
-    502,
-  )
+  return {
+    code: 'modell_fehler',
+    message: 'Die Bon-Erkennung ist gerade nicht erreichbar. Bitte später noch einmal versuchen.',
+    status: 502,
+  }
 }
 
-/* --------------------------------------------- Was der Haushalt schon weiß */
+/** Derselbe Grund als fertige Antwort — für Durchgang 2, der keinen Job kennt. */
+function failFromMistral(reason: MistralFailure, model: string, detail: string): Response {
+  const failure = mistralFailure(reason, model, detail)
+  return fail(failure.code, failure.message, failure.status)
+}
+
+/* ------------------------------------------------------- Der Scan-Job */
 
 /** So wenig wie möglich: nur, was ein Vorschlag braucht. */
 type Client = ReturnType<typeof createClient>
+
+/**
+ * Das Ergebnis von Durchgang 1 in den Job schreiben.
+ *
+ * **Schlägt das fehl, passiert nichts weiter.** Der Job ist der Rettungsweg für
+ * den Fall, dass die Antwort nirgends ankommt; er ist nicht Teil der Erkennung.
+ * Eine Ausnahme an dieser Stelle würde einen fertig gelesenen Bon verwerfen, um
+ * einen Zwischenspeicher zu retten — genau verkehrt herum.
+ */
+async function finishJob(
+  supabase: Client,
+  jobId: string | null,
+  result: StructureResponse,
+): Promise<void> {
+  if (!jobId) return
+  const { error } = await supabase
+    .from('scan_jobs')
+    .update({ status: 'done', result, finished_at: new Date().toISOString() })
+    .eq('id', jobId)
+    .eq('status', 'running')
+  if (error) console.error('Scan-Job konnte nicht abgeschlossen werden:', error.message)
+}
+
+/**
+ * Den Job als gescheitert vermerken — mit demselben Code und demselben deutschen
+ * Satz, den auch die Antwort trägt.
+ *
+ * Ohne das stünde ein abgebrochener Scan für immer auf `running`, und die App
+ * fragte beim Zurückkommen nach einem Ergebnis, das es nie geben wird.
+ */
+async function failJob(
+  supabase: Client,
+  jobId: string | null,
+  code: ExtractionErrorCode,
+  message: string,
+): Promise<void> {
+  if (!jobId) return
+  const { error } = await supabase
+    .from('scan_jobs')
+    .update({
+      status: 'failed',
+      error_code: code,
+      error_message: message,
+      finished_at: new Date().toISOString(),
+    })
+    .eq('id', jobId)
+    .eq('status', 'running')
+  if (error) console.error('Scan-Job konnte nicht als fehlgeschlagen vermerkt werden:', error.message)
+}
+
+/* --------------------------------------------- Was der Haushalt schon weiß */
 
 /**
  * Die gelernten Zuordnungen des Haushalts, fertig zum Nachschlagen.
@@ -471,6 +554,14 @@ interface RequestBody {
    */
   waehrung?: unknown
   datum?: unknown
+  /**
+   * Der Scan-Job, in den Durchgang 1 sein Ergebnis zusätzlich schreibt.
+   *
+   * Fehlt er, läuft alles wie vorher — der Job ist ein Rettungsweg und keine
+   * Voraussetzung. Eine App, die noch nichts davon weiß, funktioniert
+   * unverändert weiter.
+   */
+  jobId?: unknown
 }
 
 /* ================================================================= Durchgang 1 */
@@ -481,7 +572,20 @@ async function handleStructure(
   apiKey: string,
   image: string,
   mimeType: string,
+  /** Der Rettungsweg aus Schritt 6. Null: Die App hat keinen Job angelegt. */
+  jobId: string | null,
 ): Promise<Response> {
+  /** Jeder Fehlausgang vermerkt denselben Grund im Job und in der Antwort. */
+  const abort = async (
+    code: ExtractionErrorCode,
+    message: string,
+    status: number,
+    raw?: string,
+  ): Promise<Response> => {
+    await failJob(supabase, jobId, code, message)
+    return fail(code, message, status, raw)
+  }
+
   /*
    * Die gelernten Zuordnungen. Sie werden **vor** dem Modellaufruf angestoßen
    * und erst nach der Prüfung gebraucht — so laufen sie neben den vierzehn
@@ -503,12 +607,13 @@ async function handleStructure(
     // `detail` ist die technische Ursache. Sie geht ins Funktions-Protokoll,
     // aber nie in die Oberfläche.
     console.error('Mistral (Struktur):', outcome.reason, outcome.detail)
-    return failFromMistral(outcome.reason, outcome.model, outcome.detail)
+    const failure = mistralFailure(outcome.reason, outcome.model, outcome.detail)
+    return await abort(failure.code, failure.message, failure.status)
   }
 
   const parsed = parseModelJson(outcome.text)
   if (parsed === null) {
-    return fail(
+    return await abort(
       'modell_json',
       'Die Antwort der Erkennung war unbrauchbar. Bitte den Bon noch einmal scannen.',
       502,
@@ -519,7 +624,7 @@ async function handleStructure(
   }
 
   if (isUnreadable(parsed)) {
-    return fail(
+    return await abort(
       'bild_unlesbar',
       'Auf dem Foto war kein lesbarer Kassenzettel zu erkennen. Bitte flach hinlegen, gut ausleuchten und die ganze Länge aufnehmen.',
       422,
@@ -568,6 +673,14 @@ async function handleStructure(
     exchangeRate: rate.exchangeRate,
     rateError: rate.rateError,
   }
+
+  /*
+   * Erst in den Job, dann zurück. Die Reihenfolge ist Absicht: Wäre die Antwort
+   * schon unterwegs, während der Job noch geschrieben wird, könnte eine App, die
+   * genau in diesem Moment aufwacht, einen `running`-Job sehen, obwohl das
+   * Ergebnis längst da ist — und würde vergeblich weiter warten.
+   */
+  await finishJob(supabase, jobId, response)
 
   return json(response, 200)
 }
@@ -736,19 +849,25 @@ Deno.serve(async (request: Request): Promise<Response> => {
     return await handleAssignment(supabase, householdId, apiKey, rawTexts)
   }
 
+  const jobId = typeof body.jobId === 'string' && body.jobId.trim() !== '' ? body.jobId.trim() : null
+
   const image = typeof body.image === 'string' ? body.image : ''
   if (image.length === 0) {
-    return fail('kein_bild', 'Es wurde kein Bild mitgeschickt. Bitte noch einmal scannen.', 400)
+    const message = 'Es wurde kein Bild mitgeschickt. Bitte noch einmal scannen.'
+    // Auch hier den Job schließen: Ein Job, der auf `running` stehen bleibt,
+    // meldet sich beim nächsten App-Start als offener Scan — und dahinter läge
+    // nichts.
+    await failJob(supabase, jobId, 'kein_bild', message)
+    return fail('kein_bild', message, 400)
   }
   if (image.length > MAX_IMAGE_CHARS) {
-    return fail(
-      'bild_zu_gross',
-      'Das Bild ist zu groß. Bitte den Bon noch einmal mit der Kamera in der App aufnehmen.',
-      413,
-    )
+    const message =
+      'Das Bild ist zu groß. Bitte den Bon noch einmal mit der Kamera in der App aufnehmen.'
+    await failJob(supabase, jobId, 'bild_zu_gross', message)
+    return fail('bild_zu_gross', message, 413)
   }
 
   const mimeType = typeof body.mimeType === 'string' ? body.mimeType : 'image/jpeg'
 
-  return await handleStructure(supabase, householdId, apiKey, image, mimeType)
+  return await handleStructure(supabase, householdId, apiKey, image, mimeType, jobId)
 })

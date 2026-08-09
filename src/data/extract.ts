@@ -208,9 +208,29 @@ export async function fetchExchangeRate(
   }
 }
 
+/** Das Token der laufenden Sitzung, oder ein Fehler mit fertigem Satz. */
+async function sessionToken(): Promise<string> {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (!token) {
+    throw new ExtractionError(
+      'nicht_angemeldet',
+      'Du bist nicht mehr angemeldet. Bitte melde dich neu an und scanne noch einmal.',
+    )
+  }
+  return token
+}
+
 export async function extractReceipt(
   capture: CapturedImage,
   onPhase?: (phase: ExtractionPhase) => void,
+  /**
+   * Der Scan-Job, in den die Edge Function ihr Ergebnis zusätzlich schreibt.
+   *
+   * Ohne ihn läuft alles wie vorher; mit ihm überlebt das Ergebnis einen
+   * App-Wechsel (KONZEPT-ERWEITERUNGEN.md, Abschnitt 3).
+   */
+  jobId?: string | null,
 ): Promise<ExtractionResponse> {
   if (!functionsUrl) {
     throw new ExtractionError(
@@ -220,18 +240,11 @@ export async function extractReceipt(
   }
 
   /*
-   * Das Token der laufenden Sitzung. Ohne gültiges Token weist die Funktion die
-   * Anfrage ab — hier wird das nur vorweggenommen, damit der Nutzer nicht erst
-   * ein Bild hochlädt, um dann ein „nicht angemeldet" zu bekommen.
+   * Ohne gültiges Token weist die Funktion die Anfrage ab — hier wird das nur
+   * vorweggenommen, damit der Nutzer nicht erst ein Bild hochlädt, um dann ein
+   * „nicht angemeldet" zu bekommen.
    */
-  const { data } = await supabase.auth.getSession()
-  const token = data.session?.access_token
-  if (!token) {
-    throw new ExtractionError(
-      'nicht_angemeldet',
-      'Du bist nicht mehr angemeldet. Bitte melde dich neu an und scanne noch einmal.',
-    )
-  }
+  const token = await sessionToken()
 
   onPhase?.('vorbereiten')
   const image = await toBase64(capture.blob)
@@ -241,7 +254,11 @@ export async function extractReceipt(
   onPhase?.('lesen')
   const structure = (await call(
     token,
-    { image, mimeType: capture.blob.type || 'image/jpeg' },
+    {
+      image,
+      mimeType: capture.blob.type || 'image/jpeg',
+      ...(jobId ? { jobId } : {}),
+    },
     TIMEOUT_MS,
   )) as StructureResponse | null
 
@@ -249,6 +266,33 @@ export async function extractReceipt(
     throw new ExtractionError('modell_json', 'Die Antwort der Erkennung war unbrauchbar.')
   }
 
+  return await assignOpenTexts(token, structure, onPhase)
+}
+
+/**
+ * Durchgang 2 zu einem Ergebnis, das aus dem Scan-Job kam.
+ *
+ * Der teure Teil ist an dieser Stelle geschafft und lag serverseitig bereit; was
+ * fehlt, ist die Namensgebung — und die ist billig. Sie läuft deshalb erst
+ * **jetzt**, wenn die App wieder wach ist, statt beim Anlegen des Jobs
+ * mitgeschrieben zu werden: Ein Zwischenspeicher für ein Zwischenergebnis wäre
+ * eine zweite Stelle, an der derselbe Ablauf hängt.
+ */
+export async function resumeScan(
+  structure: StructureResponse,
+  onPhase?: (phase: ExtractionPhase) => void,
+): Promise<ExtractionResponse> {
+  const token = await sessionToken()
+  return await assignOpenTexts(token, structure, onPhase)
+}
+
+/* ------------------------------------------------- Durchgang 2: zuordnen */
+
+async function assignOpenTexts(
+  token: string,
+  structure: StructureResponse,
+  onPhase?: (phase: ExtractionPhase) => void,
+): Promise<ExtractionResponse> {
   const open = Array.isArray(structure.offeneRohtexte) ? structure.offeneRohtexte : []
 
   /*
@@ -265,8 +309,6 @@ export async function extractReceipt(
    */
   const exchangeRate = structure.exchangeRate ?? null
   const rateError = typeof structure.rateError === 'string' ? structure.rateError : null
-
-  /* --------------------------------------------- Durchgang 2: zuordnen */
 
   if (open.length === 0) {
     // Der Haushalt kennt jeden Artikel — der zweite Aufruf entfällt vollständig.

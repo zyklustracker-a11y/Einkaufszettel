@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "node --test \"src/**/*.test.ts\" \"supabase/functions/**/*.test.ts\"",
+    "test:sql": "bash supabase/tests/run.sh",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {

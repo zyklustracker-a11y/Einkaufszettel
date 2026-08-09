@@ -49,8 +49,15 @@ export { DataError, germanDataError } from './client'
  * Function — steht aber aus demselben Grund hier: Screens erreichen den Server
  * ausschließlich über diese Schicht.
  */
-export { extractReceipt, fetchExchangeRate, ExtractionError } from './extract'
+export { extractReceipt, resumeScan, fetchExchangeRate, ExtractionError } from './extract'
 export type { ExtractionPhase } from './extract'
+
+/**
+ * Der Rettungsweg für ein Scan-Ergebnis, das nirgends ankommt, weil iOS die
+ * Seite eingefroren hat (KONZEPT-ERWEITERUNGEN.md, Abschnitt 3).
+ */
+export { startScanJob, getScanJob, findOpenScanJob, consumeScanJob } from './scanJobs'
+export type { ScanJob } from './scanJobs'
 
 /**
  * Schreiben. Bis Schritt 4b-2 gab es hier nur das Monatsbudget; seitdem

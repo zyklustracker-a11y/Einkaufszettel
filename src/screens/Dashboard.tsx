@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { CategoryDonut } from '../components/charts'
 import { GearIcon } from '../components/icons'
+import { OpenScanNotice } from '../components/OpenScanNotice'
 import { Async, EmptyState } from '../components/states'
 import { Avatar, ProgressBar } from '../components/ui'
 import { getCategories, getDashboardData, getMerchantName, useQuery } from '../data'
@@ -36,6 +37,13 @@ export function Dashboard() {
           <GearIcon />
         </Link>
       </header>
+
+      {/*
+        Ganz oben und außerhalb von <Async>: Ein Scan, der auf dem Server fertig
+        geworden ist, während iOS die Seite aus dem Speicher geworfen hat, soll
+        auch dann zu sehen sein, wenn die Monatszahlen noch laden.
+      */}
+      <OpenScanNotice />
 
       <Async state={state}>{(data) => <DashboardBody data={data} />}</Async>
     </div>
