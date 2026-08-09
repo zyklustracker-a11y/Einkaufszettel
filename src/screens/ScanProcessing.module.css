@@ -116,6 +116,16 @@
 }
 
 /*
+ * „entfällt" — der Abschnitt hat nicht stattgefunden, weil der Haushalt jeden
+ * Artikel des Bons schon kannte. Bewusst als Text und nicht als Häkchen: Ein
+ * Häkchen behauptete, es sei etwas getan worden.
+ */
+.skipped {
+  opacity: 0.65;
+  font-size: 12px;
+}
+
+/*
  * Die Rohantwort im Fehlerfall — vor allem bei kaputtem JSON ist sie das
  * Einzige, woran sich sehen lässt, was das Modell stattdessen geschrieben hat.
  */

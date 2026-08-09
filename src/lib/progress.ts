@@ -33,14 +33,18 @@ import type { ExtractionPhase } from './extraction'
  * **Das ist die Stellschraube.** Sobald sich zeigt, wie lange ein Scan im Alltag
  * wirklich dauert, werden hier die Zahlen angepasst und sonst nichts.
  *
- * `senden` umfasst alles zwischen Absenden und Antwort: Hochladen über
- * Mobilfunk, den Modell-Aufruf selbst und die Prüfung auf dem Server. Das ist
- * mit Abstand das Längste — die Base64-Umwandlung davor dauert Millisekunden,
- * das Auspacken der Antwort danach ebenso.
+ * `lesen` umfasst alles zwischen Absenden und Antwort des ersten Durchgangs:
+ * Hochladen über Mobilfunk, den Modell-Aufruf mit Bild und die Prüfung auf dem
+ * Server. Das ist mit Abstand das Längste.
+ *
+ * `zuordnen` ist der zweite Aufruf — ohne Bild und mit einem Textmodell, also
+ * ein Bruchteil davon. Er entfällt ganz, wenn der Haushalt jeden Artikel des
+ * Bons schon kennt.
  */
 export const EXPECTED_MS: Record<ExtractionPhase, number> = {
   vorbereiten: 800,
-  senden: 14_000,
+  lesen: 14_000,
+  zuordnen: 3_000,
   auswerten: 700,
 }
 
@@ -70,15 +74,20 @@ export const TICK_MS = 100
 export const FINISH_MS = 250
 
 /**
- * Die drei Abschnitte mit ihrem Prozentbereich und dem Text dazu.
+ * Die vier Abschnitte mit ihrem Prozentbereich und dem Text dazu.
  *
- * Die Bereiche sind nach der typischen Dauer gewichtet — 0,8 s : 14 s : 0,7 s
- * entspricht rund 5 % : 90 % : 4 %. Deshalb steht der Balken die meiste Zeit im
- * mittleren Abschnitt, und genau dort wird auch am längsten gewartet.
+ * Die Bereiche sind nach der typischen Dauer gewichtet — 0,8 s : 14 s : 3 s :
+ * 0,7 s entspricht rund 4 % : 76 % : 16 % : 4 %. Deshalb steht der Balken die
+ * meiste Zeit im zweiten Abschnitt, und genau dort wird auch am längsten
+ * gewartet.
  *
  * Beschriftung und Bereich stehen absichtlich in derselben Zeile: Zwei getrennte
- * Listen über denselben drei Abschnitten wären zwei Stellen, die auseinander-
+ * Listen über denselben vier Abschnitten wären zwei Stellen, die auseinander-
  * laufen können.
+ *
+ * `zuordnen` wird übersprungen, wenn der Haushalt jeden Artikel schon kennt.
+ * Dann springt der Balken von 80 auf 95 — der eine erlaubte Sprung, weil er
+ * eine Abkürzung anzeigt, die wirklich stattgefunden hat.
  */
 export const PROGRESS_STEPS: ReadonlyArray<{
   phase: ExtractionPhase
@@ -87,7 +96,8 @@ export const PROGRESS_STEPS: ReadonlyArray<{
   to: number
 }> = [
   { phase: 'vorbereiten', label: 'Bild wird vorbereitet…', from: 0, to: 5 },
-  { phase: 'senden', label: 'Mistral liest den Bon…', from: 5, to: WAIT_CEILING },
+  { phase: 'lesen', label: 'Mistral liest den Bon…', from: 5, to: 80 },
+  { phase: 'zuordnen', label: 'Positionen werden zugeordnet…', from: 80, to: WAIT_CEILING },
   { phase: 'auswerten', label: 'Ergebnis wird geprüft…', from: WAIT_CEILING, to: CHECK_CEILING },
 ]
 

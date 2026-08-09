@@ -14,17 +14,15 @@ import { isUnreadable, parseModelJson, toCents, validateExtraction } from './val
  * dafür nicht nötig.
  */
 
-const CONTEXT = {
-  categoryKeys: ['produce', 'meat', 'dairy', 'bakery', 'drinks', 'staples', 'nonfood'],
-  traitKeys: ['milch', 'uht', 'weizen', 'gluten', 'verarbeitet'],
-}
-
 /** Kürzel für „ein Bon mit genau diesen Positionen". */
 function receipt(positionen: unknown[], rest: Record<string, unknown> = {}) {
-  return validateExtraction(
-    { lesbar: true, haendler: 'REWE', datum: '2026-08-14', positionen, ...rest },
-    CONTEXT,
-  )
+  return validateExtraction({
+    lesbar: true,
+    haendler: 'REWE',
+    datum: '2026-08-14',
+    positionen,
+    ...rest,
+  })
 }
 
 /* ------------------------------------------------------------ JSON schälen */
@@ -214,67 +212,41 @@ test('Einzelpreis gegen die Zeilensumme', async (t) => {
   })
 })
 
-/* ----------------------------------------------------- Kategorie und Merkmale */
+/* ------------------------------------------------- Struktur bleibt Struktur */
 
-test('Zuordnung gegen die Datenbank', async (t) => {
-  await t.test('übernimmt bekannte Schlüssel', () => {
-    const suggestion = receipt([
-      {
-        rohtext: 'G&G H-MILCH',
-        zeilensumme_cent: 129,
-        vorschlag: {
-          name: 'H-Milch 1,5 % Fett',
-          kategorie: 'dairy',
-          merkmale: ['milch', 'uht'],
-          milch_erhitzung: 'uht',
-          milch_homogenisiert: 'unbekannt',
-        },
-      },
-    ]).items[0].suggestion
-    assert.equal(suggestion?.categoryKey, 'dairy')
-    assert.deepEqual(suggestion?.traitKeys, ['milch', 'uht'])
-    assert.equal(suggestion?.milkHeat, 'uht')
-  })
-
-  await t.test('verwirft erfundene Merkmale', () => {
-    const result = receipt([
-      {
-        rohtext: 'MILCH',
-        zeilensumme_cent: 129,
-        vorschlag: { kategorie: 'dairy', merkmale: ['milch', 'laktose', 'bio'] },
-      },
-    ])
-    assert.deepEqual(result.items[0].suggestion?.traitKeys, ['milch'])
-    assert.ok(result.warnings.some((w) => w.code === 'merkmal_verworfen'))
-  })
-
-  await t.test('lässt eine unbekannte Kategorie offen statt zu raten', () => {
-    const result = receipt([
-      { rohtext: 'BANANEN', zeilensumme_cent: 199, vorschlag: { kategorie: 'obst' } },
-    ])
-    assert.equal(result.items[0].suggestion?.categoryKey, null)
-    assert.ok(result.warnings.some((w) => w.code === 'kategorie_unbekannt'))
-  })
-
-  await t.test('macht aus unbekannten Milchangaben „unbekannt"', () => {
-    const suggestion = receipt([
-      {
-        rohtext: 'MILCH',
-        zeilensumme_cent: 129,
-        vorschlag: { kategorie: 'dairy', milch_erhitzung: 'vielleicht uht', milch_homogenisiert: 'ja' },
-      },
-    ]).items[0].suggestion
-    assert.equal(suggestion?.milkHeat, 'unbekannt')
-    assert.equal(suggestion?.milkHomogenized, 'ja')
-  })
-
-  await t.test('Pfand und Rabatt bekommen keinen Vorschlag', () => {
+test('Durchgang 1 ordnet nichts zu', async (t) => {
+  await t.test('lässt jede Position ohne Zuordnung', () => {
+    // Die Zuordnung kommt aus der Datenbank (`mappings.ts`) oder aus
+    // Durchgang 2 (`assign.ts`) — hier entsteht sie nie.
     const items = receipt([
-      { rohtext: 'PFAND 0,25', art: 'pfand', zeilensumme_cent: 25, vorschlag: { kategorie: 'drinks' } },
-      { rohtext: 'RABATT', art: 'rabatt', zeilensumme_cent: -50 },
+      { rohtext: 'G&G H-MILCH', zeilensumme_cent: 129 },
+      { rohtext: 'PFAND 0,25', art: 'pfand', zeilensumme_cent: 25 },
     ]).items
     assert.equal(items[0].suggestion, null)
     assert.equal(items[1].suggestion, null)
+  })
+
+  await t.test('übergeht einen Vorschlag, den das Modell trotzdem mitschickt', () => {
+    /*
+     * Der Struktur-Prompt fragt nicht danach. Liefert das Modell aus alter
+     * Gewohnheit dennoch einen Vorschlag, wird er stillschweigend übergangen
+     * statt ungeprüft übernommen: Er hat weder Kategorien noch Merkmale des
+     * Haushalts gesehen.
+     */
+    const result = receipt(
+      [
+        {
+          rohtext: 'MILCH',
+          zeilensumme_cent: 129,
+          vorschlag: { name: 'Milch', kategorie: 'dairy', merkmale: ['laktose'] },
+        },
+      ],
+      { summe_cent: 129 },
+    )
+    assert.equal(result.items[0].suggestion, null)
+    assert.equal(result.items[0].rawText, 'MILCH')
+    assert.equal(result.items[0].totalCents, 129)
+    assert.equal(result.warnings.length, 0)
   })
 })
 
@@ -475,22 +447,24 @@ test('Bon als Ganzes', async (t) => {
   })
 
   await t.test('meldet fehlenden Händler und fehlendes Datum', () => {
-    const result = validateExtraction({ lesbar: true, positionen: [] }, CONTEXT)
+    const result = validateExtraction({ lesbar: true, positionen: [] })
     assert.ok(result.warnings.some((w) => w.code === 'haendler_fehlt'))
     assert.ok(result.warnings.some((w) => w.code === 'datum_fehlt'))
   })
 
   await t.test('weist ein Datum zurück, das es nicht gibt', () => {
-    const result = validateExtraction(
-      { lesbar: true, datum: '2026-02-31', uhrzeit: '25:00', positionen: [] },
-      CONTEXT,
-    )
+    const result = validateExtraction({
+      lesbar: true,
+      datum: '2026-02-31',
+      uhrzeit: '25:00',
+      positionen: [],
+    })
     assert.equal(result.purchasedOn, null)
     assert.equal(result.purchasedAt, null)
   })
 
   await t.test('stürzt nicht über eine Antwort ohne Positionen', () => {
-    const result = validateExtraction({ lesbar: true }, CONTEXT)
+    const result = validateExtraction({ lesbar: true })
     assert.deepEqual(result.items, [])
     assert.equal(result.itemsTotalCents, 0)
   })

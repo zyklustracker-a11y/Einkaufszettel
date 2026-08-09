@@ -316,6 +316,12 @@
   transform: rotate(90deg);
 }
 
+/* Ein Durchgang je Block — getrennt nachgeschärft, getrennt angezeigt. */
+.rawBlock + .rawBlock {
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
 .rawMeta {
   margin-top: 10px;
   font-family: ui-monospace, Menlo, monospace;
