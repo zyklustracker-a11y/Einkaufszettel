@@ -26,7 +26,7 @@ const TICK = 100
  * Spielt einen Durchlauf ab und gibt zurück, was der Balken dabei angezeigt hat.
  *
  * Genau die Kette, die auch der Screen fährt: `advanceProgress` mit dem
- * bisherigen Stand, alle 100 ms, über alle drei Abschnitte.
+ * bisherigen Stand, alle 100 ms, über alle vier Abschnitte.
  */
 function run(durations: Record<ExtractionPhase, number>): {
   shown: number[]
@@ -50,31 +50,43 @@ function run(durations: Record<ExtractionPhase, number>): {
 /* ------------------------------------------------- die drei Beispielverläufe */
 
 test('Beispielverläufe', async (t) => {
-  await t.test('Normalfall: 14 s Modellaufruf ergibt 5 → 95 → 99', () => {
-    const { afterPhase } = run({ vorbereiten: 800, senden: 14_000, auswerten: 700 })
+  await t.test('Normalfall: 14 s Lesen, 3 s Zuordnen ergibt 5 → 80 → 95 → 99', () => {
+    const { afterPhase } = run({ vorbereiten: 800, lesen: 14_000, zuordnen: 3_000, auswerten: 700 })
     assert.equal(Math.round(afterPhase.vorbereiten), 5)
-    assert.equal(Math.round(afterPhase.senden), 95)
+    assert.equal(Math.round(afterPhase.lesen), 80)
+    assert.equal(Math.round(afterPhase.zuordnen), 95)
     assert.equal(Math.round(afterPhase.auswerten), 99)
   })
 
-  await t.test('Langsam: bei 45 s wartet er die ganze Zeit auf 95 %', () => {
-    const { shown } = run({ vorbereiten: 800, senden: 45_000, auswerten: 0 })
-    assert.equal(Math.round(Math.max(...shown)), WAIT_CEILING)
+  await t.test('Langsam: bei 45 s Lesen bleibt er bei 80 % stehen', () => {
+    const { afterPhase } = run({ vorbereiten: 800, lesen: 45_000, zuordnen: 0, auswerten: 0 })
+    assert.equal(Math.round(afterPhase.lesen), 80)
 
     // Und zwar wirklich wartend: Ab der erwarteten Dauer bewegt sich nichts mehr.
-    const beiErwartung = estimateProgress('senden', EXPECTED_MS.senden)
-    const vielSpaeter = estimateProgress('senden', EXPECTED_MS.senden * 5)
+    const beiErwartung = estimateProgress('lesen', EXPECTED_MS.lesen)
+    const vielSpaeter = estimateProgress('lesen', EXPECTED_MS.lesen * 5)
     assert.equal(beiErwartung, vielSpaeter)
-    assert.equal(beiErwartung, WAIT_CEILING)
+    assert.equal(beiErwartung, 80)
   })
 
-  await t.test('Schnell: nach 4 s steht er bei 31 % und springt dann', () => {
-    const nachVierSekunden = advanceProgress(5, 'senden', 4_000)
-    assert.equal(Math.round(nachVierSekunden), 31)
+  await t.test('Schnell: nach 4 s Lesen steht er bei 26 % und springt dann', () => {
+    const nachVierSekunden = advanceProgress(5, 'lesen', 4_000)
+    assert.equal(Math.round(nachVierSekunden), 26)
 
-    // Sobald die Antwort da ist, beginnt der nächste Abschnitt bei 95 %.
-    const beimEintreffen = advanceProgress(nachVierSekunden, 'auswerten', 0)
-    assert.equal(beimEintreffen, WAIT_CEILING)
+    // Sobald die Antwort da ist, beginnt der nächste Abschnitt bei seinem Anfang.
+    const beimEintreffen = advanceProgress(nachVierSekunden, 'zuordnen', 0)
+    assert.equal(beimEintreffen, 80)
+  })
+
+  await t.test('Alles bekannt: der Zuordnungs-Abschnitt entfällt, der Balken springt', () => {
+    /*
+     * Kennt der Haushalt jeden Artikel, ruft die App gar nicht erst zum zweiten
+     * Mal auf. Der Sprung von 80 auf 95 ist dann keine geschönte Anzeige,
+     * sondern eine Abkürzung, die wirklich stattgefunden hat.
+     */
+    const nachDemLesen = advanceProgress(5, 'lesen', EXPECTED_MS.lesen)
+    assert.equal(nachDemLesen, 80)
+    assert.equal(advanceProgress(nachDemLesen, 'auswerten', 0), WAIT_CEILING)
   })
 })
 
@@ -82,7 +94,7 @@ test('Beispielverläufe', async (t) => {
 
 test('läuft nie rückwärts', async (t) => {
   await t.test('über einen vollständigen Durchlauf', () => {
-    const { shown } = run({ vorbereiten: 800, senden: 20_000, auswerten: 700 })
+    const { shown } = run({ vorbereiten: 800, lesen: 20_000, zuordnen: 3_000, auswerten: 700 })
     for (let i = 1; i < shown.length; i++) {
       assert.ok(shown[i] >= shown[i - 1], `Takt ${i}: ${shown[i]} < ${shown[i - 1]}`)
     }
@@ -93,19 +105,19 @@ test('läuft nie rückwärts', async (t) => {
     // Abschnitt beginnt trotzdem bei seinem `from` — ein Sprung nach vorn.
     const frueh = advanceProgress(0, 'vorbereiten', 10)
     assert.ok(frueh < 1)
-    assert.equal(advanceProgress(frueh, 'senden', 0), 5)
+    assert.equal(advanceProgress(frueh, 'lesen', 0), 5)
   })
 
   await t.test('auch bei einem verspäteten Takt aus dem vorigen Abschnitt', () => {
-    // Der Screen ist längst bei `auswerten`; ein Nachzügler aus `senden` darf
+    // Der Screen ist längst bei `auswerten`; ein Nachzügler aus `lesen` darf
     // den Stand nicht wieder herunterziehen.
     const stand = advanceProgress(0, 'auswerten', 0)
-    assert.equal(advanceProgress(stand, 'senden', 1_000), stand)
+    assert.equal(advanceProgress(stand, 'lesen', 1_000), stand)
   })
 
   await t.test('auch bei unsinnigen Eingaben', () => {
-    assert.equal(advanceProgress(50, 'senden', -5_000), 50)
-    assert.ok(estimateProgress('senden', -5_000) >= 0)
+    assert.equal(advanceProgress(50, 'lesen', -5_000), 50)
+    assert.ok(estimateProgress('lesen', -5_000) >= 0)
   })
 })
 
@@ -126,14 +138,14 @@ test('erreicht 100 % erst mit dem Ergebnis', async (t) => {
   })
 
   await t.test('auch ein sehr langer Durchlauf bleibt darunter', () => {
-    const { shown } = run({ vorbereiten: 5_000, senden: 120_000, auswerten: 5_000 })
+    const { shown } = run({ vorbereiten: 5_000, lesen: 120_000, zuordnen: 30_000, auswerten: 5_000 })
     assert.equal(Math.max(...shown), CHECK_CEILING)
     assert.ok(Math.max(...shown) < COMPLETE)
   })
 
   await t.test('solange die Antwort aussteht, ist bei 95 % Schluss', () => {
     // `auswerten` läuft erst, wenn die Antwort da ist. Alles davor ist gedeckelt.
-    const { shown } = run({ vorbereiten: 5_000, senden: 120_000, auswerten: 0 })
+    const { shown } = run({ vorbereiten: 5_000, lesen: 120_000, zuordnen: 30_000, auswerten: 0 })
     assert.equal(Math.max(...shown), WAIT_CEILING)
   })
 })

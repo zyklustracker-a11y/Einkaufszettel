@@ -15,18 +15,26 @@
 import type { CategoryId, MilkHeat, MilkHomogenized, TraitId } from '../types'
 
 /**
- * Die drei Abschnitte eines Scans, an denen sich ablesen lässt, wie weit es ist.
+ * Die Abschnitte eines Scans, an denen sich ablesen lässt, wie weit es ist.
  *
- * Bewusst nur drei, und bewusst genau diese: Es sind die einzigen Zeitpunkte,
- * die sich beobachten lassen. Ein Fortschritt, der nur nach Stoppuhr
- * weiterläuft, wäre eine Behauptung — und der Verarbeitungs-Screen soll nichts
- * andeuten, was nicht passiert.
+ * Bewusst genau diese: Es sind die einzigen Zeitpunkte, die sich beobachten
+ * lassen. Ein Fortschritt, der nur nach Stoppuhr weiterläuft, wäre eine
+ * Behauptung — und der Verarbeitungs-Screen soll nichts andeuten, was nicht
+ * passiert.
+ *
+ * Genau deshalb sind es seit Schritt 4c vier statt drei: Die Erkennung besteht
+ * aus zwei getrennten Aufrufen (`lesen`, `zuordnen`), und weil der Browser
+ * beide selbst absetzt, sieht er ihre Grenze wirklich. Wäre es ein Aufruf, der
+ * innen zweimal fragt, müsste der Balken den Übergang raten.
+ *
+ * `zuordnen` **entfällt**, wenn der Haushalt jeden Artikel des Bons schon kennt.
+ * Dann wird der Abschnitt übersprungen, und der Screen sagt das auch.
  *
  * Steht hier und nicht bei der Abfrage in `src/data/extract.ts`, weil auch
  * `src/lib/progress.ts` damit rechnet: Die Datenschicht baut auf `lib` auf, nie
  * umgekehrt.
  */
-export type ExtractionPhase = 'vorbereiten' | 'senden' | 'auswerten'
+export type ExtractionPhase = 'vorbereiten' | 'lesen' | 'zuordnen' | 'auswerten'
 
 /** Anzeige-Einheit einer Menge. Die Menge selbst ist immer g / ml / Stück. */
 export type ExtractedUnit = 'kg' | 'g' | 'l' | 'ml' | 'stk'
@@ -140,11 +148,56 @@ export interface Extraction {
   warnings: ExtractionWarning[]
 }
 
-/** Das vollständige Ergebnis eines Scans, so wie die Funktion es zurückgibt. */
-export interface ExtractionResponse {
+/* --------------------------------------------- Was die Edge Function liefert */
+
+/**
+ * Die Antwort auf Durchgang 1 (Struktur). Steht wortgleich in
+ * `supabase/functions/erkennen/index.ts`.
+ */
+export interface StructureResponse {
   extraction: Extraction
   model: string
   durationMs: number
   /** Die unverarbeitete Antwort des Modells — Grundlage zum Nachschärfen. */
   raw: string
+  /**
+   * Rohtexte ohne Zuordnung — genau das, was Durchgang 2 braucht. Leer heißt:
+   * Der Haushalt kennt jeden Artikel auf diesem Bon, es ist nichts mehr zu tun.
+   */
+  offeneRohtexte: string[]
+}
+
+/** Eine geprüfte Zuordnung aus Durchgang 2, samt ihrem Rohtext. */
+export interface AssignmentRow extends ExtractedSuggestion {
+  rawText: string
+}
+
+/** Die Antwort auf Durchgang 2 (Zuordnung). */
+export interface AssignmentResponse {
+  assignments: AssignmentRow[]
+  warnings: ExtractionWarning[]
+  model: string
+  durationMs: number
+  raw: string
+}
+
+/** Was Durchgang 2 gekostet hat — nur für den Aufklappbereich. */
+export interface AssignmentInfo {
+  model: string
+  durationMs: number
+  raw: string
+}
+
+/** Das vollständige Ergebnis eines Scans, aus beiden Durchgängen zusammengesetzt. */
+export interface ExtractionResponse {
+  extraction: Extraction
+  model: string
+  durationMs: number
+  /** Die unverarbeitete Antwort aus Durchgang 1. */
+  raw: string
+  /**
+   * Durchgang 2. Null, wenn er nicht nötig war (alles bekannt) oder ausgefallen
+   * ist — im zweiten Fall steht eine Warnung in `extraction.warnings`.
+   */
+  assignment: AssignmentInfo | null
 }

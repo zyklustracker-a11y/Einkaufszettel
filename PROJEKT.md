@@ -341,8 +341,9 @@ zurückschreiben) sind deshalb noch offen.
 **Wo was liegt:** `supabase/functions/erkennen/`. Die Aufteilung ist Absicht —
 `prompt.ts` ist die eine Datei, an der ohne Codeverständnis nachgeschärft wird;
 `index.ts` (Ablauf), `mistral.ts` (Netz) und `validate.ts` (Prüfung samt der
-Typen, die sie erzeugt) bleiben davon unberührt. Anleitung:
-`supabase/functions/README.md`.
+Typen, die sie erzeugt) bleiben davon unberührt. Mit 4b-2 kam `mappings.ts` dazu
+(das Gedächtnis), mit 4c `assign.ts` (die Prüfung des zweiten Durchgangs).
+Anleitung: `supabase/functions/README.md`.
 
 **Ausgerollt wird über GitHub Actions**, nicht von Hand
 (`.github/workflows/edge-functions.yml`). Jede Änderung unter
@@ -361,8 +362,10 @@ gar nicht sehen; das verhindert die Datenbank und nicht der Code.
 **Der Prompt entsteht bei jedem Aufruf neu** aus den *aktiven* Merkmalen des
 Haushalts (`key` plus `description`) und den Kategorien. Ein neues Merkmal wirkt
 ab dem nächsten Scan, ohne Ausrollen. Merkmalsschlüssel, die das Modell erfindet,
-verwirft `validate.ts`; dasselbe gilt für unbekannte Kategorien, die dann als
-„offen" stehen bleiben statt geraten zu werden.
+werden verworfen; dasselbe gilt für unbekannte Kategorien, die dann als „offen"
+stehen bleiben statt geraten zu werden. *Seit 4c gilt das für den
+Zuordnungs-Prompt; geprüft wird in `assign.ts`. Der Struktur-Prompt ist eine
+Konstante und kennt die Merkmale nicht.*
 
 **Umgerechnet wird im Code, nicht im Modell.** Verlangt sind ganze Cent und ganze
 Basiseinheiten. Kommt etwas anderes an, rechnet `validate.ts` um — und zwar nur,
@@ -378,7 +381,9 @@ wird nur, was gar nicht lesbar ist — dann sagt das Modell selbst `lesbar: fals
 
 **Die Rohantwort ist einsehbar**, als Aufklappbereich unten im Korrektur-Screen.
 Ohne sie lässt sich nicht sehen, *warum* eine Zeile falsch gelesen wurde, und
-damit auch der Prompt nicht nachschärfen. Sie wird nirgends gespeichert.
+damit auch der Prompt nicht nachschärfen. Sie wird nirgends gespeichert. *Seit
+4c stehen dort zwei Antworten untereinander, eine je Durchgang — daran ist
+abzulesen, welcher der beiden Prompts nachzuschärfen ist.*
 
 **Eine Mengenzeile gehört zur Position darüber.** Nach dem ersten echten Scan
 aufgefallen: Auf einem REWE-Bon steht die Mengenzeile eingerückt *unter* dem
@@ -540,6 +545,69 @@ ausgeblendet, sobald der lebende Block dasselbe besser sagt. Fehlt einer
 Position ihr Steuerkennzeichen, entfällt der Klassenabgleich wie bisher — es
 lässt sich jetzt aber im Bearbeiten-Blatt nachtragen, und dann rechnet er mit.
 
+### Ergänzt mit Schritt 4c (zwei Durchgänge)
+
+**Der Prompt allein hat es nicht gerichtet.** Auch nach zwei Verschärfungen der
+Regel „eine Zeile mit Preis ist eine eigene Position" zog das Modell auf
+demselben REWE-Bon wieder zwei Zeilen zusammen:
+
+    VANILLE                    1,99 B
+    MILCHSCHOKOSTR             0,99 B
+
+wurde zu einer Position „Vanille-Milchschokolade" — beim zweiten Mal mit 0,99 €,
+sodass 1,99 € verschwanden. Der Steuerklassen-Abgleich zeigte es zuverlässig an,
+aber melden ist nicht verhindern.
+
+**Die Ursache ist ein Zielkonflikt, kein Lesefehler.** Der eine Prompt verlangte
+zweierlei zugleich: Zeilen abschreiben *und* daraus lesbare Produktnamen bilden.
+„Vanille" und „Milchschokostreusel" ergeben zusammen einen plausiblen
+Artikelnamen — das Verschmelzen war die Folge der zweiten Aufgabe. Gegen die
+Bedeutung der Wörter kommt eine Textregel schwer an.
+
+**Deshalb zwei getrennte Durchgänge:**
+
+1. **Struktur**, mit Bild. Stumpfes Abschreiben: jede Zeile mit Preis, Rohtext
+   wörtlich, Betrag, Menge, Steuerkennzeichen, Pfand/Rabatt. Keine Namen, keine
+   Kategorien, keine Merkmale. Ohne die Namensaufgabe gibt es keinen Grund mehr,
+   zwei Zeilen zusammenzuziehen. Dieser Prompt ist eine **Konstante** — er kennt
+   die Merkmale des Haushalts nicht einmal.
+2. **Zuordnung**, ohne Bild. Bekommt nur die Rohtexte und macht daraus
+   Klarnamen, Kategorien und Merkmale.
+
+**Der eigentliche Gewinn ist die geänderte Fehlerart.** Rät Durchgang 2 daneben,
+kostet das einen Tipper im Korrektur-Screen — und die Lernschleife merkt sich die
+Korrektur dauerhaft. Ein Betrag, der in Durchgang 1 gar nicht erfasst wurde, ist
+dagegen verloren: Keine Korrektur holt zurück, was nie dastand.
+
+**Zwei Aufrufe kosten nicht doppelt.** Durchgang 2 braucht kein Bild (Textmodell,
+`MISTRAL_TEXT_MODEL`) und läuft **nur für Rohtexte, die der Haushalt noch nicht
+kennt**. Bei einem Bon aus lauter bekannten Artikeln entfällt er ganz. Mit
+wachsendem Gedächtnis nähert sich der Normalfall wieder einem Aufruf pro Bon.
+
+**Warum der Browser beide Aufrufe selbst absetzt** und nicht die Funktion intern
+zweimal fragt: Sonst könnte der Fortschrittsbalken den Übergang nur raten, und
+er soll nichts andeuten, was er nicht beobachtet. So hat er vier echte
+Abschnitte — und überspringt den vierten sichtbar („entfällt, alles schon
+bekannt"), wenn nichts offen ist.
+
+**Durchgang 2 darf scheitern, ohne den Bon mitzureißen.** Netzfehler,
+erschöpftes Kontingent, unbrauchbare Antwort: Der Korrektur-Screen erscheint
+trotzdem, mit den Rohtexten als Namen und ohne Kategorie, plus einem Hinweis.
+Der teure Teil ist geschafft und die Beträge stimmen; von Hand zuzuordnen ist
+eine Minute Arbeit gegen einen kompletten Neuscan. Ein `catch` an dieser Stelle
+ist deshalb ausdrücklich richtig und kein verschlucktes Problem.
+
+**Zugeordnet wird über den Rohtext, nie über die Reihenfolge** — an drei
+Stellen gleich (`assign.ts`, `assignments.ts`, `save_receipt`). Ein Modell, das
+eine Zeile ausfallen lässt, würde sonst alles Folgende um eins verschieben, und
+aus dem Spülmittel würde die Milch. Das wäre ein Fehler, den niemand bemerkt,
+weil er plausibel aussieht.
+
+**Der automatische Zweitversuch bei abweichender Steuerklasse ist bewusst
+zurückgestellt.** Er greift nur bei lesbarem Steuerblock, benutzt denselben
+Prompt, der eben gescheitert ist, und kostet im Fehlschlag 14 Sekunden und einen
+Aufruf. Erst zeigen, ob er nach der Trennung überhaupt noch gebraucht wird.
+
 ## Datenmodell-Grundsätze
 
 - **Haushalt statt Einzelnutzer.** Alle Familienmitglieder sehen dieselben Daten. Jede
@@ -578,6 +646,7 @@ nur die Voreinstellung.
 | 4a | Kamera im Screen: Livebild, Rückfallweg, Galerie, Verkleinern, Vorschau | erledigt |
 | 4b-1 | Edge Function mit Mistral, Prompt aus den Merkmalen, JSON-Validierung, Anzeige im Korrektur-Screen | erledigt |
 | 4b-2 | Speichern aus dem Korrektur-Screen: `product_mappings`, `canonical_products`, Bon und Positionen | erledigt |
+| 4c | Erkennung in zwei Durchgängen: Struktur ohne Deutung, Zuordnung danach und nur für Unbekanntes | erledigt |
 | 5 | Bestpreis- und Analyse-Logik als SQL-Views | mit 2c vorgezogen |
 | 6 | Health-Score, Merkmals-Verwaltung in den Einstellungen, Sparhinweise, Push zum Monatsreport | Score erledigt, Rest offen |
 

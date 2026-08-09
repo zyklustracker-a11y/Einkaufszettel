@@ -1,6 +1,10 @@
 /**
  * Prüfen und Umrechnen — der Teil, der dem Modell nicht glaubt.
  *
+ * Zuständig für **Durchgang 1**, die Struktur: Zeilen, Beträge, Mengen,
+ * Steuerkennzeichen. Klarnamen, Kategorien und Merkmale kommen aus Durchgang 2
+ * und werden in `assign.ts` geprüft.
+ *
  * PROJEKT.md: „Die Modellantwort wird nie ungeprüft gespeichert." Deshalb
  * passiert hier alles, was sich ohne Modell entscheiden lässt:
  *
@@ -9,7 +13,6 @@
  *     Wenn nicht, wird umgerechnet statt abgelehnt.
  *   * Passt Menge × Einzelpreis zur Zeilensumme?
  *   * Passt die Summe der Positionen zur gedruckten Gesamtsumme?
- *   * Kennt der Haushalt die genannte Kategorie und die Merkmale?
  *
  * Grundhaltung überall: **markieren, nicht ablehnen**. Ein Bon mit einer
  * krummen Zeile ist immer noch ein brauchbarer Bon — der Korrektur-Screen zeigt
@@ -37,7 +40,13 @@
  * Wer hier etwas ändert, ändert es dort mit.
  * ========================================================================== */
 
-/** Eine Position, so wie sie aus dem Modell kommt — ungeprüft. */
+/**
+ * Eine Position, so wie sie aus Durchgang 1 kommt — ungeprüft.
+ *
+ * Kein Feld für Name, Kategorie oder Merkmale: Danach wird in diesem Durchgang
+ * nicht gefragt. Liefert das Modell trotzdem eines, wird es hier stillschweigend
+ * übergangen — es hätte auf dem Weg zur Struktur nur Schaden angerichtet.
+ */
 export interface ModelItem {
   zeile?: unknown
   rohtext?: unknown
@@ -47,13 +56,6 @@ export interface ModelItem {
   einzelpreis_cent?: unknown
   zeilensumme_cent?: unknown
   steuer?: unknown
-  vorschlag?: {
-    name?: unknown
-    kategorie?: unknown
-    merkmale?: unknown
-    milch_erhitzung?: unknown
-    milch_homogenisiert?: unknown
-  } | null
 }
 
 /** Eine Zeile aus dem Steuerblock am Fuß des Bons. */
@@ -80,7 +82,13 @@ export type ItemKind = 'artikel' | 'pfand' | 'rabatt'
 export type MilkHeat = 'roh' | 'pasteurisiert' | 'esl' | 'uht' | 'unbekannt'
 export type MilkHomogenized = 'ja' | 'nein' | 'unbekannt'
 
-/** Der Vorschlag des Modells für einen bislang unbekannten Rohtext. */
+/**
+ * Was zu einem Rohtext gehört: Klarname, Kategorie, Merkmale.
+ *
+ * Entsteht **nicht** hier, sondern in `mappings.ts` (aus der Datenbank) oder in
+ * `assign.ts` (aus Durchgang 2). Der Typ steht trotzdem in dieser Datei, weil
+ * `ExtractedItem` ihn trägt.
+ */
 export interface ExtractedSuggestion {
   name: string | null
   /** Schlüssel aus `categories`, oder null wenn keiner sicher passte. */
@@ -95,8 +103,7 @@ export interface ExtractedSuggestion {
    * `db` heißt: Der Rohtext war schon bekannt, und die Zuordnung kommt aus
    * `product_mappings`. Der Vorschlag des Modells wurde dafür verworfen
    * (PROJEKT.md: „Das Ergebnis wird dauerhaft gespeichert und nie neu
-   * erfragt."). `validate.ts` setzt hier immer `model`; auf `db` stellt es
-   * `mappings.ts` um.
+   * erfragt."). `assign.ts` setzt `model`, `mappings.ts` setzt `db`.
    */
   source: 'model' | 'db'
   /** Das kanonische Produkt, wenn der Rohtext schon bekannt war. */
@@ -126,7 +133,11 @@ export interface ExtractedItem {
    * Steuerklasse überhaupt erst möglich.
    */
   taxCode: string | null
-  /** Null bei Pfand- und Rabattzeilen. */
+  /**
+   * Null, solange der Rohtext keinem Produkt zugeordnet ist — nach Durchgang 1
+   * also immer. Gefüllt wird sie aus der Datenbank (`mappings.ts`) oder aus
+   * Durchgang 2 (`assign.ts`). Bei Pfand- und Rabattzeilen bleibt sie null.
+   */
   suggestion: ExtractedSuggestion | null
 }
 
@@ -180,6 +191,10 @@ export interface ExtractionWarning {
     | 'steuerklasse_unbekannt'
     | 'steuerblock_unstimmig'
     | 'steuer_kennzeichen_fehlt'
+    // Aus Durchgang 2 (`assign.ts`). Die Struktur des Bons ist davon nicht
+    // betroffen — die Beträge stimmen auch dann, wenn die Zuordnung ausfällt.
+    | 'zuordnung_ausgefallen'
+    | 'zuordnung_unvollstaendig'
   /** Bereits auf Deutsch und direkt anzeigbar. */
   message: string
   lineNo?: number
@@ -218,8 +233,10 @@ export interface Extraction {
 /** Erlaubte Anzeige-Einheiten, identisch mit dem Check in der Datenbank. */
 const UNITS: ExtractedUnit[] = ['kg', 'g', 'l', 'ml', 'stk']
 
-const MILK_HEATS: MilkHeat[] = ['roh', 'pasteurisiert', 'esl', 'uht', 'unbekannt']
-const MILK_HOMOGENIZED: MilkHomogenized[] = ['ja', 'nein', 'unbekannt']
+// Exportiert, weil `assign.ts` gegen dieselben Listen prüft — zwei Aufzählungen
+// derselben Werte wären zwei Wahrheiten.
+export const MILK_HEATS: MilkHeat[] = ['roh', 'pasteurisiert', 'esl', 'uht', 'unbekannt']
+export const MILK_HOMOGENIZED: MilkHomogenized[] = ['ja', 'nein', 'unbekannt']
 
 /**
  * Wie weit Menge × Einzelpreis von der Zeilensumme abweichen darf, bevor es
@@ -629,85 +646,11 @@ function checkTaxGroups(
   return { groups, printed, warnings }
 }
 
-/* ============================================================== Der Vorschlag */
-
-/**
- * Klarname, Kategorie und Merkmale — jeweils gegen die Datenbank geprüft.
- *
- * Der springende Punkt aus PROJEKT.md: Merkmalsschlüssel, die nicht in der Liste
- * des Haushalts stehen, werden **verworfen**, nicht angelegt. Damit kann ein
- * halluziniertes Merkmal nie in die Auswertung geraten. Dasselbe gilt für
- * Kategorien.
- */
-function resolveSuggestion(
-  raw: ModelItem['vorschlag'],
-  lineNo: number,
-  categoryKeys: Set<string>,
-  traitKeys: Set<string>,
-  warnings: ExtractionWarning[],
-): ExtractedSuggestion | null {
-  if (!raw || typeof raw !== 'object') return null
-
-  const categoryRaw = text(raw.kategorie)
-  let categoryKey: string | null = null
-  if (categoryRaw !== null) {
-    if (categoryKeys.has(categoryRaw)) categoryKey = categoryRaw
-    else {
-      warnings.push({
-        code: 'kategorie_unbekannt',
-        lineNo,
-        message: `Zeile ${lineNo}: Vorgeschlagene Kategorie „${categoryRaw}" gibt es nicht — Kategorie bleibt offen.`,
-      })
-    }
-  }
-
-  const proposed = Array.isArray(raw.merkmale) ? raw.merkmale : []
-  const accepted: string[] = []
-  const rejected: string[] = []
-  for (const entry of proposed) {
-    const key = text(entry)
-    if (key === null) continue
-    if (traitKeys.has(key)) {
-      if (!accepted.includes(key)) accepted.push(key)
-    } else if (!rejected.includes(key)) {
-      rejected.push(key)
-    }
-  }
-
-  if (rejected.length > 0) {
-    warnings.push({
-      code: 'merkmal_verworfen',
-      lineNo,
-      message: `Zeile ${lineNo}: Unbekannte Merkmale verworfen (${rejected.join(', ')}).`,
-    })
-  }
-
-  const heat = text(raw.milch_erhitzung)?.toLowerCase()
-  const homogenized = text(raw.milch_homogenisiert)?.toLowerCase()
-
-  return {
-    name: text(raw.name),
-    categoryKey,
-    traitKeys: accepted,
-    // Alles Unbekannte wird „unbekannt" — nie geraten (PROJEKT.md).
-    milkHeat: MILK_HEATS.includes(heat as MilkHeat) ? (heat as MilkHeat) : 'unbekannt',
-    milkHomogenized: MILK_HOMOGENIZED.includes(homogenized as MilkHomogenized)
-      ? (homogenized as MilkHomogenized)
-      : 'unbekannt',
-    // Hier kommt alles vom Modell. Ob die Datenbank es besser weiß, entscheidet
-    // `mappings.ts` — diese Datei kennt keine Datenbank.
-    source: 'model',
-    canonicalProductId: null,
-  }
-}
-
 /* ================================================================ Positionen */
 
 function resolveItem(
   raw: ModelItem,
   lineNo: number,
-  categoryKeys: Set<string>,
-  traitKeys: Set<string>,
   warnings: ExtractionWarning[],
 ): ExtractedItem {
   const kind = toKind(raw.art)
@@ -762,33 +705,27 @@ function resolveItem(
     depositCents: kind === 'pfand' ? Math.abs(totalCents) : 0,
     discountCents: kind === 'rabatt' ? Math.abs(totalCents) : 0,
     taxCode: toTaxCode(raw.steuer),
-    // Pfand und Rabatt sind keine Produkte: kein Klarname, keine Kategorie.
-    suggestion:
-      kind === 'artikel'
-        ? resolveSuggestion(raw.vorschlag, lineNo, categoryKeys, traitKeys, warnings)
-        : null,
+    // Zugeordnet wird später — aus der Datenbank oder in Durchgang 2. Pfand und
+    // Rabatt sind keine Produkte und bleiben ohne Zuordnung.
+    suggestion: null,
   }
 }
 
 /* ============================================================== Der ganze Bon */
 
-export interface ValidationContext {
-  /** Alle Kategorie-Schlüssel des Haushalts. */
-  categoryKeys: string[]
-  /** Alle **aktiven** Merkmalsschlüssel des Haushalts. */
-  traitKeys: string[]
-}
-
 /**
  * Aus der geprüften Modellantwort wird das Ergebnis, mit dem die App arbeitet.
+ *
+ * Ohne Zusatzangaben: Struktur hat mit den Merkmalen des Haushalts nichts zu
+ * tun. Seit Schritt 4c braucht diese Funktion deshalb keinen Kontext mehr —
+ * was der Nutzer in den Einstellungen ändert, kann das Abschreiben eines Bons
+ * nicht mehr beeinflussen.
  *
  * Der Rückgabewert ist immer vollständig: Auch ein Bon voller Warnungen kommt
  * als `Extraction` zurück. Abgelehnt wird nur in `index.ts`, und zwar nur, wenn
  * das Modell selbst sagt, dass es nichts lesen konnte.
  */
-export function validateExtraction(model: ModelReceipt, context: ValidationContext): Extraction {
-  const categoryKeys = new Set(context.categoryKeys)
-  const traitKeys = new Set(context.traitKeys)
+export function validateExtraction(model: ModelReceipt): Extraction {
   const warnings: ExtractionWarning[] = []
 
   const rawItems = Array.isArray(model.positionen) ? model.positionen : []
@@ -798,7 +735,7 @@ export function validateExtraction(model: ModelReceipt, context: ValidationConte
    * „3" schreibt, würde das Speichern in 4b-2 zum Scheitern bringen.
    */
   const items = rawItems.map((entry, index) =>
-    resolveItem((entry ?? {}) as ModelItem, index + 1, categoryKeys, traitKeys, warnings),
+    resolveItem((entry ?? {}) as ModelItem, index + 1, warnings),
   )
 
   const itemsTotalCents = items.reduce((sum, item) => sum + item.totalCents, 0)

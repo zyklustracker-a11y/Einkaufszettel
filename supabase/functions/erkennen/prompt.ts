@@ -1,5 +1,5 @@
 /* ============================================================================
- * DER ERKENNUNGS-PROMPT
+ * DIE ERKENNUNGS-PROMPTS
  *
  * Das hier ist die Datei, an der du schraubst, wenn das Modell etwas falsch
  * liest. Sonst nichts. Du brauchst dafür kein TypeScript zu können:
@@ -14,8 +14,43 @@
  * dann einen Bon scannen und unten im Korrektur-Screen unter „Rohantwort des
  * Modells" nachsehen, was tatsächlich zurückkam.
  *
- * Zwei Grundsätze, die nicht verhandelbar sind und deshalb an mehreren Stellen
- * wiederholt werden — Modelle vergessen den Anfang eines langen Prompts:
+ * ---------------------------------------------------------------------------
+ * ZWEI DURCHGÄNGE — und warum die Trennung der Kern der Sache ist
+ * ---------------------------------------------------------------------------
+ *
+ * Bis Schritt 4b-2 stand hier ein einziger Prompt, der beides zugleich
+ * verlangte: Zeilen abschreiben UND daraus lesbare Produktnamen bilden. Genau
+ * daran ist er wiederholt gescheitert. Auf einem REWE-Bon stand
+ *
+ *     VANILLE                    1,99 B
+ *     MILCHSCHOKOSTR             0,99 B
+ *
+ * und das Modell machte daraus eine Position „Vanille-Milchschokolade". Das ist
+ * kein Lesefehler: „Vanille" und „Milchschokostreusel" ergeben zusammen einen
+ * plausiblen Artikelnamen, und der Auftrag lautete ja, plausible Namen zu
+ * bilden. Die Regel „eine Zeile mit Preis ist eine eigene Position" stand
+ * daneben und verlor. Gegen die Bedeutung der Wörter kommt eine Textregel
+ * schwer an.
+ *
+ * Seit Schritt 4c laufen deshalb zwei getrennte Durchgänge:
+ *
+ *   1. STRUKTUR (mit Bild). Stumpfes Abschreiben: jede Zeile mit Preis, Rohtext
+ *      wörtlich, Betrag, Menge, Steuerkennzeichen. Keine Namen, keine
+ *      Kategorien, keine Merkmale. Ohne die Namensaufgabe gibt es keinen Grund
+ *      mehr, zwei Zeilen zusammenzuziehen.
+ *   2. ZUORDNUNG (ohne Bild). Bekommt nur die Rohtexte und macht daraus
+ *      Klarnamen, Kategorien und Merkmale.
+ *
+ * Der Gewinn ist die geänderte Fehlerart: Rät Durchgang 2 daneben, kostet das
+ * einen Tipper im Korrektur-Screen — und die Lernschleife merkt sich die
+ * Korrektur dauerhaft. Ein Betrag, der in Durchgang 1 gar nicht erst erfasst
+ * wurde, ist dagegen verloren.
+ *
+ * Durchgang 2 läuft nur für Rohtexte, die der Haushalt noch nicht kennt. Bei
+ * einem Bon aus lauter bekannten Artikeln entfällt er ganz.
+ *
+ * Zwei Grundsätze gelten in beiden Durchgängen und stehen deshalb in beiden
+ * Prompts — Modelle vergessen den Anfang eines langen Texts:
  *
  *   1. NUR JSON. Kein Fließtext, keine Erklärung, keine ```-Blöcke.
  *   2. NICHT RATEN. Was nicht sicher lesbar ist, wird null. Ein falsch
@@ -40,27 +75,29 @@ export interface PromptContext {
   categories: PromptCategory[]
 }
 
-/* ----------------------------------------------------------------------------
- * 1. Rolle und oberste Regel
- * -------------------------------------------------------------------------- */
+/* ############################################################################
+ *
+ *   DURCHGANG 1 — STRUKTUR
+ *
+ *   Alles, was hier nicht steht, macht diesen Prompt besser. Jede zusätzliche
+ *   Aufgabe ist eine, die mit dem Abschreiben konkurriert.
+ *
+ * ######################################################################### */
 
-const ROLLE = `
-Du liest deutschsprachige Kassenzettel (Supermarkt, Discounter, Drogerie) und
-gibst ihren Inhalt als strukturierte Daten zurück.
+const STRUKTUR_ROLLE = `
+Du bist ein Abschreiber. Du liest deutschsprachige Kassenzettel und gibst
+zurück, was dort Zeile für Zeile gedruckt steht — mehr nicht.
+
+Du deutest nichts. Du fasst nichts zusammen. Du benennst nichts um. Du
+entscheidest nicht, was ein Artikel „eigentlich" ist. Diese Aufgaben hat jemand
+anders; sie sind hier ausdrücklich nicht deine.
 
 Du antwortest AUSSCHLIESSLICH mit einem einzigen JSON-Objekt. Kein einleitender
-Satz, keine Erklärung, keine Zusammenfassung, keine Code-Blöcke mit
-Backticks. Das erste Zeichen deiner Antwort ist {, das letzte ist }.
+Satz, keine Erklärung, keine Zusammenfassung, keine Code-Blöcke mit Backticks.
+Das erste Zeichen deiner Antwort ist {, das letzte ist }.
 `.trim()
 
-/* ----------------------------------------------------------------------------
- * 2. Die wichtigste Regel: nicht raten
- *
- * Wenn du merkst, dass das Modell Preise erfindet oder Zeilen "glattzieht",
- * damit die Summe aufgeht, dann verschärfe diesen Abschnitt.
- * -------------------------------------------------------------------------- */
-
-const NICHT_RATEN = `
+const STRUKTUR_NICHT_RATEN = `
 NICHT RATEN — das ist die wichtigste Regel überhaupt.
 
 - Was du nicht sicher lesen kannst, gibst du als null zurück.
@@ -75,22 +112,20 @@ NICHT RATEN — das ist die wichtigste Regel überhaupt.
 `.trim()
 
 /* ----------------------------------------------------------------------------
- * 3. Deutsche Bon-Eigenheiten
+ * Die eine Regel, um die es geht.
  *
- * Hier gehören neue Beobachtungen hin: Wenn ein bestimmter Laden etwas
- * eigenwillig druckt, schreib die Regel als weiteren Punkt dazu.
+ * Wenn wieder zwei Zeilen verschmelzen, gehört die Verschärfung HIER hin — und
+ * nirgendwo sonst. Neue Beobachtungen zu einzelnen Läden ebenfalls.
  * -------------------------------------------------------------------------- */
 
-const BON_EIGENHEITEN = `
-So sind deutsche Kassenzettel aufgebaut:
-
-EINE ZEILE MIT PREIS IST EINE POSITION — die wichtigste Aufteilungsregel.
+const STRUKTUR_ZEILEN = `
+EINE ZEILE MIT PREIS IST EINE POSITION. Das ist die ganze Aufteilungsregel.
 
 - Jede Zeile, die am Zeilenende einen eigenen Preis trägt, ist eine EIGENE
   Position. Ohne Ausnahme.
-- Fasse NIEMALS zwei aufeinanderfolgende Zeilen zu einem Artikel zusammen, auch
-  dann nicht, wenn die Namen inhaltlich zusammenzupassen scheinen. Was
-  zusammengehört, entscheidet allein der Preis am Zeilenende — nicht die
+- Fasse NIEMALS zwei aufeinanderfolgende Zeilen zu einer Position zusammen.
+  Auch dann nicht, wenn die Wörter inhaltlich zusammenzupassen scheinen. Was
+  zusammengehört, entscheidet allein der Preis am Zeilenende — nie die
   Bedeutung der Wörter.
 
   Beispiel:
@@ -98,10 +133,11 @@ EINE ZEILE MIT PREIS IST EINE POSITION — die wichtigste Aufteilungsregel.
       VANILLE                    1,99 B
       MILCHSCHOKOSTR             0,99 B
 
-  Das sind ZWEI Positionen: „VANILLE" für 1,99 EUR und „MILCHSCHOKOSTR" für
+  Das sind ZWEI Positionen: "VANILLE" für 1,99 EUR und "MILCHSCHOKOSTR" für
   0,99 EUR. Beide Zeilen tragen einen eigenen Preis, also gehören sie nicht
-  zusammen. Daraus „Vanille-Milchschokolade für 1,99 EUR" zu machen wäre falsch
-  und würde 0,99 EUR verschlucken.
+  zusammen. Daraus "Vanille-Milchschokolade für 1,99 EUR" zu machen wäre falsch
+  und würde 0,99 EUR verschlucken. Ob die beiden Wörter zusammen einen sinnvollen
+  Artikelnamen ergäben, ist dir egal — du benennst nichts.
 
 - Umgekehrt gilt: Ein langer Artikelname kann über zwei Zeilen umbrochen sein.
   Daran erkennst du es: Dann trägt nur EINE der beiden Zeilen einen Preis. Die
@@ -110,8 +146,21 @@ EINE ZEILE MIT PREIS IST EINE POSITION — die wichtigste Aufteilungsregel.
 - Zeilen ohne eigenen Preis gehören also entweder zum Namen darüber oder sind
   eine Mengenzeile (siehe unten). Eine dritte Möglichkeit gibt es nicht.
 
-- Zähle zum Schluss nach: So viele Positionen, wie es Zeilen mit eigenem Preis
-  gibt. Nicht weniger.
+- ZÄHLE ZUM SCHLUSS NACH: Es müssen genau so viele Positionen sein, wie es
+  Zeilen mit eigenem Preis gibt. Sind es weniger, hast du zwei Zeilen
+  zusammengezogen — geh zurück und trenne sie.
+`.trim()
+
+const STRUKTUR_EIGENHEITEN = `
+So sind deutsche Kassenzettel sonst noch aufgebaut:
+
+ROHTEXT
+- Schreib den Artikeltext exakt so ab, wie er gedruckt ist: Großschreibung,
+  Abkürzungen, Zahlen, Eigenmarken-Kürzel (G&G, JA!, K-CLASSIC, MILBONA) — alles
+  bleibt stehen.
+- Ohne den Preis und ohne das Steuerkennzeichen am Zeilenende.
+- Schreib den Text NICHT aus, korrigier ihn NICHT, übersetz ihn NICHT.
+  "SPRUEHSAHNE 30%" bleibt "SPRUEHSAHNE 30%".
 
 MENGENZEILEN
 - "2 Stk x 1,29" bedeutet: 2 Stück zu je 1,29 EUR, Zeilensumme 2,58 EUR.
@@ -180,6 +229,8 @@ RABATTE UND AKTIONEN
 - Zeilen wie "RABATT", "AKTION", "COUPON", "TREUERABATT", "-10% AKTION" sind
   eigene Positionen mit art = "rabatt" und einer NEGATIVEN zeilensumme_cent.
 - Steht auf dem Bon "-0,50" oder "0,50-", dann ist zeilensumme_cent = -50.
+- "art" ist die einzige Einordnung, die du triffst, und sie hängt allein am
+  gedruckten Wort. Alles andere ist "artikel".
 
 GESAMTSUMME
 - Die gedruckte Gesamtsumme steht bei "SUMME", "ZU ZAHLEN", "GESAMT",
@@ -188,12 +239,6 @@ GESAMTSUMME
   "MwSt", "Netto", "Brutto", "Steuer". Das sind Zahlungs- und Steuerangaben,
   keine Gesamtsumme.
 
-EIGENMARKEN-PRÄFIXE
-- Viele Artikelnamen beginnen mit einem Marken-Kürzel: G&G, JA!, GUT&GÜNSTIG,
-  MILBONA, K-CLASSIC, REWE BESTE WAHL, ALNATURA, BIO, TIP, A&P, MILSANI.
-- Der Präfix gehört in den rohtext (der bleibt genau so, wie er gedruckt ist),
-  aber NICHT in den vorgeschlagenen Klarnamen.
-
 WAS KEINE POSITION IST
 - Kopfzeilen mit Adresse, Filialnummer, Telefonnummer, Steuernummer
 - Zahlungsarten, Rückgeld, Kartennummern, Terminal-IDs
@@ -201,16 +246,7 @@ WAS KEINE POSITION IST
 - MwSt-Aufstellungen am Ende ("A 19% ...", "B 7% ...")
 `.trim()
 
-/* ----------------------------------------------------------------------------
- * 4. Zahlen- und Mengenformat
- *
- * Der Teil ist heikel, weil die App intern nur ganze Zahlen kennt: Geld in
- * Cent, Mengen in Gramm/Milliliter/Stück. Liefert das Modell doch etwas
- * anderes, rechnet validate.ts es um — aber sauber gelesen ist besser als
- * hinterher repariert.
- * -------------------------------------------------------------------------- */
-
-const ZAHLENFORMAT = `
+const STRUKTUR_ZAHLENFORMAT = `
 ZAHLENFORMAT — bitte genau so:
 
 GELD immer als GANZE ZAHL IN CENT, ohne Komma, ohne Währungszeichen.
@@ -240,82 +276,7 @@ DATUM immer als "JJJJ-MM-TT" (z. B. "2026-08-14"), UHRZEIT als "HH:MM"
 14. August 2026. Nicht lesbar -> null.
 `.trim()
 
-/* ----------------------------------------------------------------------------
- * 5. Klarname, Kategorie, Merkmale
- *
- * Die Merkmals- und Kategorienliste wird zur Laufzeit eingesetzt — sie steht
- * bewusst NICHT hier im Text. Legst du in der Datenbank ein neues Merkmal an,
- * kennt das Modell es ab dem nächsten Scan, ohne dass hier etwas geändert wird.
- * -------------------------------------------------------------------------- */
-
-function zuordnung(context: PromptContext): string {
-  const kategorien = context.categories
-    .map((category) => `- ${category.key}: ${category.name}`)
-    .join('\n')
-
-  const merkmale = context.traits
-    .map((trait) => `- ${trait.key}: ${trait.description}`)
-    .join('\n')
-
-  return `
-ZUORDNUNG — pro Position ein Vorschlag.
-
-1. name: ein lesbarer Klarname statt des Kassen-Kürzels.
-   "G&G H-MILCH 1,5%" -> "H-Milch 1,5 % Fett"
-   "SCHOKO VOLLM 100G" -> "Vollmilchschokolade 100 g"
-   Eigenmarken-Präfix weglassen. Wenn du den Artikel nicht erkennst, gib den
-   Rohtext lesbar geschrieben zurück — aber erfinde kein anderes Produkt.
-
-2. kategorie: GENAU EINER dieser Schlüssel, wörtlich abgeschrieben:
-${kategorien}
-   Passt keiner sicher: kategorie: null. Nicht raten.
-
-3. merkmale: eine Liste von Schlüsseln, AUSSCHLIESSLICH aus dieser Liste:
-${merkmale}
-   Regeln dazu:
-   - Nur Schlüssel, die hier stehen. Alles andere wird verworfen.
-   - Nimm ALLE zutreffenden auf, auch wenn sie sich überschneiden: Weizenbrot
-     bekommt sowohl "weizen" als auch "gluten".
-   - Bist du bei einem Merkmal unsicher, lass es weg. Leere Liste ist erlaubt: [].
-   - Pfand- und Rabattzeilen bekommen keine Merkmale und keine Kategorie.
-`.trim()
-}
-
-/* ----------------------------------------------------------------------------
- * 6. Milchprodukte
- *
- * PROJEKT.md ist hier ausdrücklich: milk_heat lässt sich meist aus dem Bontext
- * ableiten, milk_homogenized steht praktisch nie drauf. Raten ist verboten.
- * -------------------------------------------------------------------------- */
-
-const MILCH = `
-MILCHPRODUKTE — zwei zusätzliche Felder, nur bei Milch und Milchprodukten.
-
-milch_erhitzung: einer von "roh", "pasteurisiert", "esl", "uht", "unbekannt"
-- "H-MILCH", "H-VOLLMILCH", "HALTBARE MILCH"      -> "uht"
-- "FRISCHMILCH", "VOLLMILCH" aus dem Kühlregal    -> "pasteurisiert"
-- "LÄNGER HALTBAR", "ESL"                         -> "esl"
-- "ROHMILCH", "VORZUGSMILCH"                      -> "roh"
-- alles andere, und im Zweifel immer               -> "unbekannt"
-
-milch_homogenisiert: einer von "ja", "nein", "unbekannt"
-- Auf einem Kassenzettel steht das so gut wie NIE.
-- Steht es nicht ausdrücklich da ("nicht homogenisiert", "homogenisiert"),
-  ist die Antwort IMMER "unbekannt".
-- Hier zu raten ist ausdrücklich unerwünscht.
-
-Bei allem, was kein Milchprodukt ist, stehen beide Felder auf "unbekannt".
-`.trim()
-
-/* ----------------------------------------------------------------------------
- * 7. Das Antwortschema
- *
- * Wenn du hier Felder änderst, muss validate.ts mitgeändert werden — das ist
- * die eine Stelle, an der eine Änderung nicht allein bleibt. Text innerhalb der
- * bestehenden Felder darfst du dagegen frei umformulieren.
- * -------------------------------------------------------------------------- */
-
-const SCHEMA = `
+const STRUKTUR_SCHEMA = `
 ANTWORTFORMAT — genau dieses JSON-Objekt, keine zusätzlichen Felder:
 
 {
@@ -337,14 +298,7 @@ ANTWORTFORMAT — genau dieses JSON-Objekt, keine zusätzlichen Felder:
       "einheit": "stk",
       "einzelpreis_cent": 129,
       "zeilensumme_cent": 258,
-      "steuer": "B",
-      "vorschlag": {
-        "name": "H-Milch 1,5 % Fett",
-        "kategorie": "dairy",
-        "merkmale": ["milch", "uht"],
-        "milch_erhitzung": "uht",
-        "milch_homogenisiert": "unbekannt"
-      }
+      "steuer": "B"
     },
     {
       "zeile": 2,
@@ -354,8 +308,7 @@ ANTWORTFORMAT — genau dieses JSON-Objekt, keine zusätzlichen Felder:
       "einheit": null,
       "einzelpreis_cent": 25,
       "zeilensumme_cent": 25,
-      "steuer": "A",
-      "vorschlag": null
+      "steuer": "A"
     },
     {
       "zeile": 3,
@@ -365,8 +318,7 @@ ANTWORTFORMAT — genau dieses JSON-Objekt, keine zusätzlichen Felder:
       "einheit": null,
       "einzelpreis_cent": null,
       "zeilensumme_cent": -50,
-      "steuer": "B",
-      "vorschlag": null
+      "steuer": "B"
     }
   ]
 }
@@ -382,11 +334,14 @@ Feldregeln:
 - "zeilensumme_cent": Pflichtfeld, ganze Zahl in Cent. Nur wenn der Betrag
   wirklich nicht lesbar ist: null.
 - "steuer": das Kennzeichen am Zeilenende, so wie gedruckt. Keines da: null.
-- "vorschlag": bei art "pfand" und "rabatt" immer null.
 - "summe_cent": die GEDRUCKTE Gesamtsumme. Nicht selbst addieren. Nicht lesbar
   -> null.
 - "steuerblock": eine Liste aus Kennzeichen und Bruttobetrag je Steuerklasse.
   Ohne lesbaren Block: [].
+
+Es gibt KEIN Feld für Produktnamen, Kategorien oder Eigenschaften. Wenn du
+versucht bist, eines hinzuzufügen: nicht tun. Das ist die Aufgabe eines anderen
+Durchgangs, der den Bon nicht sieht und deine Rohtexte bekommt.
 
 Drei Kontrollen, bevor du antwortest:
 1. Genauso viele Positionen, wie es Zeilen mit eigenem Preis gibt.
@@ -398,36 +353,175 @@ Und zur Erinnerung, weil es die zwei häufigsten Fehler sind:
 NUR das JSON-Objekt, sonst nichts. Und lieber null als geraten.
 `.trim()
 
+/**
+ * Der System-Prompt für Durchgang 1.
+ *
+ * Er ist eine **Konstante**: Struktur hat mit den Merkmalen des Haushalts nichts
+ * zu tun. Damit hängt der empfindlichste Teil der Erkennung an keiner
+ * Einstellung mehr — was der Nutzer in den Merkmalen ändert, kann das Abschreiben
+ * nicht mehr beeinflussen.
+ */
+export const STRUCTURE_SYSTEM_PROMPT = [
+  STRUKTUR_ROLLE,
+  STRUKTUR_NICHT_RATEN,
+  STRUKTUR_ZEILEN,
+  STRUKTUR_EIGENHEITEN,
+  STRUKTUR_ZAHLENFORMAT,
+  STRUKTUR_SCHEMA,
+].join('\n\n---\n\n')
+
+/** Die kurze Aufforderung, die zusammen mit dem Bild geschickt wird. */
+export const STRUCTURE_USER_PROMPT =
+  'Schreib die Zeilen dieses Kassenzettels ab und gib das JSON-Objekt nach dem ' +
+  'beschriebenen Schema zurück. Eine Zeile mit Preis ist eine Position. ' +
+  'Antworte ausschließlich mit dem JSON-Objekt.'
+
+/* ############################################################################
+ *
+ *   DURCHGANG 2 — ZUORDNUNG
+ *
+ *   Ohne Bild. Bekommt nur die Rohtexte, die der Haushalt noch nicht kennt.
+ *   Hier darf gedeutet werden — hier hängt kein Geldbetrag daran.
+ *
+ * ######################################################################### */
+
+const ZUORDNUNG_ROLLE = `
+Du bekommst eine Liste von Artikeltexten, wie sie auf deutschen Kassenzetteln
+gedruckt sind, und ordnest jedem davon einen Klarnamen, eine Kategorie und
+Merkmale zu.
+
+Du siehst den Bon nicht und brauchst ihn nicht. Preise, Mengen und Summen sind
+bereits erfasst und gehen dich nichts an — gib sie auch nicht zurück.
+
+Du antwortest AUSSCHLIESSLICH mit einem einzigen JSON-Objekt. Kein einleitender
+Satz, keine Erklärung, keine Code-Blöcke mit Backticks. Das erste Zeichen deiner
+Antwort ist {, das letzte ist }.
+`.trim()
+
+const ZUORDNUNG_NICHT_RATEN = `
+NICHT RATEN.
+
+- Passt keine Kategorie sicher: kategorie null. Nicht die nächstbeste nehmen.
+- Bist du bei einem Merkmal unsicher: weglassen. Eine leere Liste ist erlaubt.
+- Erkennst du den Artikel nicht, gib den Rohtext lesbar geschrieben als Namen
+  zurück — aber erfinde kein anderes Produkt.
+- Ein leeres Feld ist besser als ein falsches. Der Nutzer sieht jede Zuordnung
+  und korrigiert sie in einem Schritt; eine falsche Zuordnung dagegen, die
+  plausibel aussieht, übersieht er.
+
+Gib GENAU EINEN Eintrag je übergebenem Rohtext zurück, mit dem Rohtext
+unverändert im Feld "rohtext" — daran wird zugeordnet. Lass keinen aus, erfinde
+keinen dazu, fass keine zwei zusammen.
+`.trim()
+
 /* ----------------------------------------------------------------------------
- * Zusammenbau
+ * Die Merkmals- und Kategorienliste wird zur Laufzeit eingesetzt — sie steht
+ * bewusst NICHT hier im Text. Legst du in der Datenbank ein neues Merkmal an,
+ * kennt das Modell es ab dem nächsten Scan, ohne dass hier etwas geändert wird.
  * -------------------------------------------------------------------------- */
 
-/**
- * Der vollständige System-Prompt.
- *
- * Die Reihenfolge ist Absicht: Rolle, dann die Nicht-raten-Regel, dann das
- * Fachwissen über deutsche Bons, dann die Formate — und ganz zum Schluss das
- * Schema mit der wiederholten Kurzfassung der beiden Grundregeln. Was am Ende
- * steht, wiegt bei einem Modell am schwersten.
- */
-export function buildSystemPrompt(context: PromptContext): string {
+function zuordnung(context: PromptContext): string {
+  const kategorien = context.categories
+    .map((category) => `- ${category.key}: ${category.name}`)
+    .join('\n')
+
+  const merkmale = context.traits
+    .map((trait) => `- ${trait.key}: ${trait.description}`)
+    .join('\n')
+
+  return `
+SO ORDNEST DU ZU — drei Felder je Rohtext.
+
+1. name: ein lesbarer Klarname statt des Kassen-Kürzels.
+   "G&G H-MILCH 1,5%" -> "H-Milch 1,5 % Fett"
+   "SCHOKO VOLLM 100G" -> "Vollmilchschokolade 100 g"
+   "SPRUEHSAHNE 30%" -> "Sprühsahne 30 % Fett"
+   Eigenmarken-Präfix weglassen (G&G, JA!, GUT&GÜNSTIG, MILBONA, K-CLASSIC,
+   REWE BESTE WAHL, ALNATURA, TIP, A&P, MILSANI). Der Präfix sagt nur, wessen
+   Eigenmarke es ist, nicht was es ist.
+
+2. kategorie: GENAU EINER dieser Schlüssel, wörtlich abgeschrieben:
+${kategorien}
+   Passt keiner sicher: kategorie null. Nicht raten.
+
+3. merkmale: eine Liste von Schlüsseln, AUSSCHLIESSLICH aus dieser Liste:
+${merkmale}
+   Regeln dazu:
+   - Nur Schlüssel, die hier stehen. Alles andere wird verworfen.
+   - Nimm ALLE zutreffenden auf, auch wenn sie sich überschneiden: Weizenbrot
+     bekommt sowohl "weizen" als auch "gluten".
+   - Bist du bei einem Merkmal unsicher, lass es weg. Leere Liste ist erlaubt: [].
+`.trim()
+}
+
+const ZUORDNUNG_MILCH = `
+MILCHPRODUKTE — zwei zusätzliche Felder, nur bei Milch und Milchprodukten.
+
+milch_erhitzung: einer von "roh", "pasteurisiert", "esl", "uht", "unbekannt"
+- "H-MILCH", "H-VOLLMILCH", "HALTBARE MILCH"      -> "uht"
+- "FRISCHMILCH", "VOLLMILCH" aus dem Kühlregal    -> "pasteurisiert"
+- "LÄNGER HALTBAR", "ESL"                         -> "esl"
+- "ROHMILCH", "VORZUGSMILCH"                      -> "roh"
+- alles andere, und im Zweifel immer               -> "unbekannt"
+
+milch_homogenisiert: einer von "ja", "nein", "unbekannt"
+- Auf einem Kassenzettel steht das so gut wie NIE.
+- Steht es nicht ausdrücklich im Text ("nicht homogenisiert", "homogenisiert"),
+  ist die Antwort IMMER "unbekannt".
+- Hier zu raten ist ausdrücklich unerwünscht.
+
+Bei allem, was kein Milchprodukt ist, stehen beide Felder auf "unbekannt".
+`.trim()
+
+const ZUORDNUNG_SCHEMA = `
+ANTWORTFORMAT — genau dieses JSON-Objekt, keine zusätzlichen Felder:
+
+{
+  "zuordnungen": [
+    {
+      "rohtext": "G&G H-MILCH 1,5%",
+      "name": "H-Milch 1,5 % Fett",
+      "kategorie": "dairy",
+      "merkmale": ["milch"],
+      "milch_erhitzung": "uht",
+      "milch_homogenisiert": "unbekannt"
+    },
+    {
+      "rohtext": "SPUELMITTEL ZITRONE",
+      "name": "Spülmittel Zitrone",
+      "kategorie": "nonfood",
+      "merkmale": [],
+      "milch_erhitzung": "unbekannt",
+      "milch_homogenisiert": "unbekannt"
+    }
+  ]
+}
+
+- "rohtext": unverändert der übergebene Text. Nicht korrigieren, nicht kürzen —
+  daran wird zugeordnet.
+- Genau so viele Einträge wie übergebene Rohtexte, in derselben Reihenfolge.
+
+Und zur Erinnerung: NUR das JSON-Objekt, sonst nichts. Und lieber null als
+geraten.
+`.trim()
+
+/** Der System-Prompt für Durchgang 2, aus den Merkmalen des Haushalts gebaut. */
+export function buildAssignmentPrompt(context: PromptContext): string {
   return [
-    ROLLE,
-    NICHT_RATEN,
-    BON_EIGENHEITEN,
-    ZAHLENFORMAT,
+    ZUORDNUNG_ROLLE,
+    ZUORDNUNG_NICHT_RATEN,
     zuordnung(context),
-    MILCH,
-    SCHEMA,
+    ZUORDNUNG_MILCH,
+    ZUORDNUNG_SCHEMA,
   ].join('\n\n---\n\n')
 }
 
-/**
- * Die kurze Aufforderung, die zusammen mit dem Bild geschickt wird.
- *
- * Bewusst knapp: Alles Inhaltliche steht im System-Prompt. Hier steht nur der
- * Auftrag zum Bild selbst.
- */
-export const USER_PROMPT =
-  'Lies diesen Kassenzettel und gib das JSON-Objekt nach dem beschriebenen ' +
-  'Schema zurück. Antworte ausschließlich mit dem JSON-Objekt.'
+/** Die Aufforderung mit den Rohtexten, einer je Zeile. */
+export function buildAssignmentUserPrompt(rawTexts: string[]): string {
+  return [
+    `Ordne diese ${rawTexts.length} Artikeltexte zu. Gib genau ${rawTexts.length} Einträge zurück,`,
+    'jeden mit seinem Rohtext unverändert. Antworte ausschließlich mit dem JSON-Objekt.',
+    '',
+    ...rawTexts.map((text) => `- ${text}`),
+  ].join('\n')
+}

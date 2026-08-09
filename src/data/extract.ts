@@ -1,20 +1,37 @@
 import { functionsUrl, supabase, supabaseAnonKey } from '../lib/supabase'
+import { applyAssignments, withAssignmentFailure } from '../lib/assignments'
 import type { CapturedImage } from '../lib/camera'
-import type { ExtractionPhase, ExtractionResponse } from '../lib/extraction'
+import type {
+  AssignmentResponse,
+  ExtractionPhase,
+  ExtractionResponse,
+  StructureResponse,
+} from '../lib/extraction'
 
 // Weiterreichen, damit Aufrufer den Typ zusammen mit `extractReceipt` bekommen.
 export type { ExtractionPhase }
 
 /**
- * Der Aufruf der Bon-Erkennung.
+ * Der Aufruf der Bon-Erkennung — beide Durchgänge.
  *
- * Die einzige Stelle in der App, die mit der Edge Function spricht. Sie schickt
- * das Foto hin und bekommt geprüfte Bon-Daten zurück — der Mistral-Schlüssel
- * bleibt dabei auf dem Server (PROJEKT.md).
+ * Die einzige Stelle in der App, die mit der Edge Function spricht. Der
+ * Mistral-Schlüssel bleibt dabei auf dem Server (PROJEKT.md).
  *
- * Jeder Fehler verlässt diese Datei als `ExtractionError` mit einem fertigen
- * deutschen Satz. Weder ein HTTP-Status noch eine Rohmeldung erreicht je die
- * Oberfläche.
+ *   1. **Lesen.** Das Foto geht hin, zurück kommt die Struktur des Bons:
+ *      Positionen, Beträge, Steuerkennzeichen — und, was der Haushalt schon
+ *      kennt, gleich zugeordnet.
+ *   2. **Zuordnen.** Für die übrigen Rohtexte ein zweiter Aufruf, diesmal ohne
+ *      Bild. Er entfällt, wenn nichts offen ist.
+ *
+ * **Der zweite Durchgang darf scheitern.** Netzfehler, erschöpftes Kontingent,
+ * unbrauchbare Antwort: Der Bon ist dann nicht verloren. Der teure Teil ist
+ * geschafft, die Beträge stehen, und der Korrektur-Screen zeigt die Positionen
+ * mit ihrem Kassentext. Namen und Kategorien setzt der Nutzer von Hand — eine
+ * Minute Arbeit gegen einen kompletten Neuscan.
+ *
+ * Jeder Fehler des *ersten* Durchgangs verlässt diese Datei dagegen als
+ * `ExtractionError` mit einem fertigen deutschen Satz. Weder ein HTTP-Status
+ * noch eine Rohmeldung erreicht je die Oberfläche.
  */
 
 /** Ein Fehler, dessen Text schon auf Deutsch und direkt anzeigbar ist. */
@@ -38,6 +55,13 @@ export class ExtractionError extends Error {
  * Mobilfunkverbindung.
  */
 const TIMEOUT_MS = 90_000
+
+/**
+ * Zeitlimit für Durchgang 2. Deutlich knapper, denn hier geht kein Bild über
+ * die Leitung und das Textmodell antwortet in Sekunden. Läuft es ab, gilt die
+ * Zuordnung als ausgefallen — und der Bon kommt trotzdem durch.
+ */
+const ASSIGNMENT_TIMEOUT_MS = 30_000
 
 /**
  * Ein `Blob` als Base64, ohne den `data:`-Vorspann.
@@ -83,6 +107,47 @@ const FALLBACK: Record<number, string> = {
 
 const GENERIC = 'Die Erkennung hat nicht geklappt. Bitte versuch es noch einmal.'
 
+/** Ein Aufruf der Funktion. Wirft `ExtractionError` mit fertigem deutschem Satz. */
+async function call(token: string, body: unknown, timeoutMs: number): Promise<unknown> {
+  let response: Response
+  try {
+    response = await fetch(`${functionsUrl}/erkennen`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        // Das Supabase-Gateway erwartet den öffentlichen Schlüssel zusätzlich
+        // zum Anmelde-Token.
+        apikey: supabaseAnonKey,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+  } catch (cause) {
+    const name = (cause as { name?: string }).name
+    if (name === 'TimeoutError' || name === 'AbortError') {
+      throw new ExtractionError(
+        'zeitueberschreitung',
+        'Die Erkennung hat zu lange gedauert. Bitte noch einmal versuchen.',
+      )
+    }
+    throw new ExtractionError(
+      'netz',
+      'Keine Verbindung. Prüfe deine Internetverbindung und versuch es noch einmal.',
+    )
+  }
+
+  if (!response.ok) {
+    const errorBody = (await response.json().catch(() => null)) as ErrorBody | null
+    const message = typeof errorBody?.message === 'string' ? errorBody.message : null
+    const code = typeof errorBody?.code === 'string' ? errorBody.code : `http_${response.status}`
+    const raw = typeof errorBody?.raw === 'string' ? errorBody.raw : null
+    throw new ExtractionError(code, message ?? FALLBACK[response.status] ?? GENERIC, raw)
+  }
+
+  return await response.json().catch(() => null)
+}
+
 export async function extractReceipt(
   capture: CapturedImage,
   onPhase?: (phase: ExtractionPhase) => void,
@@ -111,49 +176,77 @@ export async function extractReceipt(
   onPhase?.('vorbereiten')
   const image = await toBase64(capture.blob)
 
-  onPhase?.('senden')
-  let response: Response
-  try {
-    response = await fetch(`${functionsUrl}/erkennen`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-        // Das Supabase-Gateway erwartet den öffentlichen Schlüssel zusätzlich
-        // zum Anmelde-Token.
-        apikey: supabaseAnonKey,
-      },
-      body: JSON.stringify({ image, mimeType: capture.blob.type || 'image/jpeg' }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    })
-  } catch (cause) {
-    const name = (cause as { name?: string }).name
-    if (name === 'TimeoutError' || name === 'AbortError') {
-      throw new ExtractionError(
-        'zeitueberschreitung',
-        'Die Erkennung hat zu lange gedauert. Bitte noch einmal versuchen.',
-      )
+  /* ------------------------------------------------- Durchgang 1: lesen */
+
+  onPhase?.('lesen')
+  const structure = (await call(
+    token,
+    { image, mimeType: capture.blob.type || 'image/jpeg' },
+    TIMEOUT_MS,
+  )) as StructureResponse | null
+
+  if (!structure || !structure.extraction || !Array.isArray(structure.extraction.items)) {
+    throw new ExtractionError('modell_json', 'Die Antwort der Erkennung war unbrauchbar.')
+  }
+
+  const open = Array.isArray(structure.offeneRohtexte) ? structure.offeneRohtexte : []
+
+  /* --------------------------------------------- Durchgang 2: zuordnen */
+
+  if (open.length === 0) {
+    // Der Haushalt kennt jeden Artikel — der zweite Aufruf entfällt vollständig.
+    // Genau darauf läuft die Lernschleife hinaus.
+    onPhase?.('auswerten')
+    return {
+      extraction: structure.extraction,
+      model: structure.model,
+      durationMs: structure.durationMs,
+      raw: structure.raw,
+      assignment: null,
     }
-    throw new ExtractionError(
-      'netz',
-      'Keine Verbindung. Prüfe deine Internetverbindung und versuch es noch einmal.',
-    )
+  }
+
+  onPhase?.('zuordnen')
+  let assignment: AssignmentResponse | null = null
+  try {
+    assignment = (await call(
+      token,
+      { rohtexte: open },
+      ASSIGNMENT_TIMEOUT_MS,
+    )) as AssignmentResponse | null
+  } catch {
+    /*
+     * Bewusst geschluckt. Der Bon ist an dieser Stelle vollständig gelesen; ihn
+     * wegen einer ausgefallenen Namensgebung zu verwerfen, wäre der teuerste
+     * mögliche Umgang mit dem Fehler.
+     */
+    assignment = null
   }
 
   onPhase?.('auswerten')
 
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as ErrorBody | null
-    const message = typeof body?.message === 'string' ? body.message : null
-    const code = typeof body?.code === 'string' ? body.code : `http_${response.status}`
-    const raw = typeof body?.raw === 'string' ? body.raw : null
-    throw new ExtractionError(code, message ?? FALLBACK[response.status] ?? GENERIC, raw)
+  if (!assignment || !Array.isArray(assignment.assignments)) {
+    return {
+      extraction: withAssignmentFailure(structure.extraction),
+      model: structure.model,
+      durationMs: structure.durationMs,
+      raw: structure.raw,
+      assignment: null,
+    }
   }
 
-  const result = (await response.json().catch(() => null)) as ExtractionResponse | null
-  if (!result || !result.extraction || !Array.isArray(result.extraction.items)) {
-    throw new ExtractionError('modell_json', 'Die Antwort der Erkennung war unbrauchbar.')
-  }
+  const warnings = Array.isArray(assignment.warnings) ? assignment.warnings : []
+  const assigned = applyAssignments(structure.extraction, assignment.assignments)
 
-  return result
+  return {
+    extraction: { ...assigned, warnings: [...assigned.warnings, ...warnings] },
+    model: structure.model,
+    durationMs: structure.durationMs,
+    raw: structure.raw,
+    assignment: {
+      model: assignment.model,
+      durationMs: assignment.durationMs,
+      raw: assignment.raw,
+    },
+  }
 }

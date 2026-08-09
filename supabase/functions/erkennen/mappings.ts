@@ -57,16 +57,12 @@ export type KnownProducts = Map<string, KnownProduct>
 export function applyKnownProducts(extraction: Extraction, known: KnownProducts): Extraction {
   if (known.size === 0) return extraction
 
-  const resolvedLines = new Set<number>()
-
   const items: ExtractedItem[] = extraction.items.map((item) => {
     // Pfand und Rabatt sind keine Produkte und werden nie zugeordnet.
     if (item.kind !== 'artikel') return item
 
     const match = known.get(mappingKey(item.rawText))
     if (!match) return item
-
-    resolvedLines.add(item.lineNo)
 
     return {
       ...item,
@@ -83,20 +79,9 @@ export function applyKnownProducts(extraction: Extraction, known: KnownProducts)
   })
 
   /*
-   * Warnungen zu genau den Zeilen, deren Vorschlag gerade verworfen wurde,
-   * fliegen mit ihm raus: Dass das Modell eine unbekannte Kategorie oder ein
-   * erfundenes Merkmal geliefert hat, ist folgenlos, sobald die Zuordnung aus
-   * der Datenbank kommt. Stehen bleibt alles andere — Mengen, Preise und
-   * Summenabgleich hat die Datenbank nicht besser gewusst.
+   * Die Warnungen bleiben unangetastet. Sie stammen aus Durchgang 1 und
+   * betreffen Mengen, Preise und Summen — nichts davon weiß die Datenbank
+   * besser als der Bon selbst.
    */
-  const warnings = extraction.warnings.filter(
-    (warning) =>
-      !(
-        warning.lineNo !== undefined &&
-        resolvedLines.has(warning.lineNo) &&
-        (warning.code === 'kategorie_unbekannt' || warning.code === 'merkmal_verworfen')
-      ),
-  )
-
-  return { ...extraction, items, warnings }
+  return { ...extraction, items }
 }

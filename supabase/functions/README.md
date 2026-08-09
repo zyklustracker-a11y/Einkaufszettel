@@ -30,9 +30,13 @@ Fehlt er, meldet die App: „Die Bon-Erkennung ist noch nicht eingerichtet."
 | Name | Wert | Voreinstellung |
 |---|---|---|
 | `MISTRAL_MODEL` | z. B. `pixtral-large-latest` | `pixtral-12b-2409` |
+| `MISTRAL_TEXT_MODEL` | z. B. `open-mistral-7b` | `mistral-small-latest` |
 
-Ohne dieses Secret nimmt die Funktion `pixtral-12b-2409` — das Vision-Modell aus
-der Pixtral-Familie, das im freien Experiment-Tarif läuft.
+Ohne diese Secrets nimmt die Funktion `pixtral-12b-2409` für Durchgang 1 (das
+Vision-Modell aus der Pixtral-Familie, das im freien Experiment-Tarif läuft) und
+`mistral-small-latest` für Durchgang 2. Der zweite Durchgang sieht kein Bild
+mehr und braucht deshalb kein Vision-Modell — ein Textmodell ist dort schneller
+und billiger.
 
 > `SUPABASE_URL` und `SUPABASE_ANON_KEY` brauchst du **nicht** anzulegen. Die
 > setzt Supabase in jeder Edge Function von selbst.
@@ -83,9 +87,9 @@ geht nichts nach Supabase.
 
 **Über die Weboberfläche:** Supabase → **Edge Functions** → **Deploy a new
 function** → **Via Editor**, Name `erkennen` (genau so, klein geschrieben — die
-App ruft diese Adresse auf), dann die vier Dateien anlegen: `index.ts`,
-`prompt.ts`, `mistral.ts`, `validate.ts`. `validate.test.ts` wird nicht
-gebraucht, die Tests laufen auf deinem Rechner.
+App ruft diese Adresse auf), dann die sechs Dateien anlegen: `index.ts`,
+`prompt.ts`, `mistral.ts`, `validate.ts`, `assign.ts`, `mappings.ts`. Die
+`*.test.ts` werden nicht gebraucht, die Tests laufen auf deinem Rechner.
 
 **Mit der Supabase-CLI:**
 
@@ -139,14 +143,23 @@ Das ist der Teil, den du selbst machen kannst und sollst.
 
 Sie ist so geschrieben, dass du kein TypeScript brauchst: Alles zwischen den
 Backticks ist normaler Text ans Modell, alles hinter `//` sind Notizen für dich.
-Die Abschnitte sind einzeln überschrieben — „Nicht raten", „Bon-Eigenheiten",
-„Zahlenformat", „Zuordnung", „Milchprodukte", „Antwortformat".
+
+**Sie enthält zwei Prompts, und die Frage „welcher?" beantwortest du zuerst:**
+
+| Was schiefging | Welcher Prompt |
+|---|---|
+| Eine Zeile fehlt, zwei Zeilen verschmolzen, Betrag oder Menge falsch, Pfand übersehen | **Durchgang 1 — Struktur** |
+| Name unschön, falsche Kategorie, fehlendes oder erfundenes Merkmal, Milch falsch eingeordnet | **Durchgang 2 — Zuordnung** |
+
+Die Faustregel: Geht es um **Geld oder Zeilen**, ist es Durchgang 1. Geht es um
+**Bedeutung**, ist es Durchgang 2. Im Korrektur-Screen stehen unter „Rohantworten
+des Modells" beide Antworten getrennt untereinander — daran siehst du sofort,
+welcher der beiden danebenlag.
 
 Der Ablauf:
 
-1. Bon scannen, im Korrektur-Screen die **Rohantwort** ansehen.
-2. Fehler benennen: Wurde das Steuerkennzeichen als Preis gelesen? Eine
-   Pfandzeile übersehen? Der Rabatt positiv statt negativ?
+1. Bon scannen, im Korrektur-Screen die **Rohantworten** ansehen.
+2. Fehler benennen und dem richtigen Durchgang zuordnen (Tabelle oben).
 3. Den passenden Abschnitt in `prompt.ts` ergänzen — am besten mit einem
    Beispiel, so wie es die anderen Regeln dort auch machen.
 4. Änderung nach `main` bringen. Das Ausrollen passiert von selbst (1.2); unter
@@ -154,10 +167,15 @@ Der Ablauf:
 5. Denselben Bon noch einmal scannen und vergleichen.
 
 **Merkmale und Kategorien musst du dafür nicht anfassen.** Die setzt die
-Funktion zur Laufzeit aus der Datenbank ein: Legst du in `traits` ein neues
-aktives Merkmal an, kennt das Modell es ab dem nächsten Scan — ohne Ausrollen,
-ohne Codeänderung. Schaltest du eines ab, verschwindet es aus dem Prompt. Und
-Merkmalsschlüssel, die das Modell erfindet, wirft `validate.ts` weg.
+Funktion zur Laufzeit aus der Datenbank in den Zuordnungs-Prompt ein: Legst du
+in `traits` ein neues aktives Merkmal an, kennt das Modell es ab dem nächsten
+Scan — ohne Ausrollen, ohne Codeänderung. Schaltest du eines ab, verschwindet es
+aus dem Prompt. Und Merkmalsschlüssel, die das Modell erfindet, wirft `assign.ts`
+weg.
+
+Der Struktur-Prompt kennt die Merkmale **gar nicht** — er ist eine Konstante.
+Das ist Absicht: Was du in den Einstellungen änderst, soll das Abschreiben eines
+Bons unter keinen Umständen beeinflussen können.
 
 ---
 
@@ -165,19 +183,26 @@ Merkmalsschlüssel, die das Modell erfindet, wirft `validate.ts` weg.
 
 | Datei | Aufgabe |
 |---|---|
-| `index.ts` | Der Ablauf: Anmeldung prüfen, Merkmale laden, Modell rufen, Antwort prüfen, zurückgeben |
-| `prompt.ts` | **Der Erkennungs-Prompt.** Hier schärfst du nach |
+| `index.ts` | Der Ablauf beider Durchgänge: Anmeldung prüfen, Modell rufen, Antwort prüfen, zurückgeben |
+| `prompt.ts` | **Die beiden Prompts.** Hier schärfst du nach |
 | `mistral.ts` | Der Netz-Teil: Zeitlimit, Wiederholung bei 429, Antwort auspacken |
-| `validate.ts` | Die Prüfung: Schema, Beträge, Mengen, Summenabgleich, bekannte Schlüssel — und die Formen, die dabei entstehen |
-| `validate.test.ts` | Tests für die Prüfung — laufen mit `npm test` mit |
+| `validate.ts` | Durchgang 1 prüfen: Schema, Beträge, Mengen, Summenabgleich — und die Formen, die dabei entstehen |
+| `assign.ts` | Durchgang 2 prüfen: Kategorien und Merkmale gegen die Liste des Haushalts |
+| `mappings.ts` | Das Gedächtnis: bekannte Rohtexte aus der Datenbank einsetzen |
+| `*.test.ts` | Tests dazu — laufen mit `npm test` mit |
 
-Vier Dateien, nicht fünf: Die Typdefinitionen lagen anfangs in einer eigenen
-`schema.ts`. Der Editor in der Supabase-Oberfläche legte die aber nicht an — sie
+Die Typdefinitionen liegen bewusst in `validate.ts` und nicht in einer eigenen
+`schema.ts`: Der Editor in der Supabase-Oberfläche legte die nicht an — sie
 enthält nur Typen, und die verschwinden beim Übersetzen restlos, sodass zur
-Laufzeit eine leere Datei übrig bleibt. Sie stehen jetzt in `validate.ts`, also
-dort, wo sie entstehen.
+Laufzeit eine leere Datei übrig bleibt. Sie stehen jetzt dort, wo sie entstehen.
 
-Zwei Dinge, die absichtlich so sind:
+**Zwei Durchgänge über eine Adresse.** Die App ruft dieselbe Funktion zweimal
+auf: einmal mit `image` (Struktur), einmal mit `rohtexte` (Zuordnung). Der zweite
+Aufruf entfällt, wenn der Haushalt jeden Artikel des Bons schon kennt — und er
+darf scheitern, ohne den Bon mitzureißen. Warum das zwei Aufrufe sind und nicht
+einer, steht im Kopf von `index.ts`.
+
+Drei weitere Dinge, die absichtlich so sind:
 
 **Die Funktion benutzt keinen Dienstschlüssel.** Sie arbeitet mit dem Token des
 angemeldeten Nutzers, also unter denselben Zugriffsregeln wie die App selbst.

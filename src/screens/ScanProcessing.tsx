@@ -105,6 +105,19 @@ export function ScanProcessing() {
 
   const [preview, setPreview] = useState<string | null>(null)
   const [phase, setPhase] = useState<ExtractionPhase>('vorbereiten')
+  /*
+   * Welche Abschnitte wirklich gelaufen sind.
+   *
+   * Nötig, weil einer entfallen kann: Kennt der Haushalt jeden Artikel des
+   * Bons, findet die Zuordnung gar nicht statt. Ein Häkchen daneben wäre dann
+   * eine kleine Lüge — der Schritt bekommt stattdessen „entfällt".
+   */
+  const [visited, setVisited] = useState<ExtractionPhase[]>(['vorbereiten'])
+
+  const enterPhase = (next: ExtractionPhase) => {
+    setPhase(next)
+    setVisited((current) => (current.includes(next) ? current : [...current, next]))
+  }
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<ScanError | null>(null)
   const [slow, setSlow] = useState(false)
@@ -175,9 +188,10 @@ export function ScanProcessing() {
       setError(null)
       setSlow(false)
       setPhase('vorbereiten')
+      setVisited(['vorbereiten'])
       setProgress(0)
       phaseStartRef.current = Date.now()
-      requestRef.current = { attempt, promise: extractReceipt(capture, setPhase) }
+      requestRef.current = { attempt, promise: extractReceipt(capture, enterPhase) }
     }
 
     requestRef.current.promise.then(
@@ -272,16 +286,20 @@ export function ScanProcessing() {
 
       <ol className={styles.steps} aria-live="polite">
         {PROGRESS_STEPS.map((step, index) => {
-          const complete = index < current
+          const passed = index < current
+          // Vorbei, aber nie betreten: Der Abschnitt ist entfallen.
+          const skipped = passed && !visited.includes(step.phase)
+          const complete = passed && !skipped
           return (
             <li
               key={step.phase}
-              className={complete ? styles.step : `${styles.step} ${styles['step--pending']}`}
+              className={passed ? styles.step : `${styles.step} ${styles['step--pending']}`}
             >
               <span className={complete ? styles.tick : `${styles.tick} ${styles['tick--pending']}`}>
-                {complete ? '✓' : ''}
+                {complete ? '✓' : skipped ? '–' : ''}
               </span>
               {step.label}
+              {skipped && <span className={styles.skipped}> entfällt, alles schon bekannt</span>}
             </li>
           )
         })}

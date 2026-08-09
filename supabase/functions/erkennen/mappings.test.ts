@@ -15,11 +15,6 @@ import { validateExtraction } from './validate.ts'
  *      unangetastet. Das Gedächtnis kennt das Produkt, nicht den Einkauf.
  */
 
-const CONTEXT = {
-  categoryKeys: ['produce', 'dairy', 'sweets'],
-  traitKeys: ['milch', 'uht', 'industriezucker'],
-}
-
 const MILCH: KnownProduct = {
   canonicalProductId: 'p-1',
   name: 'H-Milch 1,5 % Fett',
@@ -35,12 +30,13 @@ function known(entries: Array<[string, KnownProduct]>): KnownProducts {
 
 /** Ein Bon mit genau diesen Positionen, durch die echte Prüfung gelaufen. */
 function receipt(positionen: unknown[]) {
-  return validateExtraction(
-    { lesbar: true, haendler: 'REWE', datum: '2026-08-14', positionen },
-    CONTEXT,
-  )
+  return validateExtraction({ lesbar: true, haendler: 'REWE', datum: '2026-08-14', positionen })
 }
 
+/*
+ * So kommt eine Position aus Durchgang 1: abgeschrieben, aber ohne jede
+ * Zuordnung. Genau die setzt `applyKnownProducts` ein.
+ */
 const H_MILCH = {
   rohtext: 'G&G H-MILCH 1,5%',
   art: 'artikel',
@@ -49,13 +45,6 @@ const H_MILCH = {
   einzelpreis_cent: 129,
   zeilensumme_cent: 258,
   steuer: 'B',
-  vorschlag: {
-    name: 'Haltbare Milch',
-    kategorie: 'produce',
-    merkmale: ['industriezucker'],
-    milch_erhitzung: 'unbekannt',
-    milch_homogenisiert: 'unbekannt',
-  },
 }
 
 /* ------------------------------------------------------------ Schlüssel */
@@ -106,13 +95,9 @@ test('applyKnownProducts', async (t) => {
     assert.equal(item.rawText, 'G&G H-MILCH 1,5%')
   })
 
-  await t.test('lässt unbekannte Rohtexte beim Modellvorschlag', () => {
+  await t.test('lässt einen unbekannten Rohtext offen für Durchgang 2', () => {
     const result = applyKnownProducts(receipt([H_MILCH]), known([['ETWAS ANDERES', MILCH]]))
-    const suggestion = result.items[0].suggestion!
-
-    assert.equal(suggestion.name, 'Haltbare Milch')
-    assert.equal(suggestion.source, 'model')
-    assert.equal(suggestion.canonicalProductId, null)
+    assert.equal(result.items[0].suggestion, null)
   })
 
   await t.test('ordnet Pfand- und Rabattzeilen nie zu', () => {
@@ -121,24 +106,7 @@ test('applyKnownProducts', async (t) => {
     assert.equal(result.items[0].suggestion, null)
   })
 
-  await t.test('räumt die Warnungen zur aufgelösten Zeile weg', () => {
-    // Das Modell hatte „produce" für eine Milch vorgeschlagen und ein Merkmal
-    // erfunden. Beides ist folgenlos, sobald die Zuordnung aus der Datenbank
-    // kommt — die Warnung darüber wäre dann nur Rauschen.
-    const erfunden = {
-      ...H_MILCH,
-      vorschlag: { ...H_MILCH.vorschlag, kategorie: 'gibtsnicht', merkmale: ['quatsch'] },
-    }
-    const before = receipt([erfunden])
-    assert.equal(before.warnings.some((w) => w.code === 'kategorie_unbekannt'), true)
-    assert.equal(before.warnings.some((w) => w.code === 'merkmal_verworfen'), true)
-
-    const after = applyKnownProducts(before, known([['G&G H-MILCH 1,5%', MILCH]]))
-    assert.equal(after.warnings.some((w) => w.code === 'kategorie_unbekannt'), false)
-    assert.equal(after.warnings.some((w) => w.code === 'merkmal_verworfen'), false)
-  })
-
-  await t.test('lässt Warnungen zu anderen Zeilen stehen', () => {
+  await t.test('lässt die Warnungen aus Durchgang 1 stehen', () => {
     const unlesbar = { rohtext: 'BROT', art: 'artikel', zeilensumme_cent: null }
     const result = applyKnownProducts(
       receipt([H_MILCH, unlesbar]),

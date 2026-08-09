@@ -17,6 +17,17 @@ const ENDPOINT = 'https://api.mistral.ai/v1/chat/completions'
 const DEFAULT_MODEL = 'pixtral-12b-2409'
 
 /**
+ * Das Modell für Durchgang 2, die Zuordnung.
+ *
+ * Reine Textarbeit — dafür braucht es kein Vision-Modell. Über das Secret
+ * `MISTRAL_TEXT_MODEL` austauschbar. Ist keines gesetzt, tut es auch das
+ * Vision-Modell: Es kann Text ebenso, nur eben nicht ganz so gut.
+ */
+const DEFAULT_TEXT_MODEL = 'mistral-small-latest'
+
+export { DEFAULT_MODEL, DEFAULT_TEXT_MODEL }
+
+/**
  * Zeitlimit für einen einzelnen Versuch.
  *
  * Ein langer Bon mit vierzig Positionen braucht beim Modell durchaus 20–30
@@ -48,8 +59,14 @@ export interface MistralRequest {
   model?: string
   systemPrompt: string
   userPrompt: string
-  /** Das Bon-Foto als Data-URL, also `data:image/jpeg;base64,...`. */
-  imageDataUrl: string
+  /**
+   * Das Bon-Foto als Data-URL, also `data:image/jpeg;base64,...`.
+   *
+   * Fehlt es, wird ein reiner Textaufruf daraus. Das ist Durchgang 2, die
+   * Zuordnung: Er bekommt nur die Rohtexte und braucht den Bon nicht mehr —
+   * und ohne Bild ist der Aufruf ein Bruchteil so teuer und deutlich schneller.
+   */
+  imageDataUrl?: string
 }
 
 function sleep(ms: number): Promise<void> {
@@ -117,11 +134,15 @@ async function attempt(
       { role: 'system', content: request.systemPrompt },
       {
         role: 'user',
-        content: [
-          { type: 'text', text: request.userPrompt },
-          // Mistral nimmt die Data-URL direkt als `image_url` entgegen.
-          { type: 'image_url', image_url: request.imageDataUrl },
-        ],
+        // Ohne Bild ein einfacher Text — die Blockform ist nur nötig, wenn
+        // neben dem Text noch etwas anderes mitkommt.
+        content: request.imageDataUrl
+          ? [
+              { type: 'text', text: request.userPrompt },
+              // Mistral nimmt die Data-URL direkt als `image_url` entgegen.
+              { type: 'image_url', image_url: request.imageDataUrl },
+            ]
+          : request.userPrompt,
       },
     ],
   }

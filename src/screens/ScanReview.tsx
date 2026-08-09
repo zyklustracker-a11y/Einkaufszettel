@@ -457,20 +457,61 @@ function TaxBlock({ tax }: { tax: ReturnType<typeof taxReconciliation> }) {
 }
 
 /**
- * Die unverarbeitete Antwort des Modells.
+ * Die unverarbeiteten Antworten des Modells — eine je Durchgang.
  *
  * Ohne sie lässt sich der Prompt nicht nachschärfen: Erst der Rohtext zeigt, ob
  * das Modell eine Zeile übersehen, den Steuerbuchstaben als Preis gelesen oder
- * schlicht kein sauberes JSON geliefert hat. Zugeklappt, damit sie im Alltag
- * nicht stört — die Datei `supabase/functions/erkennen/prompt.ts` ist die
- * Stelle, an der die Erkenntnis dann landet.
+ * schlicht kein sauberes JSON geliefert hat. Und seit Schritt 4c zeigt er
+ * zusätzlich, *welcher* der beiden Durchgänge danebenlag — sie werden getrennt
+ * nachgeschärft, in `supabase/functions/erkennen/prompt.ts`.
+ *
+ * Zugeklappt, damit sie im Alltag nicht stören.
  */
 function RawAnswer({ result }: { result: ExtractionResponse }) {
+  return (
+    <details className={styles.raw}>
+      <summary className={styles.rawSummary}>Rohantworten des Modells</summary>
+
+      <RawBlock
+        title="1 · Struktur"
+        model={result.model}
+        durationMs={result.durationMs}
+        raw={result.raw}
+      />
+
+      {result.assignment ? (
+        <RawBlock
+          title="2 · Zuordnung"
+          model={result.assignment.model}
+          durationMs={result.assignment.durationMs}
+          raw={result.assignment.raw}
+        />
+      ) : (
+        <div className={styles.rawMeta}>
+          2 · Zuordnung: entfallen – entweder war jeder Artikel schon bekannt, oder der Durchgang
+          ist ausgefallen (dann steht es oben in den Hinweisen).
+        </div>
+      )}
+    </details>
+  )
+}
+
+function RawBlock({
+  title,
+  model,
+  durationMs,
+  raw,
+}: {
+  title: string
+  model: string
+  durationMs: number
+  raw: string
+}) {
   const [copied, setCopied] = useState(false)
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(result.raw)
+      await navigator.clipboard.writeText(raw)
       setCopied(true)
       window.setTimeout(() => setCopied(false), 2000)
     } catch {
@@ -480,16 +521,15 @@ function RawAnswer({ result }: { result: ExtractionResponse }) {
   }
 
   return (
-    <details className={styles.raw}>
-      <summary className={styles.rawSummary}>Rohantwort des Modells</summary>
+    <div className={styles.rawBlock}>
       <div className={styles.rawMeta}>
-        {result.model} · {(result.durationMs / 1000).toFixed(1)} s · {result.raw.length} Zeichen
+        {title} · {model} · {(durationMs / 1000).toFixed(1)} s · {raw.length} Zeichen
       </div>
       <button type="button" className={styles.rawCopy} onClick={copy}>
         {copied ? 'Kopiert' : 'Text kopieren'}
       </button>
-      <pre className={styles.rawText}>{result.raw}</pre>
-    </details>
+      <pre className={styles.rawText}>{raw}</pre>
+    </div>
   )
 }
 
