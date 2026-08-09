@@ -1082,10 +1082,10 @@ Komponenten, sie stehen nur nicht mehr alle gleichzeitig da.
 Zurück-Geste noch ein Verweis auf einen bestimmten Bereich — und beides ist auf
 einem Telefon der halbe Bedienweg.
 
-**Zwei Schalter bleiben oben.** Dark Mode und „Bon-Fotos löschen" sind je ein
-einziger Zustand; ein eigener Screen dafür wäre ein Tipper mehr für dieselbe
-Bewegung. Die Faustregel: Was in eine Zeile passt und keine Erklärung braucht,
-bleibt auf der Übersicht.
+**Der Dark-Mode-Schalter bleibt oben.** Er ist ein einziger Zustand; ein eigener
+Screen dafür wäre ein Tipper mehr für dieselbe Bewegung. Die Faustregel: Was in
+eine Zeile passt und keine Erklärung braucht, bleibt auf der Übersicht.
+(Daneben stand bis Schritt 15 „Bon-Fotos nach Erkennung löschen" — siehe unten.)
 
 **Die Reihenfolge folgt der Häufigkeit, nicht der Technik.** Erst das Budget,
 dann was die Erkennung steuert (Kategorien, Merkmale), dann der Haushalt, dann
@@ -1139,6 +1139,23 @@ Kontos.
 E-Mail-Adressen stehen in `auth.users`; dorthin kommt keine gewöhnliche Abfrage.
 `household_members_list()` prüft als Allererstes, ob der Aufrufer selbst
 dazugehört, und gibt nur Name, E-Mail, Rolle und Beitrittsdatum zurück.
+
+### Ergänzt mit Schritt 15 (zurückgenommen und aufgeräumt)
+
+**Der Schalter „Bon-Fotos nach Erkennung löschen" ist weg.** Er stand für eine
+Wahl, die es nie gab: Das Foto wird nach der Erkennung **immer** verworfen und
+nie hochgeladen, es gibt keinen Storage-Bucket, `receipts.image_path` bleibt
+null. Der Schalter konnte an dem Verhalten nichts ändern und behauptete
+trotzdem, es zu tun. Ein Schalter ohne Wirkung ist schlimmer als keiner, weil
+man ihm glaubt. Im `AppState` bleibt damit genau eine Einstellung, die
+tatsächlich pro Gerät gilt — das Erscheinungsbild.
+
+**Die Erklärung in der Einstellungs-Übersicht steht jetzt unter dem Namen.**
+Sie stand daneben, weil Name und Erklärung dort `<span>` sind und ohne
+`display: block` in dieselbe Zeile rutschen — bei „Kategorien" las sich das als
+ein einziger Satz und brach auf 390 px obendrein um. Das Chevron sitzt mittig
+zur **ganzen** Zeile und nicht zum Namen, sonst rutschte es bei einer
+zweizeiligen Erklärung nach oben.
 
 ### Zurückgenommen mit Schritt 15 (Monatsreport als Push)
 

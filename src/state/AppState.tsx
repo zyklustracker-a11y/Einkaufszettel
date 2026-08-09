@@ -10,20 +10,24 @@ export type Theme = 'light' | 'dark'
  * Haushalt und liegt in der Tabelle `budgets`, nicht im Browser-Speicher. Sonst
  * hätte jedes Familienmitglied ein anderes Budget vor Augen.
  *
- * Übrig bleiben zwei Einstellungen, die tatsächlich pro Gerät gelten: das
- * Erscheinungsbild und ob Bon-Fotos nach der Erkennung gelöscht werden.
+ * Und seit Schritt 15 auch kein Schalter für die Bon-Fotos mehr. Er stand für
+ * eine Wahl, die es gar nicht gibt: **Das Foto wird nach der Erkennung immer
+ * verworfen und nie hochgeladen** (PROJEKT.md). Es gibt keinen Storage-Bucket,
+ * `receipts.image_path` bleibt null — der Schalter konnte an dem Verhalten nie
+ * etwas ändern und behauptete trotzdem, es zu tun. Ein Schalter ohne Wirkung ist
+ * schlimmer als keiner, weil man ihm glaubt.
+ *
+ * Übrig bleibt genau eine Einstellung, die tatsächlich pro Gerät gilt: das
+ * Erscheinungsbild.
  */
 interface AppState {
   theme: Theme
   toggleTheme: () => void
-  deleteReceiptPhotos: boolean
-  toggleDeleteReceiptPhotos: () => void
 }
 
 const AppStateContext = createContext<AppState | null>(null)
 
 const THEME_KEY = 'receipt-ai:theme'
-const PHOTOS_KEY = 'receipt-ai:deleteReceiptPhotos'
 
 /** Light is the default; a stored choice or the OS preference can override it. */
 function initialTheme(): Theme {
@@ -32,14 +36,8 @@ function initialTheme(): Theme {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
-function initialDeletePhotos(): boolean {
-  const stored = localStorage.getItem(PHOTOS_KEY)
-  return stored === null ? true : stored === 'true'
-}
-
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(initialTheme)
-  const [deleteReceiptPhotos, setDeleteReceiptPhotos] = useState<boolean>(initialDeletePhotos)
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -50,18 +48,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }, [theme])
 
-  useEffect(() => {
-    localStorage.setItem(PHOTOS_KEY, String(deleteReceiptPhotos))
-  }, [deleteReceiptPhotos])
-
   const toggleTheme = useCallback(() => setTheme((t) => (t === 'dark' ? 'light' : 'dark')), [])
 
-  const toggleDeleteReceiptPhotos = useCallback(() => setDeleteReceiptPhotos((v) => !v), [])
-
-  const value = useMemo(
-    () => ({ theme, toggleTheme, deleteReceiptPhotos, toggleDeleteReceiptPhotos }),
-    [theme, toggleTheme, deleteReceiptPhotos, toggleDeleteReceiptPhotos],
-  )
+  const value = useMemo(() => ({ theme, toggleTheme }), [theme, toggleTheme])
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>
 }

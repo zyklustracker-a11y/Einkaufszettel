@@ -27,10 +27,10 @@ import styles from './Settings.module.css'
  * Zurück-Weg. Die Bereiche selbst sind unverändert — es sind dieselben
  * Komponenten, sie stehen nur nicht mehr alle gleichzeitig da.
  *
- * **Zwei Schalter bleiben auf der Übersicht.** Dark Mode und „Bon-Fotos löschen"
- * sind je ein einziger Zustand; ein eigener Screen dafür wäre ein Tipper mehr
- * für dieselbe Bewegung. Die Faustregel: Was in eine Zeile passt und keine
- * Erklärung braucht, bleibt oben.
+ * **Der Dark-Mode-Schalter bleibt auf der Übersicht.** Er ist ein einziger
+ * Zustand; ein eigener Screen dafür wäre ein Tipper mehr für dieselbe Bewegung.
+ * Die Faustregel: Was in eine Zeile passt und keine Erklärung braucht, bleibt
+ * oben.
  *
  * **Die Reihenfolge folgt der Häufigkeit, nicht der Technik.** Das Budget wird
  * am ehesten geändert, danach kommt, was die Erkennung steuert (Kategorien,
@@ -38,7 +38,7 @@ import styles from './Settings.module.css'
  * Eintrag ist, den man nicht versehentlich treffen soll.
  */
 export function SettingsScreen() {
-  const { theme, toggleTheme, deleteReceiptPhotos, toggleDeleteReceiptPhotos } = useAppState()
+  const { theme, toggleTheme } = useAppState()
   const { user, signOut } = useAuth()
   const budget = useQuery(getMonthlyBudgetCents, [])
 
@@ -86,7 +86,7 @@ export function SettingsScreen() {
       <div className={styles.groupLabel}>Darstellung</div>
       <section className={styles.group}>
         {/*
-          Reine Schalter bleiben hier: ein einziger Zustand, keine Erklärung
+          Ein reiner Schalter bleibt hier: ein einziger Zustand, keine Erklärung
           nötig. Ein eigener Screen dafür wäre ein Tipper mehr für dieselbe
           Bewegung.
         */}
@@ -95,17 +95,6 @@ export function SettingsScreen() {
             Dark Mode
           </div>
           <Toggle checked={theme === 'dark'} onChange={toggleTheme} label="Dark Mode" />
-        </div>
-        <div className={styles.settingRow}>
-          <div style={{ flex: 1 }}>
-            <div className={styles.settingTitle}>Bon-Fotos nach Erkennung löschen</div>
-            <div className={styles.settingHint}>Spart Speicher, Positionen bleiben erhalten</div>
-          </div>
-          <Toggle
-            checked={deleteReceiptPhotos}
-            onChange={toggleDeleteReceiptPhotos}
-            label="Bon-Fotos nach Erkennung löschen"
-          />
         </div>
       </section>
 
@@ -117,7 +106,18 @@ export function SettingsScreen() {
   )
 }
 
-/** Eine Zeile der Übersicht: Name, optionaler Stand, Chevron. */
+/**
+ * Eine Zeile der Übersicht: Name, darunter die Erklärung, rechts der Stand und
+ * das Chevron.
+ *
+ * **Die Erklärung steht in einer eigenen Zeile**, kleiner und gedämpft — wie in
+ * den iOS-Einstellungen. Nebeneinander wirkte sie gedrängt und war schlecht zu
+ * lesen: „Kategorien Anlegen, umbenennen, umfärben, abschalten" liest sich als
+ * ein einziger Satz, und auf 390 px brach er obendrein um.
+ *
+ * Das Chevron bleibt rechts und sitzt mittig zur **ganzen** Zeile, nicht zum
+ * Namen — sonst rutschte es bei einer zweizeiligen Erklärung nach oben.
+ */
 function Row({
   to,
   title,
@@ -133,8 +133,8 @@ function Row({
   return (
     <Link to={to} className={styles.navRow}>
       <span style={{ flex: 1, minWidth: 0 }}>
-        <span className={styles.settingTitle}>{title}</span>
-        {hint && <span className={styles.settingHint}>{hint}</span>}
+        <span className={styles.navTitle}>{title}</span>
+        {hint && <span className={styles.navHint}>{hint}</span>}
       </span>
       {value && <span className={styles.navValue}>{value}</span>}
       <span className={styles.chevron} aria-hidden="true">

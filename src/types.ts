@@ -260,7 +260,6 @@ export interface HouseholdMember {
 
 export interface Settings {
   monthlyBudgetCents: number
-  deleteReceiptPhotos: boolean
 }
 
 /* ------------------------------------------------------- aus den SQL-Sichten */

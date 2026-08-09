@@ -134,5 +134,4 @@ export const household: HouseholdMember[] = [
 
 export const defaultSettings: Settings = {
   monthlyBudgetCents: 45000,
-  deleteReceiptPhotos: true,
 }
