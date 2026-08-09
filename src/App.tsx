@@ -25,10 +25,25 @@ import { useAuth } from './state/AuthContext'
 /** Routes that sit behind the tab bar. The scan flow and settings are modal-ish. */
 const TABBED = ['/', '/bestpreise', '/zettel', '/analysen', '/gesundheit', '/einkauf']
 
+/**
+ * Screens, die ihren eigenen Fußbereich mitbringen und deshalb **keine**
+ * Tab-Leiste vertragen.
+ *
+ * Der Korrektur-Screen ist so einer: Er füllt die ganze Höhe und setzt den
+ * Speichern-Knopf unten fest. Beim frischen Scan (`/scan/pruefen`) fiel das nie
+ * auf, weil `/scan` gar nicht in `TABBED` steht. Beim **Bearbeiten** eines
+ * gespeicherten Bons ist die Adresse aber `/einkauf/…/bearbeiten` — und
+ * `startsWith('/einkauf')` trifft zu. Die Leiste lag dann über dem Knopf: Ein
+ * Tipper in seine Mitte landete auf dem Scan-Knopf und warf die Bearbeitung weg,
+ * statt sie zu sichern.
+ */
+const UNTABBED_SUFFIX = '/bearbeiten'
+
 /** Where an unauthenticated visitor is sent, and where a login lands. */
 export const LOGIN_PATH = '/anmelden'
 
 function showsTabBar(pathname: string): boolean {
+  if (pathname.endsWith(UNTABBED_SUFFIX)) return false
   return TABBED.some((base) => (base === '/' ? pathname === '/' : pathname.startsWith(base)))
 }
 
