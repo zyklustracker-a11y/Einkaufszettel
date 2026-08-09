@@ -236,3 +236,57 @@ test('Randfälle', async (t) => {
     assert.equal(result.items.length, 1)
   })
 })
+
+/* ------------------------------------------------------------- Tankbelege */
+
+/**
+ * Ein Tankbeleg, wie ihn eine Zapfsäule druckt.
+ *
+ * Drei Dinge sind hier anders als auf einem Supermarktbon, und alle drei haben
+ * den Parser bis Schritt 7 aus dem Tritt gebracht: „à" statt „x", die Einheit
+ * „Ltr", und ein Literpreis mit **drei** Nachkommastellen. Ohne die dritte
+ * Stelle las das Muster aus „1,779" ein „1,77" heraus — ein falscher Literpreis,
+ * der dazu noch plausibel aussieht.
+ */
+const TANKBELEG = [
+  'SUPER E10',
+  '  38,45 L à 1,779 EUR/L        68,41 A',
+  'ZAPFSAEULE 3',
+]
+
+test('Tankbeleg', async (t) => {
+  await t.test('liest Liter und Literpreis', () => {
+    const { items } = parseLines(TANKBELEG)
+
+    assert.equal(items.length, 1)
+    assert.equal(items[0].menge, 38.45)
+    assert.equal(items[0].einheit, 'l')
+    // 1,779 EUR/L, auf ganze Cent gerundet — Geld ist nie eine Kommazahl.
+    assert.equal(items[0].einzelpreis_cent, 178)
+    assert.equal(items[0].zeilensumme_cent, 6841)
+    assert.equal(items[0].steuer, 'A')
+    assert.equal(items[0].art, 'artikel')
+  })
+
+  await t.test('die Zeile ohne Betrag bleibt sichtbar statt zu verschwinden', () => {
+    // „ZAPFSAEULE 3" trägt keinen Betrag und gehört zu keiner Position. Sie
+    // wandert damit in `unassigned` und steht im Korrektur-Screen unter den
+    // abgetippten Zeilen — verschwiegen wird sie nicht.
+    assert.deepEqual(parseLines(TANKBELEG).unassigned, ['ZAPFSAEULE 3'])
+  })
+
+  await t.test('„Ltr" und „@" werden ebenso gelesen', () => {
+    const { items } = parseLines(['DIESEL', '  45,20 Ltr @ 1,659 EUR      74,99 A'])
+    assert.equal(items[0].menge, 45.2)
+    assert.equal(items[0].einheit, 'l')
+    assert.equal(items[0].einzelpreis_cent, 166)
+    assert.equal(items[0].zeilensumme_cent, 7499)
+  })
+
+  await t.test('zwei Nachkommastellen bleiben unverändert', () => {
+    // Die Erweiterung darf den Normalfall nicht verschieben.
+    const { items } = parseLines(['SPRUEHSAHNE 30%', '  2 Stk x 0,99      1,98 B'])
+    assert.equal(items[0].einzelpreis_cent, 99)
+    assert.equal(items[0].zeilensumme_cent, 198)
+  })
+})

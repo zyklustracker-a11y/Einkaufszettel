@@ -398,6 +398,35 @@ anders ist, damit beim Weiterlesen niemand nach etwas sucht, das es nicht gibt:
   Franken → Euro verschöbe sonst bei jedem Bearbeiten einzelne Zeilen um einen
   Cent.
 
+# Beim Bauen von Schritt 6 und 7 entschieden
+
+**Schritt 6 (Verarbeitung im Hintergrund).** Der Ablauf ist der aus Abschnitt 3,
+mit drei Präzisierungen:
+
+- **Im Job liegt nur Durchgang 1.** Die Zuordnung läuft erst, wenn die App
+  wieder wach ist — sie ist billig, braucht kein Bild und soll mit den Merkmalen
+  von heute laufen.
+- **Ein offener Job gehört dem Gerät, nicht dem Haushalt.** Sonst bekäme die
+  ganze Familie die Meldung „Ein Scan ist fertig", sobald irgendwer irgendwo
+  einen Bon fotografiert.
+- **Aufgeräumt wird beim Anlegen des nächsten Jobs**, nicht nach Zeitplan. Für
+  einen Zwischenspeicher wäre ein eigener `pg_cron`-Auftrag zu viel Maschinerie.
+
+**Schritt 7 (Spritkosten).** Drei Stellen weichen vom Wortlaut oben ab:
+
+- **`kraftstoff` steht als Schlüssel im Code.** Bei „Auswärts essen" wurde das
+  ausdrücklich vermieden; dort ist die Händlerart der bessere Anker. Für Sprit
+  gibt es keinen — eine Tankstelle verkauft auch Kaffee. `kraftstoff` ist deshalb
+  eine mitgelieferte Kategorie mit festem Schlüssel, wie `dairy`.
+- **„Verbrauch" heißt Liter je Monat, nicht Liter je 100 km.** Auf einem
+  Tankbeleg steht kein Kilometerstand, und eine Verbrauchsangabe aus lückenhaften
+  Kilometerständen wäre schlimmer als keine.
+- **Die Prompt-Ergänzung allein hätte nicht gereicht.** Der Literpreis hat drei
+  Nachkommastellen; das Muster in `lines.ts` verlangte zwei und las aus „1,779"
+  ein „1,77". Und die Plausibilitätsprüfung hätte den Literpreis verworfen, weil
+  sich der halbe Cent Rundung über 38 Liter auf drei Cent summiert. Beides ist
+  nachgebessert und mit Tests festgenagelt.
+
 # Offene Kleinigkeiten
 
 - ~~**„Korrigieren" im Einkaufs-Detail**~~ *Erledigt mit Schritt 5b. Der Knopf

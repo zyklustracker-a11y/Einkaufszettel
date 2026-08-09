@@ -867,6 +867,59 @@ irgendwer irgendwo einen Bon fotografiert.
 einen Zwischenspeicher zu viel Maschinerie — Zeilen entstehen ohnehin nur, wenn
 jemand die App benutzt.
 
+### Ergänzt mit Schritt 7 (Spritkosten)
+
+**Ein Tankbeleg ist kein neuer Datentyp.** Er ist ein Bon mit einer Position:
+Menge in Litern, Preis je Liter, Gesamtbetrag. Bestpreis, Preisverlauf und
+Grundpreis greifen damit ohne zusätzlichen Bau. Gebraucht wurden nur die
+Kategorie `kraftstoff` (`supabase/migrations/0006_kraftstoff.sql`) und drei
+kleine Nachbesserungen an der Erkennung.
+
+**Ein Kategorieschlüssel steht hier ausnahmsweise im Code.** Bei „Auswärts
+essen" wurde genau das vermieden — dort ist `merchants.kind` der bessere Anker.
+Für Kraftstoff gibt es keinen: Eine Tankstelle verkauft Sprit *und* Kaffee, der
+Händler sagt also nichts. `kraftstoff` ist deshalb eine **mitgelieferte**
+Kategorie mit festem Schlüssel, genau wie `dairy`, an dem die Milch-Felder im
+Korrektur-Screen hängen. Der Anzeigename bleibt frei änderbar; selbst angelegte
+Kategorien bleiben von jedem Sonderverhalten unberührt.
+
+**Der Literpreis hat drei Nachkommastellen — die Erkennung musste das lernen.**
+Das Muster für Mengenzeilen in `lines.ts` verlangte zwei Stellen und las aus
+„38,45 L à 1,779 EUR/L" ein „1,77" heraus, mit einer „9" als Textrest: ein
+falscher Literpreis, der dazu noch plausibel aussieht. Dazu kamen `à` und `@` als
+Trennzeichen und `Ltr`/`Liter` als Einheit. Der Struktur-Prompt hat ein
+Tankbeleg-Beispiel bekommen, damit die Literzeile überhaupt als eigene Zeile
+abgetippt wird — nur dann kommt sie beim Parser als Mengenzeile an.
+
+**Die Plausibilitätsprüfung wächst jetzt mit der Menge.** Der Einzelpreis steht
+als ganze Zahl in Cent; 1,779 €/l werden also 178, und 38,45 × 1,78 ergibt 68,44
+statt der gedruckten 68,41. Mit der festen Grenze von zwei Cent hätte
+`checkUnitPrice` den Literpreis **verworfen** — und die Bestpreis-Sicht verglich
+danach nicht mehr Literpreise, sondern Tankfüllungen. Die Grenze ist deshalb
+`Menge ÷ 2`, mindestens zwei Cent: genau der Fehler, den das Runden auf ganze
+Cent überhaupt erzeugen kann. Für jede Supermarktzeile ändert sich dadurch
+nichts.
+
+**In der Auswertung ist der Literpreis ein Verhältnis, kein Geldbetrag.**
+`v_fuel_purchases` rechnet ihn aus Zeilensumme ÷ Litern mit zwei
+Nachkommastellen — `unit_price_cents` in ganzen Cent verlöre die Stelle, um die
+es an der Zapfsäule geht. Gespeichert wird davon nichts; gerechnet wird bei jedem
+Aufruf, so wie beim Grundpreis auch. Der Grundsatz „Geld ist eine ganze Zahl in
+Cent" bleibt unberührt.
+
+**Der Monatspreis ist Kosten ÷ Liter, nicht das Mittel der Einzelpreise.** Sonst
+zählte eine Fünf-Liter-Notfüllung genauso viel wie eine volle Tankfüllung.
+
+**„Verbrauch" heißt Liter je Monat, nicht Liter je 100 km.** Auf einem
+Tankbeleg steht kein Kilometerstand. Ihn abzufragen wäre eine Eingabe, die
+niemand zuverlässig macht, und eine Verbrauchsangabe aus lückenhaften
+Kilometerständen wäre schlimmer als keine. Gezeigt wird, was auf den Belegen
+steht — mehr wird nicht behauptet.
+
+**Kraftstoff bleibt in der Kopfkarte Non-Food.** Vier Zahlen sind auf 390 px
+bereits eng, fünf wären zu viel; das Konzept sieht es selbst so vor. Die eigene
+Karte steht in den Analysen und erscheint nur, wenn es Tankbelege gibt.
+
 ### Die Sichten werden gegen erzeugte Testdaten geprüft
 
 `supabase/tests/` legt eine wegwerfbare Datenbank an, spielt alle Migrationen
@@ -939,7 +992,7 @@ nur die Voreinstellung.
 | — | Bestpreis- und Analyse-Logik als SQL-Views | mit 2c vorgezogen |
 | — | Health-Score als Formel in `src/lib/score.ts` | erledigt |
 | 6 | Verarbeitung im Hintergrund (`scan_jobs`) | erledigt |
-| 7 | Spritkosten | offen |
+| 7 | Spritkosten | erledigt |
 | 8 | Bestpreise und Analysen scharf schalten | offen |
 | 9 | Einkaufszettel | offen |
 | 10 | Merkmale selbst anlegen und gewichten | offen |

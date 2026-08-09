@@ -27,7 +27,7 @@ begin
   assert n = 0, 'Haushaltstrennung: fremde Position sichtbar';
 
   select count(*) into n from public.v_items;
-  assert n = 11, format('v_items: 11 Positionen erwartet, %s gefunden', n);
+  assert n = 13, format('v_items: 13 Positionen erwartet, %s gefunden', n);
 
   /* =================================================== Monatsübersicht */
 
@@ -76,7 +76,7 @@ begin
 
   -- „REWE" und „REWE CITY" sind derselbe Laden (merchant_key).
   select count(*) into n from public.merchants;
-  assert n = 3, format('Händler: 3 erwartet (REWE, Aldi, Trattoria), %s gefunden', n);
+  assert n = 4, format('Händler: 4 erwartet (REWE, Aldi, Trattoria, Shell), %s gefunden', n);
 
   select count(*) into n from public.merchants where kind = 'gastro';
   assert n = 1, format('Gastro-Händler: 1 erwartet, %s', n);
@@ -159,8 +159,30 @@ begin
   /* ====================================================== Ausgabenverlauf */
 
   select sum(amount_cents) into n from public.v_spending_trend where range_id = 'year';
-  -- Sechs Monatstöpfe: laufender Monat (4100) und Vormonat (750).
-  assert n = 4850, format('Jahresverlauf: 4850 erwartet, %s', n);
+  -- Sechs Monatstöpfe: laufender Monat (4100), Vormonat (750) und die beiden
+  -- Tankfüllungen zwei und drei Monate zurück (6841 + 7560).
+  assert n = 19251, format('Jahresverlauf: 19251 erwartet, %s', n);
+
+  /* ========================================================= Spritkosten */
+
+  select count(*) into n from public.v_fuel_purchases;
+  assert n = 2, format('Tankfüllungen: 2 erwartet, %s', n);
+
+  select * into r from public.v_fuel_months
+  where month = (date_trunc('month', current_date) - interval '2 months')::date;
+  assert r.millilitres = 38450, format('Liter: 38450 ml erwartet, %s', r.millilitres);
+  assert r.amount_cents = 6841, format('Spritkosten: 6841 erwartet, %s', r.amount_cents);
+  -- 6841 Cent ÷ 38,45 l = 177,92 Cent/l. Zwei Nachkommastellen, weil Sprit in
+  -- Zehntelcent ausgezeichnet ist — ganze Cent verlören genau diese Stelle.
+  assert r.price_per_litre_cents = 177.92,
+    format('Literpreis: 177,92 erwartet, %s', r.price_per_litre_cents);
+
+  -- Verglichen wird der Literpreis und nicht die Tankfüllung. Sonst wäre der
+  -- „Bestpreis" schlicht die kleinste Menge, die je getankt wurde.
+  select * into r from public.v_product_best_price b
+  join public.canonical_products cp on cp.id = b.product_id
+  where cp.name = 'Super E10';
+  assert r.price_cents = 178, format('Bestpreis Sprit: 178 Cent/l erwartet, %s', r.price_cents);
 
   /* ========================================================= Top-Produkte */
 

@@ -550,3 +550,47 @@ test('Bon als Ganzes', async (t) => {
     assert.equal(result.itemsTotalCents, 0)
   })
 })
+
+/* ----------------------------------------------------- Tankbeleg, Toleranz */
+
+test('Toleranz wächst mit der Menge', async (t) => {
+  await t.test('ein Literpreis überlebt das Runden auf ganze Cent', () => {
+    /*
+     * 38,45 L × 1,779 EUR/L sind gedruckt 68,41 €. Der Einzelpreis steht als
+     * ganze Zahl in Cent, also als 178 — und 38,45 × 1,78 ergibt 68,44. Mit
+     * einer festen Grenze von zwei Cent würde der Literpreis hier verworfen,
+     * und die Bestpreis-Sicht verglich danach Tankfüllungen statt Literpreise.
+     */
+    const bon = receipt([
+      {
+        rohtext: 'SUPER E10',
+        menge: 38.45,
+        einheit: 'l',
+        einzelpreis_cent: 178,
+        zeilensumme_cent: 6841,
+      },
+    ])
+
+    assert.equal(bon.items[0].unitPriceCents, 178)
+    assert.equal(bon.items[0].quantityBase, 38450)
+    assert.equal(bon.items[0].quantityUnit, 'l')
+    assert.equal(
+      bon.warnings.some((warning) => warning.code === 'einzelpreis_verworfen'),
+      false,
+    )
+  })
+
+  await t.test('bei kleiner Menge bleibt es bei zwei Cent', () => {
+    // 2 Stück à 0,99 € ergeben 1,98 €. Stehen dort 2,50 €, ist das kein
+    // Rundungsfehler, sondern ein Lesefehler — und der Einzelpreis fliegt.
+    const bon = receipt([
+      { rohtext: 'SPRUEHSAHNE', menge: 2, einheit: 'stk', einzelpreis_cent: 99, zeilensumme_cent: 250 },
+    ])
+
+    assert.equal(bon.items[0].unitPriceCents, null)
+    assert.equal(
+      bon.warnings.some((warning) => warning.code === 'einzelpreis_verworfen'),
+      true,
+    )
+  })
+})

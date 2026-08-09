@@ -129,6 +129,41 @@ begin
     )
   ));
 
+  /*
+   * 5. und 6. Tankstelle, zwei und drei Monate zurück.
+   *
+   * Bewusst außerhalb der beiden Monate oben: So bleiben die Zahlen der
+   * Kopfkarte klein und von Hand nachrechenbar, und die Spritauswertung bekommt
+   * trotzdem zwei Monate mit unterschiedlichem Literpreis.
+   *
+   * 38,45 L × 1,779 EUR/L sind gedruckt 68,41 EUR. Der Einzelpreis steht als
+   * ganze Zahl in Cent (178) — genau der Fall, für den die Toleranz in
+   * `validate.ts` mit der Menge wächst.
+   */
+  perform public.save_receipt(jsonb_build_object(
+    'haendler', 'Shell', 'haendler_art', 'retail', 'haendler_art_quelle', 'model',
+    'gekauft_am', (m0 - interval '2 months')::date::text,
+    'summe_cent', 6841, 'trinkgeld_cent', 0, 'waehrung', 'EUR',
+    'positionen', jsonb_build_array(
+      jsonb_build_object('rohtext', 'SUPER E10', 'art', 'artikel', 'name', 'Super E10',
+        'kategorie', 'kraftstoff', 'merkmale', jsonb_build_array(),
+        'menge_basis', 38450, 'menge_einheit', 'l', 'einzelpreis_cent', 178,
+        'zeilensumme_cent', 6841, 'steuer', 'A', 'quelle', 'user')
+    )
+  ));
+
+  perform public.save_receipt(jsonb_build_object(
+    'haendler', 'Shell', 'haendler_art', 'retail', 'haendler_art_quelle', 'model',
+    'gekauft_am', (m0 - interval '3 months')::date::text,
+    'summe_cent', 7560, 'trinkgeld_cent', 0, 'waehrung', 'EUR',
+    'positionen', jsonb_build_array(
+      jsonb_build_object('rohtext', 'SUPER E10', 'art', 'artikel', 'name', 'Super E10',
+        'kategorie', 'kraftstoff', 'merkmale', jsonb_build_array(),
+        'menge_basis', 40000, 'menge_einheit', 'l', 'einzelpreis_cent', 189,
+        'zeilensumme_cent', 7560, 'steuer', 'A', 'quelle', 'user')
+    )
+  ));
+
   /* ------------------------------------------------------------ Haushalt B */
 
   perform set_config('request.jwt.claim.sub', v_user_b::text, false);

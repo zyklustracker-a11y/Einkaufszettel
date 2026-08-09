@@ -190,6 +190,42 @@ Der Artikelbereich beginnt bei der ersten Artikelzeile und endet bei der
 Summenzeile — die gehört nicht mehr dazu.
 `.trim()
 
+/* ----------------------------------------------------------------------------
+ * Tankbelege (Schritt 7).
+ *
+ * Sie sind anders gebaut als ein Supermarktbon: ein einziger Artikel, dafür mit
+ * Zapfsäule, Kraftstoffart, Literzahl und einem Preis mit DREI Nachkommastellen.
+ * Der Prompt braucht dafür kein neues Konzept — die Regel „eine gedruckte Zeile
+ * ist ein Eintrag" gilt unverändert. Was fehlte, ist ein Beispiel, damit die
+ * Literzeile als eigene Zeile abgetippt wird und nicht im Artikelnamen
+ * verschwindet: Nur so kommt sie bei `lines.ts` als Mengenzeile an, und nur dann
+ * gibt es einen Literpreis zum Vergleichen.
+ * -------------------------------------------------------------------------- */
+
+const STRUKTUR_TANKBELEG = `
+TANKBELEGE — ein Sonderfall der Form, nicht der Regel.
+
+Ein Tankbeleg hat meist nur einen Artikel, dafür eine Mengenzeile mit Litern und
+einen Literpreis mit DREI Nachkommastellen. Tippe beides ab, unverändert:
+
+    SUPER E10
+      38,45 L à 1,779 EUR/L       68,41 A
+    ZAPFSAEULE 3
+
+Das sind drei Einträge, so wie sie dastehen. Beachte dabei:
+
+- Der Literpreis behält seine dritte Stelle: "1,779" und nicht "1,78". Runde
+  nichts.
+- Trennzeichen zwischen Menge und Preis sind hier oft "à" oder "@" statt "x".
+  Lass sie stehen, wie sie gedruckt sind.
+- Die Einheit heißt je nach Kasse "L", "Ltr" oder "Liter". Auch die bleibt so.
+- Zeilen wie "ZAPFSAEULE 3", "KM-STAND" oder eine Fahrzeugnummer sind Teil des
+  Artikelbereichs und werden mit abgetippt. Sie tragen keinen Betrag und
+  richten damit keinen Schaden an.
+- Steht auf dem Beleg zusätzlich eine Zeile für die Autowäsche oder einen
+  Kaffee, ist das eine eigene Zeile wie jede andere.
+`.trim()
+
 const STRUKTUR_ZAHLENFORMAT = `
 ABTIPPEN HEISST WÖRTLICH — auch bei Zahlen.
 
@@ -300,6 +336,7 @@ export const STRUCTURE_SYSTEM_PROMPT = [
   STRUKTUR_NICHT_RATEN,
   STRUKTUR_ZEILEN,
   STRUKTUR_EIGENHEITEN,
+  STRUKTUR_TANKBELEG,
   STRUKTUR_ZAHLENFORMAT,
   STRUKTUR_SCHEMA,
 ].join('\n\n---\n\n')

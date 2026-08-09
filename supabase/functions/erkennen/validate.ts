@@ -285,6 +285,31 @@ export const MILK_HOMOGENIZED: MilkHomogenized[] = ['ja', 'nein', 'unbekannt']
  */
 const LINE_TOLERANCE_CENTS = 2
 
+/**
+ * Dieselbe Toleranz, aber mitwachsend — und zwar genau um den Betrag, den das
+ * Runden des Einzelpreises auf ganze Cent überhaupt erzeugen kann.
+ *
+ * Der Einzelpreis steht als ganze Zahl in Cent (PROJEKT.md). Ein gedruckter
+ * Preis mit einer weiteren Stelle wird beim Einlesen gerundet, und dieser
+ * Rundungsfehler von höchstens einem halben Cent multipliziert sich mit der
+ * Menge. Bei 1,120 kg fällt das nicht auf; bei einer Tankfüllung schon:
+ *
+ *     38,45 L × 1,779 EUR/L = 68,41 EUR gedruckt
+ *     38,45 L × 1,78  EUR/L = 68,44 EUR gerechnet
+ *
+ * Mit der festen Grenze von zwei Cent würde der Literpreis hier **verworfen** —
+ * und die Bestpreis-Sicht verglich danach nicht mehr Literpreise, sondern
+ * Tankfüllungen. Das wäre keine Vorsicht, sondern ein falsches Ergebnis.
+ *
+ * Die Grenze ist deshalb `Menge ÷ 2`, mindestens aber die bisherigen zwei Cent.
+ * Für jede Zeile mit kleiner Menge — also für alle Supermarktbons — ändert sich
+ * dadurch nichts.
+ */
+function lineTolerance(base: number | null, unit: ExtractedUnit | null): number {
+  if (base === null || unit === null) return LINE_TOLERANCE_CENTS
+  return Math.max(LINE_TOLERANCE_CENTS, Math.ceil(displayAmount(base, unit) / 2))
+}
+
 /* ========================================================== JSON herausholen */
 
 /**
@@ -510,12 +535,12 @@ function resolveQuantity(
   // Fall 2: Gegenprobe, sofern es überhaupt etwas zu prüfen gibt.
   if (unitPriceCents !== null && totalCents !== null && totalCents !== 0) {
     const asGiven = Math.round(displayAmount(base, unit) * unitPriceCents)
-    const fits = Math.abs(asGiven - totalCents) <= LINE_TOLERANCE_CENTS
+    const fits = Math.abs(asGiven - totalCents) <= lineTolerance(base, unit)
 
     if (!fits && (unit === 'kg' || unit === 'l')) {
       const scaled = base * 1000
       const asScaled = Math.round(displayAmount(scaled, unit) * unitPriceCents)
-      if (Math.abs(asScaled - totalCents) <= LINE_TOLERANCE_CENTS) {
+      if (Math.abs(asScaled - totalCents) <= lineTolerance(scaled, unit)) {
         warnings.push({
           code: 'menge_umgerechnet',
           lineNo,
@@ -581,7 +606,7 @@ function checkUnitPrice(
       ? Math.round(displayAmount(base, unit) * unitPriceCents)
       : unitPriceCents
 
-  if (Math.abs(expected - totalCents) <= LINE_TOLERANCE_CENTS) return keep
+  if (Math.abs(expected - totalCents) <= lineTolerance(base, unit)) return keep
 
   return {
     unitPriceCents: null,

@@ -50,13 +50,28 @@ import type { ItemKind, ModelItem } from './validate.ts'
 const TRAILING_AMOUNT = /(-)?\s*(\d{1,4})[.,](\d{2})\s*(-)?\s*(?:eur|€)?\s*([A-Za-z]{1,2})?\s*$/i
 
 /**
- * Eine Mengenzeile: „2 Stk x 0,99", „1,120 kg x 1,79 EUR/kg", „3 x 1,29".
+ * Eine Mengenzeile: „2 Stk x 0,99", „1,120 kg x 1,79 EUR/kg", „3 x 1,29",
+ * „38,45 L à 1,779 EUR/L".
  *
  * Am Zeilenanfang verankert (Kassen rücken sie ein), damit ein Artikelname mit
  * einem „x" in der Mitte nicht versehentlich als Mengenzeile gilt.
+ *
+ * Drei Zugeständnisse an den Tankbeleg (Schritt 7):
+ *
+ *   * **`à` und `@` als Trennzeichen.** Zapfsäulen drucken „38,45 L à 1,779"
+ *     statt „x".
+ *   * **`Ltr` und `Liter` als Einheit.** Beides ist auf Tankbelegen üblich.
+ *   * **Drei Nachkommastellen beim Einzelpreis.** Sprit wird in Zehntelcent
+ *     ausgezeichnet. Ohne diese Stelle läse das Muster aus „1,779" ein „1,77"
+ *     heraus und ließe die „9" als Textrest stehen — ein falscher Literpreis,
+ *     der dazu noch plausibel aussieht.
+ *
+ * Auf ganze Cent gerundet wird erst beim Auslesen (`takeQuantity`): Geld ist in
+ * dieser App nie eine Kommazahl (PROJEKT.md). Was dabei an Genauigkeit verloren
+ * geht, holt die Spritauswertung aus Zeilensumme ÷ Litern zurück.
  */
 const QUANTITY_LINE =
-  /^(\d+(?:[.,]\d+)?)\s*(stk|st|stck|stück|kg|g|l|ml)?\s*[x*×]\s*(\d{1,4}[.,]\d{2})/i
+  /^(\d+(?:[.,]\d+)?)\s*(stk|stck|stück|st|kg|ml|ltr|liter|l|g)?\s*[x*×à@]\s*(\d{1,4}[.,]\d{2,3})/i
 
 /**
  * Wörter, an denen eine Zeile als Pfand oder Rabatt zu erkennen ist.
@@ -162,11 +177,12 @@ function takeQuantity(text: string): Quantity | null {
   }
 }
 
-/** Aus „Stück", „Stk", „ST" wird `stk`; alles Übrige bleibt, wie es ist. */
+/** Aus „Stück", „Stk", „ST" wird `stk`, aus „Ltr" und „Liter" wird `l`. */
 function normalizeUnit(unit: string | null): string | null {
   if (!unit) return null
   const lower = unit.toLowerCase()
   if (lower.startsWith('st')) return 'stk'
+  if (lower === 'ltr' || lower === 'liter') return 'l'
   return lower
 }
 

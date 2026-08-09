@@ -70,6 +70,28 @@ export function formatAmount(value: number, unit: string): string {
   return `${decimal.format(value)} ${unit}`
 }
 
+/** `38,45 l` — aus ganzen Millilitern, so wie die Datenbank sie hält. */
+export function formatLitres(millilitres: number): string {
+  return `${decimal.format(millilitres / 1000)} l`
+}
+
+/**
+ * `1,779 €/l` — der Literpreis, mit drei Nachkommastellen.
+ *
+ * Drei, weil Sprit so ausgezeichnet ist: An der Säule steht 1,779 und nicht
+ * 1,78, und ein auf zwei Stellen gekürzter Preisverlauf zeigte lauter gleiche
+ * Werte. Die Eingabe ist ein Verhältnis (Cent je Liter) und kein Geldbetrag —
+ * deshalb darf sie Nachkommastellen haben.
+ */
+const perLitre = new Intl.NumberFormat('de-DE', {
+  minimumFractionDigits: 3,
+  maximumFractionDigits: 3,
+})
+
+export function formatPricePerLitre(centsPerLitre: number): string {
+  return `${perLitre.format(centsPerLitre / 100)} €/l`
+}
+
 /** `62 %` — takes a fraction, not a percentage. */
 export function formatPercent(fraction: number): string {
   return percent.format(fraction)

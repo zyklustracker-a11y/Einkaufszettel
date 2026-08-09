@@ -1,13 +1,21 @@
 import { useState } from 'react'
-import { BarChart, CategoryBars } from '../components/charts'
+import { BarChart, CategoryBars, SparkAxis, Sparkline } from '../components/charts'
 import { Async, EmptyState } from '../components/states'
 import { SearchField } from '../components/ui'
 import { getAnalyticsData, getCategories, getMerchantName, searchItemSpending, useQuery } from '../data'
 import type { AnalyticsData } from '../data'
 import { categorySlices } from '../lib/derive'
-import { formatEuro, formatEuroSigned, formatEuroWhole, formatMonth } from '../lib/format'
+import {
+  formatEuro,
+  formatEuroSigned,
+  formatEuroWhole,
+  formatLitres,
+  formatMonth,
+  formatMonthShort,
+  formatPricePerLitre,
+} from '../lib/format'
 import { rangeLabel, trendPoints } from '../lib/trend'
-import type { RangeId } from '../types'
+import type { FuelMonth, RangeId } from '../types'
 import styles from './Analytics.module.css'
 
 const RANGE_IDS: RangeId[] = ['week', 'month', 'year', 'custom']
@@ -130,6 +138,8 @@ function AnalyticsBody({ data }: { data: AnalyticsData }) {
         )}
       </section>
 
+      <FuelCard months={data.fuelMonths} />
+
       <ProductSearch month={data.month} />
 
       <section className={styles.listCard}>
@@ -151,6 +161,93 @@ function AnalyticsBody({ data }: { data: AnalyticsData }) {
         )}
       </section>
     </>
+  )
+}
+
+/**
+ * Spritkosten — die eigene Auswertung aus Abschnitt 4 des Konzepts.
+ *
+ * **Sie erscheint nur, wenn es Tankbelege gibt.** Kraftstoff bleibt in der
+ * Kopfkarte Non-Food; eine fünfte Zahl dort wäre auf 390 px zu viel
+ * (KONZEPT-ERWEITERUNGEN.md). Wer nie tankt, sieht hier nichts.
+ *
+ * **„Verbrauch" heißt Liter je Monat, nicht Liter je 100 km.** Auf einem
+ * Tankbeleg steht kein Kilometerstand. Ihn abzufragen wäre eine Eingabe, die
+ * niemand zuverlässig macht — und eine Verbrauchsangabe aus lückenhaften
+ * Kilometerständen wäre schlimmer als keine. Gezeigt wird, was auf den Belegen
+ * steht.
+ *
+ * **Der Literpreis eines Monats ist Kosten ÷ Liter, kein Mittel der einzelnen
+ * Preise.** Sonst zählte eine Fünf-Liter-Notfüllung so viel wie eine volle
+ * Tankfüllung.
+ */
+function FuelCard({ months }: { months: FuelMonth[] }) {
+  if (months.length === 0) return null
+
+  // Die Sicht liefert aufsteigend; der jüngste Monat steht damit am Ende.
+  const latest = months[months.length - 1]
+  const totalCents = months.reduce((sum, month) => sum + month.amountCents, 0)
+  const totalMillilitres = months.reduce((sum, month) => sum + month.millilitres, 0)
+  const fills = months.reduce((sum, month) => sum + month.fillCount, 0)
+
+  return (
+    <section className="card">
+      <div className={styles.cardHead}>
+        <div className="cardTitle">Kraftstoff</div>
+        <div className={styles.periodLabel}>{formatMonth(latest.month)}</div>
+      </div>
+
+      <div className={styles.fuelHead}>
+        <div className={styles.fuelFigure}>
+          <div className={styles.fuelValue}>{formatPricePerLitre(latest.pricePerLitreCents)}</div>
+          <div className={styles.fuelCaption}>zuletzt im Schnitt</div>
+        </div>
+        <div className={styles.fuelFigure}>
+          <div className={styles.fuelValue}>{formatEuro(latest.amountCents)}</div>
+          <div className={styles.fuelCaption}>{formatLitres(latest.millilitres)} getankt</div>
+        </div>
+      </div>
+
+      {/*
+        Zwei Messpunkte sind das Minimum für eine Linie. Bei einem einzigen wäre
+        sie ein Punkt in der Mitte und behauptete einen Verlauf, den es nicht
+        gibt.
+      */}
+      {months.length >= 2 && (
+        <>
+          <Sparkline
+            values={months.map((month) => month.pricePerLitreCents)}
+            height={92}
+            midline
+            label="Literpreis im Zeitverlauf"
+          />
+          <SparkAxis>
+            {months.map((month) => (
+              <span key={month.month}>{formatMonthShort(month.month)}</span>
+            ))}
+          </SparkAxis>
+        </>
+      )}
+
+      <div className={styles.fuelRows}>
+        {[...months].reverse().map((month) => (
+          <div key={month.month} className={styles.fuelRow}>
+            <span className={styles.fuelMonth}>{formatMonth(month.month)}</span>
+            <span className={styles.fuelDetail}>
+              {formatLitres(month.millilitres)} · {formatPricePerLitre(month.pricePerLitreCents)}
+            </span>
+            <span className={styles.fuelAmount}>{formatEuro(month.amountCents)}</span>
+          </div>
+        ))}
+      </div>
+
+      <p className={styles.footnote}>
+        {fills} {fills === 1 ? 'Tankfüllung' : 'Tankfüllungen'} ·{' '}
+        {formatLitres(totalMillilitres)} · {formatEuro(totalCents)} in{' '}
+        {months.length === 1 ? 'einem Monat' : `${months.length} Monaten`}. Welche Tankstelle
+        günstiger war, steht unter Bestpreise.
+      </p>
+    </section>
   )
 }
 

@@ -8,6 +8,7 @@ import { reference } from './reference'
 import type {
   CategoryId,
   CategoryTotal,
+  FuelMonth,
   HealthMonth,
   ItemSearchResult,
   MerchantId,
@@ -384,6 +385,44 @@ export interface AnalyticsData {
   categoryTotals: CategoryTotal[]
   savings: SavingsRow[]
   topProducts: TopProduct[]
+  /** Leer, solange kein Tankbeleg erfasst ist — dann fehlt die Karte ganz. */
+  fuelMonths: FuelMonth[]
+}
+
+interface FuelMonthRow {
+  month: string
+  fill_count: number
+  amount_cents: number
+  millilitres: number
+  /** `numeric` kommt über PostgREST als Zeichenkette an. */
+  price_per_litre_cents: number | string
+}
+
+/**
+ * Die Tankfüllungen der letzten zwölf Monate.
+ *
+ * **Ein Fehler wird hier verschluckt und nicht weitergereicht.** Die Sicht kam
+ * mit Schritt 7 dazu; wer die Migration noch nicht ausgeführt hat, soll deshalb
+ * nicht den ganzen Analysen-Screen verlieren — die Spritkarte fehlt dann eben.
+ * Das ist die einzige Stelle mit dieser Ausnahme, und sie gilt nur, weil die
+ * Karte selbst optional ist: Ohne Tankbeleg erscheint sie ohnehin nicht.
+ */
+async function loadFuelMonths(): Promise<FuelMonth[]> {
+  const { data, error } = await supabase
+    .from('v_fuel_months')
+    .select('month, fill_count, amount_cents, millilitres, price_per_litre_cents')
+    .gte('month', monthsBack(11))
+    .order('month')
+
+  if (error || !data) return []
+
+  return (data as unknown as FuelMonthRow[]).map((row) => ({
+    month: row.month,
+    fillCount: row.fill_count,
+    amountCents: row.amount_cents,
+    millilitres: row.millilitres,
+    pricePerLitreCents: Number(row.price_per_litre_cents),
+  }))
 }
 
 export async function getAnalyticsData(): Promise<AnalyticsData> {
@@ -392,7 +431,7 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
   const summary = await loadCurrentMonth()
   const month = summary.month
 
-  const [buckets, categoryTotals, savings, topProducts] = await Promise.all([
+  const [buckets, categoryTotals, savings, topProducts, fuelMonths] = await Promise.all([
     supabase
       .from('v_spending_trend')
       .select('range_id, bucket_index, bucket_start, bucket_end, iso_week, amount_cents')
@@ -413,6 +452,7 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
       .lte('rank', 10)
       .order('rank')
       .then((r) => unwrap<TopProductRow[]>(r)),
+    loadFuelMonths(),
   ])
 
   return {
@@ -448,6 +488,7 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
       purchaseCount: row.purchase_count,
       amountCents: row.amount_cents,
     })),
+    fuelMonths,
   }
 }
 

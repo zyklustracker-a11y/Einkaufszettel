@@ -245,6 +245,52 @@ müsstest.
 
 ---
 
+## 2f. Die sechste Migration: Spritkosten
+
+`migrations/0006_kraftstoff.sql` gehört zu Schritt 7 und ist die kürzeste von
+allen — ein Tankbeleg ist für die App ein gewöhnlicher Bon.
+
+| Was | Wofür |
+|---|---|
+| Kategorie `kraftstoff` | Non-Food, mit Erklärung fürs Modell |
+| Sicht `v_fuel_purchases` | eine Zeile je Tankfüllung, mit Literpreis |
+| Sicht `v_fuel_months` | Kosten, Liter und Literpreis je Monat |
+
+Genauso ausführen wie oben. Erwartet: **Success. No rows returned.** Auch diese
+Datei ist mehrfach ausführbar.
+
+**Prüfen, ob die Kategorie da ist:**
+
+```sql
+select key, name, is_food, active, left(description, 50) as erklaerung
+from public.categories where key = 'kraftstoff';
+```
+
+Erwartet: eine Zeile, `is_food = false`, aktiv. Den Namen und die Farbe kannst du
+in den Einstellungen ändern — den Schlüssel `kraftstoff` nicht, an ihm hängt die
+Spritauswertung.
+
+> **Warum hier ausnahmsweise ein Kategorieschlüssel im Code steht:** Bei
+> „Auswärts essen" entscheidet die Händlerart, weil eine Gastro-Rechnung an einem
+> Gastro-Händler hängt. Bei Kraftstoff geht das nicht — eine Tankstelle verkauft
+> Sprit *und* Kaffee. Also entscheidet die Kategorie, und `kraftstoff` ist
+> deshalb eine mitgelieferte mit festem Schlüssel, genauso wie `dairy`.
+
+**Nach dem ersten Tankbeleg prüfen:**
+
+```sql
+select purchased_on, product_name, millilitres, total_cents, price_per_litre_cents
+from public.v_fuel_purchases
+order by purchased_on desc;
+```
+
+Erwartet: eine Zeile je Tankfüllung. `price_per_litre_cents` ist **Cent je
+Liter** mit zwei Nachkommastellen — 177,92 heißt 1,779 €/l. Steht dort nichts,
+obwohl du getankt hast, fehlt der Position ihre Literangabe: Dann im
+Einkaufs-Detail auf „Bearbeiten" und die Menge nachtragen.
+
+---
+
 ## 3. Prüfen, ob alles angekommen ist
 
 Öffne eine neue Abfrage und führe diese vier Blöcke nacheinander aus.

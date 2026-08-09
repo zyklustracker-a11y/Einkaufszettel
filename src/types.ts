@@ -310,6 +310,25 @@ export interface SavingsRow {
   excessCents: number
 }
 
+/**
+ * Ein Monat Tankstelle, wie ihn `v_fuel_months` liefert.
+ *
+ * `pricePerLitreCents` ist ein **Verhältnis und kein Geldbetrag**: Kosten ÷
+ * Liter, mit zwei Nachkommastellen. Sprit ist in Zehntelcent ausgezeichnet, und
+ * ganze Cent verlören genau diese Stelle. Der Grundsatz „Geld ist eine ganze
+ * Zahl in Cent" gilt weiter — gespeichert wird davon nichts, gerechnet wird bei
+ * jedem Aufruf neu, so wie beim Grundpreis auch.
+ */
+export interface FuelMonth {
+  /** Erster Tag des Monats, ISO. */
+  month: string
+  fillCount: number
+  amountCents: number
+  /** Ganze Milliliter — Mengen bleiben ganzzahlige Basiseinheiten. */
+  millilitres: number
+  pricePerLitreCents: number
+}
+
 /** Ergebnis der Produktsuche im Zeitraum. */
 export interface ItemSearchResult {
   purchaseCount: number
