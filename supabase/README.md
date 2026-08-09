@@ -390,6 +390,35 @@ hinschreiben.
 
 ---
 
+## 2i. Die neunte Migration: Merkmale verwalten
+
+`migrations/0009_merkmale.sql` gehört zu Schritt 10 und ist die kürzeste von
+allen — am Schema ändert sich nichts. Merkmale waren von Anfang an Daten; es
+fehlte nur die Bedienoberfläche.
+
+| Was | Wofür |
+|---|---|
+| Sicht `v_trait_product_counts` | wie viele Produkte an einem Merkmal hängen |
+
+Genauso ausführen wie oben. Erwartet: **Success. No rows returned.**
+
+```sql
+select trait_key, product_count
+from public.v_trait_product_counts
+order by product_count desc;
+```
+
+Bei `roh`, `pasteurisiert`, `esl`, `uht` und `homogenisiert` steht dort immer 0 —
+richtig so: Diese fünf hängen an keinem Produkt, sondern werden aus den
+Milch-Feldern abgeleitet.
+
+> **Was passiert, wenn du ein Gewicht änderst?** Nichts, was du anstoßen
+> müsstest. Der Score wird nirgends gespeichert, sondern bei jeder Anzeige neu
+> gerechnet. Die Verlaufskurve im Gesundheits-Screen ändert sich also sofort
+> mit — auch für vergangene Monate.
+
+---
+
 ## 3. Prüfen, ob alles angekommen ist
 
 Öffne eine neue Abfrage und führe diese vier Blöcke nacheinander aus.
@@ -618,10 +647,9 @@ Bewusst nicht Teil dieser Migrationen, das kommt in späteren Schritten:
 - **Speicherort für die Bon-Fotos.** Es gibt keinen und soll keinen geben: Das
   Foto wird nach dem Speichern verworfen und nie hochgeladen (PROJEKT.md).
   `receipts.image_path` bleibt deshalb null.
-- **Merkmale bearbeiten.** Die Einstellungen zeigen die vierzehn Merkmale, aber
-  schreibgeschützt — das Bearbeiten kommt in Schritt 10. **Kategorien** lassen
-  sich seit Schritt 5 dagegen anlegen, umbenennen, umfärben, umsortieren und
-  abschalten.
+  *(Merkmale bearbeiten stand hier bis Schritt 10 — seitdem lassen sie sich
+  genau wie Kategorien anlegen, umbenennen, gewichten, gruppieren, umsortieren
+  und abschalten.)*
 
 Nicht mehr offen, seit Schritt 5b:
 

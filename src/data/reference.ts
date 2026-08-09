@@ -66,6 +66,8 @@ let cache: Reference | null = null
 /** Die Spaltenliste steht zweimal (Laden und Auffrischen) — hier einmal. */
 const CATEGORY_COLUMNS = 'key, name, is_food, sort_order, description, active, color, is_default'
 const MERCHANT_COLUMNS = 'id, name, kind'
+const TRAIT_COLUMNS =
+  'id, key, label, short, description, weight, trait_group, tip, active, is_default, sort_order'
 
 /**
  * Aus der Kategoriezeile wird eine `Category`.
@@ -148,9 +150,7 @@ export async function loadReference(): Promise<Reference> {
       .then((r) => unwrap<CategoryRow[]>(r)),
     supabase
       .from('traits')
-      .select(
-        'id, key, label, short, description, weight, trait_group, tip, active, is_default, sort_order',
-      )
+      .select(TRAIT_COLUMNS)
       .order('sort_order')
       .then((r) => unwrap<TraitRow[]>(r)),
     supabase
@@ -208,4 +208,28 @@ export async function refreshCategories(): Promise<void> {
     await supabase.from('categories').select(CATEGORY_COLUMNS).order('sort_order'),
   )
   cache = { ...cache, categories: rows.map(toCategory) }
+}
+
+/**
+ * Nach jeder Änderung in der Merkmalsverwaltung.
+ *
+ * Wichtiger als bei den Kategorien: Am Gewicht hängt der **Health-Score**, und
+ * der wird bei jeder Anzeige aus den Merkmalen des Zwischenlagers neu gerechnet
+ * (`src/lib/score.ts`). Ohne dieses Auffrischen zeigte der Verlauf noch die
+ * alten Zahlen — und genau das ist die Zusicherung „Score-Änderungen wirken
+ * rückwirkend" aus PROJEKT.md.
+ *
+ * `traitKeyByUuid` wird mitgeführt: Ein neu angelegtes Merkmal hat eine uuid,
+ * die die Positionsliste sonst nicht auflösen könnte.
+ */
+export async function refreshTraits(): Promise<void> {
+  if (!cache) return
+  const rows = unwrap<TraitRow[]>(
+    await supabase.from('traits').select(TRAIT_COLUMNS).order('sort_order'),
+  )
+  cache = {
+    ...cache,
+    traits: rows.map(toTrait),
+    traitKeyByUuid: Object.fromEntries(rows.map((row) => [row.id, row.key])),
+  }
 }

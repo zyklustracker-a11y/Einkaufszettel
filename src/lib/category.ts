@@ -28,6 +28,18 @@
  * ist als Wort erkennbar, „auswarts_essen" sieht nach Tippfehler aus.
  */
 export function toCategoryKey(name: string): string {
+  return toStableKey(name)
+}
+
+/**
+ * Dieselbe Regel, unter dem allgemeinen Namen.
+ *
+ * Seit Schritt 10 legt der Nutzer auch **Merkmale** selbst an, und deren
+ * Schlüssel entsteht nach genau derselben Vorschrift. Eine zweite Umsetzung
+ * daneben wäre eine zweite Wahrheit — und `toCategoryKey` in einer
+ * Merkmalsdatei aufzurufen läse sich wie ein Versehen.
+ */
+export function toStableKey(name: string): string {
   return name
     .replace(/Ä/g, 'Ae')
     .replace(/Ö/g, 'Oe')

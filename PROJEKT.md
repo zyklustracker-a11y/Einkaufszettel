@@ -1026,6 +1026,43 @@ könnte dazwischen abbrechen.
 7") und nicht in einem Aufklappbereich. Ein Vorschlag ohne Begründung ist eine
 Behauptung; mit ihr kann der Nutzer entscheiden, ob die App richtig liegt.
 
+### Ergänzt mit Schritt 10 (Merkmale selbst anlegen und gewichten)
+
+**Am Schema hat sich nichts geändert.** Merkmale sind seit Schritt 2a Daten und
+keine Aufzählung im Code; `traits` trug alle Felder, die die Verwaltung braucht,
+und die Zugriffsregel erlaubte dem Haushalt seit jeher auch Schreiben. Es fehlte
+ausschließlich die Bedienoberfläche. Die Migration `0009_merkmale.sql` legt
+deshalb nur eine Sicht an: wie viele Produkte an einem Merkmal hängen — dieselbe
+Frage wie beim Abschalten einer Kategorie, und dieselbe Antwort: erst zeigen,
+wovon die Rede ist.
+
+**Score-Änderungen wirken rückwirkend, ohne dass etwas neu gerechnet wird.** Der
+Score ist nirgends gespeichert: `v_score_items` liefert nur die Zutaten,
+`src/lib/score.ts` rechnet bei jeder Anzeige mit den Gewichten, die in diesem
+Moment gelten. Nach dem Schreiben frischt `refreshTraits()` das Zwischenlager
+auf, und die Verlaufskurve steht sofort richtig da. Eine „Neuberechnung
+anstoßen"-Funktion gibt es hier bewusst nicht — sie wäre die Antwort auf ein
+Problem, das die Architektur nicht hat.
+
+**Der Schlüssel entsteht aus dem Namen, nach derselben Regel wie bei den
+Kategorien.** `toStableKey` in `src/lib/category.ts` ist jetzt der gemeinsame
+Name dafür; `toCategoryKey` ruft ihn auf. Eine zweite Umsetzung für Merkmale
+wäre eine zweite Wahrheit gewesen.
+
+**Auch die fünf abgeleiteten Merkmale sind einstellbar.** `roh`,
+`pasteurisiert`, `esl`, `uht` und `homogenisiert` lassen sich weiterhin nicht
+anhaken — sie entstehen aus den Milch-Feldern am Produkt. Gewicht und Gruppe
+gelten trotzdem, und genau dafür sind sie da: Wer H-Milch härter bewerten will,
+stellt hier das Gewicht. Das Blatt sagt das auch dazu.
+
+**Das Gewicht bekommt zwei Knöpfe und keine Schieberegler.** Auf −10 bis +10
+trifft ein Daumen den gewünschten Wert nicht, und der Unterschied zwischen −3 und
+−4 ist eine Entscheidung und kein Gefühl.
+
+**Gelöscht wird nie**, wie bei den Kategorien: Produkte hängen über einen
+Fremdschlüssel am Merkmal. Ein abgeschaltetes verschwindet aus Prompt, Auswahl
+und Score; die Zuordnung am Produkt bleibt stehen.
+
 ### Die Sichten werden gegen erzeugte Testdaten geprüft
 
 `supabase/tests/` legt eine wegwerfbare Datenbank an, spielt alle Migrationen
@@ -1101,7 +1138,7 @@ nur die Voreinstellung.
 | 7 | Spritkosten | erledigt |
 | 8 | Bestpreise und Analysen scharf schalten | erledigt |
 | 9 | Einkaufszettel | erledigt |
-| 10 | Merkmale selbst anlegen und gewichten | offen |
+| 10 | Merkmale selbst anlegen und gewichten | erledigt |
 | 11 | Einstellungen als Übersicht mit eigenen Screens | offen |
 | 12 | Familie einladen | offen |
 | 13 | Monatsreport als Push-Benachrichtigung | offen |

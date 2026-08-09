@@ -19,7 +19,13 @@
 import { reference } from './reference'
 import type { Category, Merchant, MerchantId, Trait, TraitId } from '../types'
 
-export { loadReference, clearReference, refreshMerchants, refreshCategories } from './reference'
+export {
+  loadReference,
+  clearReference,
+  refreshMerchants,
+  refreshCategories,
+  refreshTraits,
+} from './reference'
 export type { Reference } from './reference'
 
 /**
@@ -38,6 +44,23 @@ export {
   updateCategory,
 } from './categories'
 export type { CategoryEdit, NewCategory } from './categories'
+
+/**
+ * Die Merkmalsverwaltung. Sie schreibt in `traits` und frischt danach das
+ * Zwischenlager auf — daran hängt der Health-Score, der bei jeder Anzeige neu
+ * gerechnet wird.
+ */
+export {
+  checkNewTraitName,
+  createTrait,
+  existingTraitGroups,
+  getTraitProductCounts,
+  moveTrait,
+  setTraitActive,
+  sortedTraits,
+  updateTrait,
+} from './traits'
+export type { NewTrait, TraitEdit } from './traits'
 
 export { useQuery } from './useQuery'
 export type { QueryState } from './useQuery'

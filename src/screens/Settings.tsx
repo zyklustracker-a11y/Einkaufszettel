@@ -1,29 +1,16 @@
 import { useState } from 'react'
-import { Async, EmptyState } from '../components/states'
-import { Avatar, BackLink, Toggle, toneOf } from '../components/ui'
-import {
-  germanDataError,
-  getMonthlyBudgetCents,
-  getTraits,
-  saveMonthlyBudgetCents,
-  useQuery,
-} from '../data'
+import { Async } from '../components/states'
+import { Avatar, BackLink, Toggle } from '../components/ui'
+import { germanDataError, getMonthlyBudgetCents, saveMonthlyBudgetCents, useQuery } from '../data'
 import { useAppState } from '../state/AppState'
 import { useAuth } from '../state/AuthContext'
 import { CategorySettings } from './CategorySettings'
+import { TraitSettings } from './TraitSettings'
 import styles from './Settings.module.css'
-
-/** `−3` · `0` · `+2` — the sign carries the meaning, so it is always shown. */
-function formatWeight(weight: number): string {
-  if (weight > 0) return `+${weight}`
-  if (weight < 0) return `−${Math.abs(weight)}`
-  return '0'
-}
 
 export function SettingsScreen() {
   const { theme, toggleTheme, deleteReceiptPhotos, toggleDeleteReceiptPhotos } = useAppState()
   const { user, signOut } = useAuth()
-  const traits = getTraits()
 
   return (
     <div className="screen">
@@ -75,43 +62,7 @@ export function SettingsScreen() {
       */}
       <CategorySettings />
 
-      <section className={styles.householdCard}>
-        <div className={styles.householdTitle}>Merkmale</div>
-        <p className={styles.traitIntro}>
-          Worauf die Auswertung achtet – die {traits.length} Merkmale aus deiner Datenbank.
-          Bearbeiten kommt in einem späteren Schritt.
-        </p>
-        {traits.length === 0 ? (
-          <EmptyState inline title="Noch keine Merkmale">
-            Beim ersten Anmelden legt die Datenbank die mitgelieferten Merkmale an. Ist die Liste
-            leer, melde dich einmal ab und wieder an.
-          </EmptyState>
-        ) : (
-          traits.map((trait) => (
-            <div key={trait.id} className={styles.traitRow}>
-              <span
-                className={`${styles.traitShort} ${styles[`traitShort--${toneOf(trait)}`]}`}
-                aria-hidden="true"
-              >
-                {trait.short}
-              </span>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span className={styles.traitLabel}>{trait.label}</span>
-                <span className={styles.traitMeta}>
-                  {trait.group ? `Gruppe ${trait.group}` : 'ohne Gruppe'}
-                  {trait.isDefault ? '' : ' · selbst angelegt'}
-                </span>
-              </span>
-              <span className={styles.traitWeight}>{formatWeight(trait.weight)}</span>
-              <span
-                className={trait.active ? `${styles.badge} ${styles['badge--current']}` : styles.badge}
-              >
-                {trait.active ? 'Aktiv' : 'Aus'}
-              </span>
-            </div>
-          ))
-        )}
-      </section>
+      <TraitSettings />
 
       <button type="button" className={styles.signOut} onClick={signOut}>
         Konto abmelden
