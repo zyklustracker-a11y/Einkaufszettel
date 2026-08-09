@@ -321,6 +321,8 @@ function ExtractionReview({ result }: { result: ExtractionResponse }) {
 
         <TaxBlock tax={tax} />
 
+        <Transcript extraction={extraction} />
+
         {/*
           Direkt unter der Zusammenfassung und nicht unter der Positionsliste:
           Bei einem Bon mit vierzig Zeilen stünde der Hinweis sonst außerhalb des
@@ -453,6 +455,70 @@ function TaxBlock({ tax }: { tax: ReturnType<typeof taxReconciliation> }) {
         </p>
       )}
     </div>
+  )
+}
+
+/**
+ * Was das Modell abgetippt hat, Zeile für Zeile — und was daraus wurde.
+ *
+ * Seit Schritt 4d entscheidet das Modell nicht mehr, was eine Position ist: Es
+ * tippt nur ab, aufgeteilt wird im Code. Damit ist diese Liste die beste
+ * Fehlermeldung, die sich bauen lässt. Geht eine Summe nicht auf, steht die
+ * Antwort hier — entweder ist eine gedruckte Zeile gar nicht erst abgetippt
+ * worden (dann fehlt sie in der Liste), oder sie trug keinen Betrag (dann steht
+ * „—" davor).
+ *
+ * Zugeklappt, solange alles stimmt; aufgeklappt, sobald es etwas zu sehen gibt.
+ */
+function Transcript({ extraction }: { extraction: ExtractionResponse['extraction'] }) {
+  if (extraction.lines.length === 0) return null
+
+  /* Zeile → Positionsnummer. Die Position kennt ihre Quellzeilen selbst. */
+  const positionByLine = new Map<string, number>()
+  extraction.items.forEach((item, index) => {
+    for (const line of item.sourceLines) positionByLine.set(line, index + 1)
+  })
+
+  const unassigned = new Set(extraction.unassignedLines)
+  const somethingOff =
+    extraction.unassignedLines.length > 0 ||
+    (extraction.discrepancyCents !== null && extraction.discrepancyCents !== 0)
+
+  return (
+    <details className={styles.transcript} open={somethingOff}>
+      <summary className={styles.rawSummary}>
+        Abgetippte Zeilen ({extraction.lines.length}) → {extraction.items.length}{' '}
+        {extraction.items.length === 1 ? 'Position' : 'Positionen'}
+      </summary>
+      <p className={styles.taxNote}>
+        Aufgeteilt wird im Code, nicht vom Modell – dabei geht kein Betrag verloren. Fehlt hier
+        eine gedruckte Zeile, hat das Modell sie beim Abtippen übersehen.
+      </p>
+      <ol className={styles.transcriptList}>
+        {extraction.lines.map((line, index) => {
+          /*
+           * Der Parser zieht mehrfache Leerzeichen zusammen; die Rohzeile hier
+           * hat sie noch. Verglichen wird deshalb in derselben Form, sonst
+           * fände keine Zeile ihre Position.
+           */
+          const tidy = line.replace(/\s+/g, ' ').trim()
+          const position = positionByLine.get(tidy)
+          return (
+            <li
+              key={`${index}-${line}`}
+              className={
+                unassigned.has(tidy)
+                  ? `${styles.transcriptLine} ${styles['transcriptLine--open']}`
+                  : styles.transcriptLine
+              }
+            >
+              <span className={styles.transcriptMark}>{position ? position : '—'}</span>
+              <code>{line}</code>
+            </li>
+          )
+        })}
+      </ol>
+    </details>
   )
 }
 

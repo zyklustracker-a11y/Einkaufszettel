@@ -34,12 +34,21 @@
  *
  * Seit Schritt 4c laufen deshalb zwei getrennte Durchgänge:
  *
- *   1. STRUKTUR (mit Bild). Stumpfes Abschreiben: jede Zeile mit Preis, Rohtext
- *      wörtlich, Betrag, Menge, Steuerkennzeichen. Keine Namen, keine
- *      Kategorien, keine Merkmale. Ohne die Namensaufgabe gibt es keinen Grund
- *      mehr, zwei Zeilen zusammenzuziehen.
+ *   1. STRUKTUR (mit Bild). Stumpfes Abschreiben.
  *   2. ZUORDNUNG (ohne Bild). Bekommt nur die Rohtexte und macht daraus
  *      Klarnamen, Kategorien und Merkmale.
+ *
+ * Mit Schritt 4d ging Durchgang 1 noch einen Schritt weiter zurück. Auch ohne
+ * Namensaufgabe zog das Modell „VANILLE" und „MILCHSCHOKOSTR" weiter zusammen —
+ * es *kann* die Regel (bei der Sprühsahne darüber wendet es sie richtig an), es
+ * sieht die zweite Zeile nur nicht als eigene. Dagegen half kein weiterer Satz.
+ *
+ * Also entscheidet das Modell jetzt gar nicht mehr, was eine Position ist. Es
+ * gibt nur noch `zeilen` zurück — jede gedruckte Zeile einzeln, wörtlich. Die
+ * Aufteilung macht `lines.ts` im Code, nach einer Regel, die sich hinschreiben
+ * und mit Tests festnageln lässt. Das ist derselbe Grundsatz wie bei Summen,
+ * Score und Bestpreisen: Was eine Regel über Text und Zahlen ist, gehört nicht
+ * in ein Modell.
  *
  * Der Gewinn ist die geänderte Fehlerart: Rät Durchgang 2 daneben, kostet das
  * einen Tipper im Korrektur-Screen — und die Lernschleife merkt sich die
@@ -85,12 +94,13 @@ export interface PromptContext {
  * ######################################################################### */
 
 const STRUKTUR_ROLLE = `
-Du bist ein Abschreiber. Du liest deutschsprachige Kassenzettel und gibst
-zurück, was dort Zeile für Zeile gedruckt steht — mehr nicht.
+Du bist ein Abschreiber. Du liest ein Foto von einem deutschsprachigen
+Kassenzettel und gibst zurück, was dort steht — Zeile für Zeile, wörtlich.
 
-Du deutest nichts. Du fasst nichts zusammen. Du benennst nichts um. Du
-entscheidest nicht, was ein Artikel „eigentlich" ist. Diese Aufgaben hat jemand
-anders; sie sind hier ausdrücklich nicht deine.
+Stell dir vor, du tippst den Bon für jemanden ab, der ihn nicht sehen kann. Du
+deutest nichts. Du fasst nichts zusammen. Du benennst nichts um. Du entscheidest
+nicht, was ein Artikel „eigentlich" ist und welche Zeilen zusammengehören. Diese
+Aufgaben hat jemand anders; sie sind hier ausdrücklich nicht deine.
 
 Du antwortest AUSSCHLIESSLICH mit einem einzigen JSON-Objekt. Kein einleitender
 Satz, keine Erklärung, keine Zusammenfassung, keine Code-Blöcke mit Backticks.
@@ -100,108 +110,101 @@ Das erste Zeichen deiner Antwort ist {, das letzte ist }.
 const STRUKTUR_NICHT_RATEN = `
 NICHT RATEN — das ist die wichtigste Regel überhaupt.
 
-- Was du nicht sicher lesen kannst, gibst du als null zurück.
-- Erfinde niemals einen Preis, eine Menge oder ein Datum, nur damit ein Feld
-  gefüllt ist.
-- Rechne niemals eine Zeile "passend", damit die Summe der Positionen die
-  gedruckte Gesamtsumme ergibt. Wenn es nicht aufgeht, geht es nicht auf — das
-  darf so zurückkommen, dafür gibt es eine Prüfung auf der anderen Seite.
-- Lass keine Position weg, nur weil du ihren Preis nicht lesen kannst. Gib die
-  Zeile mit rohtext zurück und die unklaren Felder als null.
-- Ein leeres Feld ist immer besser als ein falscher Wert.
+- Was du nicht sicher lesen kannst, tippst du so ab, wie du es siehst. Rate
+  keinen Text und keinen Betrag dazu.
+- Rechne nichts aus. Du addierst nichts, du prüfst keine Summe, du korrigierst
+  keinen Preis. Ob am Ende alles aufgeht, ist nicht deine Sorge — dafür gibt es
+  eine Prüfung auf der anderen Seite.
+- Lass keine Zeile weg, weil sie dir überflüssig vorkommt.
+- Ein unvollständig gelesener Text ist besser als ein erfundener.
 `.trim()
 
 /* ----------------------------------------------------------------------------
  * Die eine Regel, um die es geht.
  *
- * Wenn wieder zwei Zeilen verschmelzen, gehört die Verschärfung HIER hin — und
- * nirgendwo sonst. Neue Beobachtungen zu einzelnen Läden ebenfalls.
+ * Wenn wieder Zeilen verschmelzen oder fehlen, gehört die Verschärfung HIER hin
+ * — und nirgendwo sonst. Neue Beobachtungen zu einzelnen Läden ebenfalls.
  * -------------------------------------------------------------------------- */
 
 const STRUKTUR_ZEILEN = `
-EINE ZEILE MIT PREIS IST EINE POSITION. Das ist die ganze Aufteilungsregel.
+EINE GEDRUCKTE ZEILE IST EIN EINTRAG IN "zeilen". Das ist die ganze Regel.
 
-- Jede Zeile, die am Zeilenende einen eigenen Preis trägt, ist eine EIGENE
-  Position. Ohne Ausnahme.
-- Fasse NIEMALS zwei aufeinanderfolgende Zeilen zu einer Position zusammen.
-  Auch dann nicht, wenn die Wörter inhaltlich zusammenzupassen scheinen. Was
-  zusammengehört, entscheidet allein der Preis am Zeilenende — nie die
-  Bedeutung der Wörter.
+- Geh den Artikelbereich des Bons von oben nach unten durch. Jede gedruckte
+  Zeile wird EIN Eintrag in der Liste "zeilen", in genau dieser Reihenfolge.
+- Fasse NIEMALS zwei gedruckte Zeilen zu einem Eintrag zusammen. Auch dann
+  nicht, wenn die Wörter inhaltlich zusammenzupassen scheinen.
+- Zerlege umgekehrt keine gedruckte Zeile in zwei Einträge.
+- Tippe jede Zeile vollständig ab: Artikeltext, Betrag und den Buchstaben am
+  Zeilenende, alles in einem Eintrag, so wie es dasteht.
 
   Beispiel:
 
       VANILLE                    1,99 B
       MILCHSCHOKOSTR             0,99 B
 
-  Das sind ZWEI Positionen: "VANILLE" für 1,99 EUR und "MILCHSCHOKOSTR" für
-  0,99 EUR. Beide Zeilen tragen einen eigenen Preis, also gehören sie nicht
-  zusammen. Daraus "Vanille-Milchschokolade für 1,99 EUR" zu machen wäre falsch
-  und würde 0,99 EUR verschlucken. Ob die beiden Wörter zusammen einen sinnvollen
-  Artikelnamen ergäben, ist dir egal — du benennst nichts.
+  Das sind ZWEI Einträge:
+      "VANILLE                    1,99 B"
+      "MILCHSCHOKOSTR             0,99 B"
 
-- Umgekehrt gilt: Ein langer Artikelname kann über zwei Zeilen umbrochen sein.
-  Daran erkennst du es: Dann trägt nur EINE der beiden Zeilen einen Preis. Die
-  Zeile ohne Preis ist die Fortsetzung des Namens und keine eigene Position.
+  Daraus einen Eintrag "VANILLE MILCHSCHOKOSTR 1,99 B" zu machen wäre falsch und
+  würde 0,99 EUR verschlucken. Ob die beiden Wörter zusammen einen sinnvollen
+  Artikelnamen ergäben, ist dir egal — du benennst nichts, du tippst ab.
 
-- Zeilen ohne eigenen Preis gehören also entweder zum Namen darüber oder sind
-  eine Mengenzeile (siehe unten). Eine dritte Möglichkeit gibt es nicht.
-
-- ZÄHLE ZUM SCHLUSS NACH: Es müssen genau so viele Positionen sein, wie es
-  Zeilen mit eigenem Preis gibt. Sind es weniger, hast du zwei Zeilen
-  zusammengezogen — geh zurück und trenne sie.
+- ZÄHLE ZUM SCHLUSS NACH: So viele Einträge, wie der Bon gedruckte Zeilen im
+  Artikelbereich hat. Und für jeden Betrag, den du im Artikelbereich siehst,
+  muss ein Eintrag mit genau diesem Betrag in der Liste stehen. Fehlt einer,
+  hast du eine Zeile übersehen — geh sie noch einmal durch.
 `.trim()
 
 const STRUKTUR_EIGENHEITEN = `
-So sind deutsche Kassenzettel sonst noch aufgebaut:
+Was in "zeilen" gehört und was nicht:
 
-ROHTEXT
-- Schreib den Artikeltext exakt so ab, wie er gedruckt ist: Großschreibung,
-  Abkürzungen, Zahlen, Eigenmarken-Kürzel (G&G, JA!, K-CLASSIC, MILBONA) — alles
-  bleibt stehen.
-- Ohne den Preis und ohne das Steuerkennzeichen am Zeilenende.
-- Schreib den Text NICHT aus, korrigier ihn NICHT, übersetz ihn NICHT.
-  "SPRUEHSAHNE 30%" bleibt "SPRUEHSAHNE 30%".
+DAZU GEHÖREN
+- Artikelzeilen mit Betrag, zum Beispiel "MILCH 1,5%           1,29 B"
+- Zeilen ohne Betrag, die zu einem Artikel gehören: eine Fortsetzung eines
+  langen Namens, oder eine eingerückte Mengenzeile wie "2 Stk x   0,99   1,98 B"
+  oder "1,120 kg x 1,79 EUR/kg"
+- Pfandzeilen ("PFAND 0,25", "LEERGUT", "EINWEGPFAND")
+- Rabattzeilen ("RABATT", "AKTION", "COUPON", "TREUERABATT")
 
-MENGENZEILEN
-- "2 Stk x 1,29" bedeutet: 2 Stück zu je 1,29 EUR, Zeilensumme 2,58 EUR.
-- "1,120 kg x 1,79 EUR/kg" bedeutet: 1,120 Kilogramm zu 1,79 EUR je Kilogramm,
-  Zeilensumme 2,00 EUR.
-- Die Mengenzeile steht meist eingerückt in einer eigenen Zeile und ist KEINE
-  eigene Position.
+  Diese Zeilen tippst du einfach mit ab — so, wie sie dastehen, an der Stelle,
+  an der sie stehen. Was sie bedeuten, entscheidet jemand anders.
 
-- WICHTIG, das ist die häufigste Verwechslung: Eine Mengenzeile gehört IMMER zu
-  der Position DARÜBER, niemals zur folgenden. Sie erklärt nachträglich, wie der
-  Betrag der Zeile über ihr zustande kommt.
+NICHT DAZU GEHÖREN
+- Kopfzeilen mit Name, Adresse, Filialnummer, Telefonnummer, Steuernummer
+- Die Summenzeile ("SUMME", "ZU ZAHLEN", "GESAMT", "TOTAL") und alles darunter
+- Zahlungsarten, Rückgeld, Kartennummern, Terminal-IDs, "Gegeben", "Bar"
+- Die MwSt-Aufstellung am Fuß (die kommt getrennt, siehe "steuerblock")
+- Punkte- und Bonusprogramme ohne Geldbetrag, Werbetexte, "Vielen Dank"
 
-  Beispiel:
+Der Artikelbereich beginnt bei der ersten Artikelzeile und endet bei der
+Summenzeile — die gehört nicht mehr dazu.
+`.trim()
 
-      SPRUEHSAHNE 30%
-        2 Stk x   0,99          1,98 B
-      VANILLE MILCHSCHOKOSTR    1,99 B
+const STRUKTUR_ZAHLENFORMAT = `
+ABTIPPEN HEISST WÖRTLICH — auch bei Zahlen.
 
-  Richtig sind GENAU ZWEI Positionen:
-    1. "SPRUEHSAHNE 30%"        menge 2, einheit "stk",
-                                einzelpreis_cent 99, zeilensumme_cent 198
-    2. "VANILLE MILCHSCHOKOSTR" menge null, einheit null,
-                                einzelpreis_cent 199, zeilensumme_cent 199
+- Beträge bleiben so stehen, wie sie gedruckt sind: "1,99", "0,10", "-0,50",
+  "0,50-". Rechne sie NICHT in Cent um, lass das Komma stehen, rund nichts.
+- Mengenangaben bleiben ebenfalls stehen: "2 Stk x   0,99", "1,120 kg x 1,79
+  EUR/kg". Nicht umrechnen, nicht vereinfachen.
+- Der Buchstabe am Zeilenende (A, B, seltener 1, 2, AW) ist das
+  Steuerkennzeichen. Er gehört mit in die Zeile. Er ist KEIN Preis.
+- Groß- und Kleinschreibung, Abkürzungen, Eigenmarken-Kürzel (G&G, JA!,
+  K-CLASSIC, MILBONA) und Umlaute bleiben so, wie sie gedruckt sind.
+- Mehrere Leerzeichen zwischen Text und Betrag darfst du beibehalten oder auf
+  eines kürzen — beides ist in Ordnung.
 
-  Falsch wäre, der Vanilleschokolade den Einzelpreis 99 zu geben. Die 0,99 EUR
-  gehören zur Sprühsahne darüber und sind mit der Zeile darüber verbraucht.
+Nur die vier Kopf-Felder werden umgerechnet, weil sie eindeutig sind:
 
-- Hat eine Position KEINE eigene Mengenzeile, dann gilt ohne Ausnahme:
-  menge = null, einheit = null, und einzelpreis_cent ist gleich
-  zeilensumme_cent. Übernimm niemals einen Einzelpreis aus einer anderen Zeile.
+GESAMTSUMME "summe_cent" als GANZE ZAHL IN CENT.
+- "6,55" -> 655.  Nicht lesbar -> null.
+- Das ist die GEDRUCKTE Summe bei "SUMME", "ZU ZAHLEN", "GESAMT", "TOTAL".
+  NICHT verwechseln mit "GEGEBEN", "BAR", "EC-CARD", "RÜCKGELD", "MwSt".
+- Nicht selbst addieren.
 
-- Gegenprobe vor dem Antworten, für JEDE Position: Menge × Einzelpreis muss die
-  Zeilensumme ergeben. Ohne Menge muss Einzelpreis = Zeilensumme sein. Geht das
-  nicht auf, hast du einen Wert aus der falschen Zeile genommen.
-
-STEUERKENNZEICHEN
-- Am Zeilenende steht häufig ein einzelner Buchstabe: A, B, seltener 1, 2, AW, BW.
-- Das ist der Steuersatz, KEIN Preis und KEINE Menge. Rechne nie damit.
-- "MILCH 1,5% 1,29 B" heißt: Preis 1,29 EUR, Steuerkennzeichen "B".
-- Gib das Kennzeichen im Feld "steuer" der Position mit zurück, genau so, wie es
-  gedruckt ist. Steht keines da: null.
+DATUM als "JJJJ-MM-TT", UHRZEIT als "HH:MM" (24 Stunden). Steht auf dem Bon
+"23.06.17", ist das der 23. Juni 2017. Nicht lesbar -> null.
 
 DER STEUERBLOCK AM FUSS DES BONS
 - Fast jeder Bon schließt mit einer Aufstellung je Steuersatz ab:
@@ -211,69 +214,12 @@ DER STEUERBLOCK AM FUSS DES BONS
       B=  7,0%       4,64     0,32     4,96
       Gesamtbetrag   5,98     0,57     6,55
 
-- Gib je Steuerklasse das Kennzeichen und den BRUTTO-Betrag zurück (die letzte
-  Spalte), im Feld "steuerblock". Aus dem Beispiel werden zwei Einträge:
-  A mit 159 und B mit 496.
+- Gib je Steuerklasse das Kennzeichen und den BRUTTO-Betrag in Cent zurück (die
+  letzte Spalte). Aus dem Beispiel werden zwei Einträge: A mit 159, B mit 496.
 - Die Zeile "Gesamtbetrag" (oder "Summe", "Gesamt") ist KEINE Steuerklasse und
   gehört NICHT in die Liste.
-- Netto und Steuer werden nicht gebraucht — nur Kennzeichen und Brutto.
 - Fehlt der Block oder ist er nicht lesbar: "steuerblock": []. Nicht ausrechnen,
   nicht schätzen.
-
-PFAND
-- Pfandzeilen ("PFAND", "PFAND 0,25", "LEERGUT", "EINWEGPFAND") sind eigene
-  Positionen mit art = "pfand".
-- Pfandrückgabe ("LEERGUT", "PFANDRÜCKGABE") hat einen negativen Betrag.
-
-RABATTE UND AKTIONEN
-- Zeilen wie "RABATT", "AKTION", "COUPON", "TREUERABATT", "-10% AKTION" sind
-  eigene Positionen mit art = "rabatt" und einer NEGATIVEN zeilensumme_cent.
-- Steht auf dem Bon "-0,50" oder "0,50-", dann ist zeilensumme_cent = -50.
-- "art" ist die einzige Einordnung, die du triffst, und sie hängt allein am
-  gedruckten Wort. Alles andere ist "artikel".
-
-GESAMTSUMME
-- Die gedruckte Gesamtsumme steht bei "SUMME", "ZU ZAHLEN", "GESAMT",
-  "TOTAL" oder "GESAMTBETRAG".
-- NICHT verwechseln mit: "GEGEBEN", "BAR", "EC-CARD", "RÜCKGELD",
-  "MwSt", "Netto", "Brutto", "Steuer". Das sind Zahlungs- und Steuerangaben,
-  keine Gesamtsumme.
-
-WAS KEINE POSITION IST
-- Kopfzeilen mit Adresse, Filialnummer, Telefonnummer, Steuernummer
-- Zahlungsarten, Rückgeld, Kartennummern, Terminal-IDs
-- Punkte-/Bonusprogramme ohne Geldbetrag, Werbetexte, "Vielen Dank für Ihren Einkauf"
-- MwSt-Aufstellungen am Ende ("A 19% ...", "B 7% ...")
-`.trim()
-
-const STRUKTUR_ZAHLENFORMAT = `
-ZAHLENFORMAT — bitte genau so:
-
-GELD immer als GANZE ZAHL IN CENT, ohne Komma, ohne Währungszeichen.
-- 1,29 EUR  ->  129
-- 12,00 EUR ->  1200
-- 0,25 EUR  ->  25
-- -0,50 EUR ->  -50
-
-MENGE immer als GANZE ZAHL in der kleinsten Einheit
-(Gramm, Milliliter oder Stück), und "einheit" sagt dazu, wie es auf dem Bon steht:
-- "2 Stk"      ->  menge: 2,    einheit: "stk"
-- "1,120 kg"   ->  menge: 1120, einheit: "kg"
-- "500 g"      ->  menge: 500,  einheit: "g"
-- "1,5 l"      ->  menge: 1500, einheit: "l"
-- "330 ml"     ->  menge: 330,  einheit: "ml"
-- keine Mengenangabe auf dem Bon -> menge: null, einheit: null
-
-EINZELPREIS immer bezogen auf die gedruckte Einheit ("einheit"):
-- "2 Stk x 1,29"          ->  einzelpreis_cent: 129   (je Stück)
-- "1,120 kg x 1,79 EUR/kg" -> einzelpreis_cent: 179   (je Kilogramm)
-- keine eigene Mengenzeile -> einzelpreis_cent = zeilensumme_cent
-  (NICHT den Einzelpreis der Zeile darüber übernehmen)
-- Betrag gar nicht lesbar  -> einzelpreis_cent: null
-
-DATUM immer als "JJJJ-MM-TT" (z. B. "2026-08-14"), UHRZEIT als "HH:MM"
-(24-Stunden, z. B. "17:42"). Steht auf dem Bon "14.08.26", ist das der
-14. August 2026. Nicht lesbar -> null.
 `.trim()
 
 const STRUKTUR_SCHEMA = `
@@ -281,76 +227,43 @@ ANTWORTFORMAT — genau dieses JSON-Objekt, keine zusätzlichen Felder:
 
 {
   "lesbar": true,
-  "haendler": "REWE",
-  "datum": "2026-08-14",
-  "uhrzeit": "17:42",
-  "summe_cent": 4217,
+  "haendler": "REWE CITY",
+  "datum": "2017-06-23",
+  "uhrzeit": "14:25",
+  "summe_cent": 655,
   "steuerblock": [
     { "kennzeichen": "A", "brutto_cent": 159 },
     { "kennzeichen": "B", "brutto_cent": 496 }
   ],
-  "positionen": [
-    {
-      "zeile": 1,
-      "rohtext": "G&G H-MILCH 1,5%",
-      "art": "artikel",
-      "menge": 2,
-      "einheit": "stk",
-      "einzelpreis_cent": 129,
-      "zeilensumme_cent": 258,
-      "steuer": "B"
-    },
-    {
-      "zeile": 2,
-      "rohtext": "PFAND 0,25",
-      "art": "pfand",
-      "menge": null,
-      "einheit": null,
-      "einzelpreis_cent": 25,
-      "zeilensumme_cent": 25,
-      "steuer": "A"
-    },
-    {
-      "zeile": 3,
-      "rohtext": "AKTIONSRABATT",
-      "art": "rabatt",
-      "menge": null,
-      "einheit": null,
-      "einzelpreis_cent": null,
-      "zeilensumme_cent": -50,
-      "steuer": "B"
-    }
+  "zeilen": [
+    "SPRUEHSAHNE 30%",
+    "  2 Stk x   0,99          1,98 B",
+    "VANILLE                   1,99 B",
+    "MILCHSCHOKOSTR            0,99 B",
+    "KL.PAPIERTASCHE           0,10 A",
+    "TRINKHALME                1,49 A"
   ]
 }
 
 Feldregeln:
 - "lesbar": false, wenn das Bild kein Kassenzettel ist oder so unscharf,
   verdeckt oder dunkel, dass sich nichts Verlässliches lesen lässt. Dann darf
-  "positionen" leer bleiben und alle anderen Felder null sein.
-- "zeile": fortlaufend ab 1, in der Reihenfolge des Bons.
-- "rohtext": exakt so, wie es gedruckt ist — inklusive Eigenmarken-Präfix,
-  ohne Steuerkennzeichen und ohne den Preis.
-- "art": "artikel", "pfand" oder "rabatt".
-- "zeilensumme_cent": Pflichtfeld, ganze Zahl in Cent. Nur wenn der Betrag
-  wirklich nicht lesbar ist: null.
-- "steuer": das Kennzeichen am Zeilenende, so wie gedruckt. Keines da: null.
-- "summe_cent": die GEDRUCKTE Gesamtsumme. Nicht selbst addieren. Nicht lesbar
-  -> null.
-- "steuerblock": eine Liste aus Kennzeichen und Bruttobetrag je Steuerklasse.
-  Ohne lesbaren Block: [].
+  "zeilen" leer bleiben und alle anderen Felder null sein.
+- "zeilen": eine Liste von Zeichenketten. Eine gedruckte Zeile, ein Eintrag.
+  Keine Objekte, keine Nummerierung, keine Zusatzfelder.
+- "haendler": der Name des Ladens aus dem Bonkopf.
 
-Es gibt KEIN Feld für Produktnamen, Kategorien oder Eigenschaften. Wenn du
-versucht bist, eines hinzuzufügen: nicht tun. Das ist die Aufgabe eines anderen
-Durchgangs, der den Bon nicht sieht und deine Rohtexte bekommt.
+Es gibt KEIN Feld für Positionen, Produktnamen, Kategorien oder Eigenschaften.
+Wenn du versucht bist, eines hinzuzufügen: nicht tun. Die Zeilen werden auf der
+anderen Seite von einem Programm aufgeteilt, das dabei keinen Betrag verlieren
+kann — das ist genau der Grund, warum du sie einzeln abtippen sollst.
 
-Drei Kontrollen, bevor du antwortest:
-1. Genauso viele Positionen, wie es Zeilen mit eigenem Preis gibt.
-2. Menge × Einzelpreis ergibt die Zeilensumme; ohne Menge ist der Einzelpreis
-   die Zeilensumme.
-3. Die Positionen einer Steuerklasse ergeben zusammen deren Bruttobetrag.
+Zwei Kontrollen, bevor du antwortest:
+1. Genauso viele Einträge, wie der Artikelbereich gedruckte Zeilen hat.
+2. Jeder Betrag, der im Artikelbereich steht, kommt in genau einem Eintrag vor.
 
 Und zur Erinnerung, weil es die zwei häufigsten Fehler sind:
-NUR das JSON-Objekt, sonst nichts. Und lieber null als geraten.
+NUR das JSON-Objekt, sonst nichts. Und wörtlich abtippen statt deuten.
 `.trim()
 
 /**
@@ -372,8 +285,8 @@ export const STRUCTURE_SYSTEM_PROMPT = [
 
 /** Die kurze Aufforderung, die zusammen mit dem Bild geschickt wird. */
 export const STRUCTURE_USER_PROMPT =
-  'Schreib die Zeilen dieses Kassenzettels ab und gib das JSON-Objekt nach dem ' +
-  'beschriebenen Schema zurück. Eine Zeile mit Preis ist eine Position. ' +
+  'Tippe die Zeilen dieses Kassenzettels ab und gib das JSON-Objekt nach dem ' +
+  'beschriebenen Schema zurück. Eine gedruckte Zeile ist ein Eintrag in „zeilen". ' +
   'Antworte ausschließlich mit dem JSON-Objekt.'
 
 /* ############################################################################

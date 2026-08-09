@@ -342,7 +342,8 @@ zurückschreiben) sind deshalb noch offen.
 `prompt.ts` ist die eine Datei, an der ohne Codeverständnis nachgeschärft wird;
 `index.ts` (Ablauf), `mistral.ts` (Netz) und `validate.ts` (Prüfung samt der
 Typen, die sie erzeugt) bleiben davon unberührt. Mit 4b-2 kam `mappings.ts` dazu
-(das Gedächtnis), mit 4c `assign.ts` (die Prüfung des zweiten Durchgangs).
+(das Gedächtnis), mit 4c `assign.ts` (die Prüfung des zweiten Durchgangs) und
+mit 4d `lines.ts` (die Aufteilung der abgetippten Zeilen in Positionen).
 Anleitung: `supabase/functions/README.md`.
 
 **Ausgerollt wird über GitHub Actions**, nicht von Hand
@@ -608,6 +609,64 @@ zurückgestellt.** Er greift nur bei lesbarem Steuerblock, benutzt denselben
 Prompt, der eben gescheitert ist, und kostet im Fehlschlag 14 Sekunden und einen
 Aufruf. Erst zeigen, ob er nach der Trennung überhaupt noch gebraucht wird.
 
+### Ergänzt mit Schritt 4d (das Modell tippt nur noch ab)
+
+**Auch der stumpfe Prompt hat es nicht gerichtet.** Nachdem Durchgang 1 keine
+Namen mehr bilden musste, kam vom selben Bon trotzdem wieder eine Position
+„VANILLE MILCHSCHOKOSTR" für 1,99 € zurück — die Zeile mit 0,99 € tauchte in
+der Antwort gar nicht erst auf.
+
+**Das Modell kann die Regel, es sieht die Zeile nur nicht.** Bei der Sprühsahne
+darüber wendet es dieselbe Regel richtig an, samt Mengenzeile. Es ist also kein
+Verständnisproblem, gegen das ein weiterer Satz hülfe. (Vermutung zum Auslöser:
+Der fehlende Betrag ist 0,99 € — genau der Einzelpreis, der zwei Zeilen darüber
+schon einmal stand. Das Modell hat ihn wohl als verbraucht abgehakt.)
+
+**Also entscheidet das Modell nicht mehr, was eine Position ist.** Durchgang 1
+gibt nur noch `zeilen` zurück: jede gedruckte Zeile des Artikelbereichs einzeln,
+wörtlich, mit Betrag und Steuerbuchstaben, so wie sie dasteht. Die Aufteilung
+macht `lines.ts` im Code, nach drei Regeln:
+
+1. Zeile endet auf einen Betrag → eigene Position.
+2. Zeile ist eine Mengenzeile → gehört zu der Position, die sie erklärt (mit
+   Zeilensumme schließt sie die Position darüber ab, ohne reichert sie die
+   davor an — beide Formen kommen auf deutschen Bons vor).
+3. Zeile ohne Betrag → Fortsetzung des Namens.
+
+Damit folgt der Schritt derselben Linie wie Summen, Health-Score und Bestpreise:
+**Was eine Regel über Text und Zahlen ist, gehört in den Code**, wo Tests sie
+festnageln — nicht in ein Modell, das bei jedem Aufruf neu entscheidet. Der
+REWE-Bon ist als Testfall hinterlegt; solange `lines.test.ts` grün ist, kann
+diese Aufteilung nicht mehr davon abhängen, wie ein Modell gerade gelaunt ist.
+
+**Erkennungsmerkmal eines Preises: zwei Nachkommastellen.** Das ist die
+wichtigste Bremse gegen Fehlalarm — „H-MILCH 1,5" und „SCHOKO 30%" sind sonst
+Preise. Ein gedruckter Preis hat immer zwei Stellen.
+
+**„Aktion" macht aus einem Artikel keinen Rabatt.** Ein Abzug wird am negativen
+Betrag erkannt, nicht am Wort; nur eindeutige Wörter (Rabatt, Nachlass, Coupon,
+Gutschein) zählen zusätzlich. Sonst würde „AKTION VOLLMILCH 1,29" ins Minus
+gedreht, und aus einem falsch erkannten Wort entstünde ein falscher Bon.
+
+**Die abgetippten Zeilen bleiben erhalten** — an der Position, aus der sie
+entstanden sind (`sourceLines`), und als Ganzes am Bon (`lines`). Der
+Korrektur-Screen zeigt sie als Liste mit der Positionsnummer davor. Das ist die
+beste Fehlermeldung, die sich bauen lässt: Fehlt eine gedruckte Zeile in dieser
+Liste, hat das Modell sie beim Abtippen übersehen.
+
+**Geht eine Summe nicht auf, ist das jetzt eine Aussage über das Lesen.** Beim
+Aufteilen im Code kann kein Betrag verlorengehen. Weicht die Positionssumme
+also von der gedruckten ab, fehlt die Zeile schon in der Abschrift — und genau
+das sagt die Warnung, statt nur eine Differenz zu melden. Der Nutzer weiß damit,
+dass ein besseres Foto oder ein anderes Modell hilft und kein Prompt-Satz.
+
+**Ein abgelehntes Modell heißt nicht „nicht erreichbar".** Ein 4xx von Mistral
+ist keine Störung, sondern eine Absage — fast immer ein Modellname im Secret,
+den es nicht gibt oder den der freie Tarif nicht freigibt. Die Meldung nennt
+deshalb den benutzten Namen und den Wortlaut der Schnittstelle. (Aufgefallen
+beim Versuch mit `pixtral-large-latest`: Der Name ist richtig, das Modell
+gehört aber zum kostenpflichtigen Tarif.)
+
 ## Datenmodell-Grundsätze
 
 - **Haushalt statt Einzelnutzer.** Alle Familienmitglieder sehen dieselben Daten. Jede
@@ -647,6 +706,7 @@ nur die Voreinstellung.
 | 4b-1 | Edge Function mit Mistral, Prompt aus den Merkmalen, JSON-Validierung, Anzeige im Korrektur-Screen | erledigt |
 | 4b-2 | Speichern aus dem Korrektur-Screen: `product_mappings`, `canonical_products`, Bon und Positionen | erledigt |
 | 4c | Erkennung in zwei Durchgängen: Struktur ohne Deutung, Zuordnung danach und nur für Unbekanntes | erledigt |
+| 4d | Das Modell tippt nur noch Zeilen ab; die Aufteilung in Positionen macht der Code | erledigt |
 | 5 | Bestpreis- und Analyse-Logik als SQL-Views | mit 2c vorgezogen |
 | 6 | Health-Score, Merkmals-Verwaltung in den Einstellungen, Sparhinweise, Push zum Monatsreport | Score erledigt, Rest offen |
 

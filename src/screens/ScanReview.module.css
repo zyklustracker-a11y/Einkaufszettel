@@ -269,6 +269,51 @@
   color: var(--muted);
 }
 
+/* ------------------------------------------- Die abgetippten Zeilen */
+
+/*
+ * Seit Schritt 4d teilt der Code die Zeilen in Positionen auf, nicht mehr das
+ * Modell. Damit ist diese Liste die genaueste Fehlermeldung, die es gibt: Sie
+ * zeigt, welche gedruckte Zeile wohin geflossen ist — und welche fehlt.
+ */
+.transcript {
+  margin-top: 10px;
+  background: var(--card);
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+}
+
+.transcriptList {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.transcriptLine {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 3px 0;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text);
+  word-break: break-word;
+}
+
+/* Zeile ohne Betrag: zu keiner Position geworden. */
+.transcriptLine--open {
+  color: var(--amber);
+}
+
+.transcriptMark {
+  flex: 0 0 20px;
+  text-align: right;
+  color: var(--muted);
+  font-weight: 700;
+}
+
 /* ------------------------------------------------- Position hinzufügen */
 
 .add {

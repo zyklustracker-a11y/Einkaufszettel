@@ -88,6 +88,14 @@ export interface ExtractedItem {
   taxCode: string | null
   /** Null bei Pfand- und Rabattzeilen. */
   suggestion: ExtractedSuggestion | null
+  /**
+   * Die gedruckten Zeilen, aus denen diese Position entstanden ist.
+   *
+   * Seit Schritt 4d entsteht eine Position im Code aus abgetippten Zeilen. Sie
+   * bleiben erhalten, damit sich im Korrektur-Screen nachsehen lässt, welche
+   * Zeile wohin geflossen ist — und welche fehlt, wenn eine Summe nicht aufgeht.
+   */
+  sourceLines: string[]
 }
 
 /**
@@ -145,6 +153,14 @@ export interface Extraction {
    * der Abgleich oben mangels Kennzeichen ausfällt.
    */
   printedTaxGroups: PrintedTaxGroup[]
+  /** Alles, was das Modell abgetippt hat — in gedruckter Reihenfolge. */
+  lines: string[]
+  /**
+   * Abgetippte Zeilen, aus denen keine Position wurde. Sie werden angezeigt
+   * statt verschwiegen: Eine Zeile, die nirgends auftaucht, ist genau das, was
+   * man sehen will, wenn eine Summe nicht aufgeht.
+   */
+  unassignedLines: string[]
   warnings: ExtractionWarning[]
 }
 
