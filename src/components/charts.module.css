@@ -57,12 +57,15 @@
   border-radius: 3px;
 }
 
+/* Wie in den Kategorie-Balken: lieber getrennt umbrechen als abschneiden.
+   „Grundnahru…" und „Süßes & Sna…" standen nebeneinander und waren beide nicht
+   zu Ende zu lesen — bei sechs Zeilen untereinander fällt das auf. */
 .legendName {
   flex: 1;
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.3;
+  hyphens: auto;
+  overflow-wrap: break-word;
   color: var(--muted);
 }
 
