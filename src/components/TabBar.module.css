@@ -43,14 +43,19 @@
 }
 
 .label {
-  font-size: 10.5px;
+  /* Seit Schritt 15 sind es wieder fünf Felder auf 390 px statt sechs. Damit
+     bleiben rund 75 px je Tab, und die Beschriftungen dürfen ausgeschrieben
+     stehen — „Gesundheit" ist die längste und braucht knapp 60 px.
+     Ein Umbruch würde die Leiste höher machen und die Symbole verschieben,
+     deshalb bleibt er ausgeschlossen. */
+  font-size: 11px;
   font-weight: 600;
-  /* Seit Schritt 9 sind es sechs Felder auf 390 px. Ein Umbruch würde die Leiste
-     höher machen und die Symbole verschieben — lieber abgeschnitten als
-     verrutscht, und die Beschriftungen sind entsprechend kurz gewählt. */
   white-space: nowrap;
 }
 
+/* Zwei Tabs links, zwei rechts: Weil beide Seiten dieselbe Flex-Summe haben,
+   sitzt der Knopf mittig — unabhängig davon, wie breit sein eigenes Feld ist.
+   Das etwas größere `flex` gibt ihm nur mehr Luft neben den 60 px des Knopfes. */
 .scanSlot {
   flex: 1.05;
   display: flex;

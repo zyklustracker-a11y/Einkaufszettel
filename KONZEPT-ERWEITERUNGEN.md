@@ -291,6 +291,15 @@ Die Beschriftungen müssen kurz sein: **Übersicht · Preise · Zettel · Analys
 Wirkt das am Gerät zu gedrängt, sitzt der Zettel stattdessen als Karte im Dashboard. Die
 Entscheidung fällt am Gerät.
 
+> **Am Gerät entschieden, Schritt 15.** Es war zu gedrängt — und schwerer wog, dass der
+> Scan-Knopf bei sechs Feldern nicht mehr mittig saß. Der Zettel bleibt trotzdem ein Tab
+> (er wird im Laden benutzt); abgegeben haben die **Bestpreise**. Sie sind seither der
+> zweite Bereich der Analysen, erreichbar über einen Umschalter oben im Screen
+> („Auswertung" ↔ „Bestpreise"), der zwischen `/analysen` und `/bestpreise` wechselt —
+> beide Screens und beide Routen bleiben unverändert. Die Leiste zeigt wieder vier Tabs
+> mit ausgeschriebenen Namen: **Übersicht · Zettel · Analysen · Gesundheit**, zwei links
+> und zwei rechts vom Scan-Knopf.
+
 ## Fortschritt ab dem ersten Bon
 
 Der Tab existiert von Anfang an und zeigt, wie weit die App ist. **Schwelle: mindestens
@@ -364,7 +373,7 @@ Erfassung, ohne Zutun.
 | **9** | Einkaufszettel | Braucht 4 Einkäufe und 14 Tage |
 | **10** | Merkmale selbst anlegen und gewichten | Jederzeit machbar |
 | **11** | Familie einladen | Wenn der Nutzer soweit ist |
-| **12** | Monatsreport als Push-Benachrichtigung | Zum Schluss |
+| **12** | ~~Monatsreport als Push-Benachrichtigung~~ | *gebaut und mit Schritt 15 wieder entfernt – siehe unten* |
 
 **Zwischen 7 und 8 sollte der Nutzer einige Wochen einfach einkaufen und scannen.** Die
 Auswertungen werden erst mit Daten sichtbar, und dann zeigt sich auch, was tatsächlich
@@ -440,7 +449,9 @@ Ware nach Gewicht ohnehin der Grundpreis ist.
 - **Der Zettel ist ein eigener Tab.** Die Entscheidung fällt zugunsten des Tabs,
   weil er im Laden benutzt wird — eine Dashboard-Karte kostet dort einen Tipper
   und eine Scrollbewegung. Dafür heißen zwei Tabs kürzer: „Preise" und
-  „Gesund", wie im Abschnitt oben vorgeschlagen.
+  „Gesund", wie im Abschnitt oben vorgeschlagen. *(Der Tab bleibt; die Kürzungen
+  sind mit Schritt 15 hinfällig — dort geben die Bestpreise ihren Tab ab, nicht
+  der Zettel.)*
 - **Der erwartete Preis ist der günstigste tatsächlich bezahlte Zeilenbetrag**
   der letzten sechs Monate, nicht Bestpreis × Menge. Ein Einzelpreis mal einer
   Medianmenge ergibt eine Zahl, die so nie auf einem Bon stand.
@@ -449,6 +460,32 @@ Ware nach Gewicht ohnehin der Grundpreis ist.
   unempfindlich, und die sind hier der Normalfall.
 - **Die Liste gibt es ab dem ersten Tag, die Vorschläge erst ab der Schwelle.**
   Ein Zettel, auf den man nichts schreiben darf, ist kein Zettel.
+
+# Mit Schritt 15 zurückgenommen
+
+Vier Korrekturen des Nutzers, alle unabhängig voneinander. Die ausführlichen
+Begründungen stehen in `PROJEKT.md`; hier steht, was von diesem Konzept davon
+betroffen ist.
+
+- **Der Monatsreport als Push ist ersatzlos gestrichen** (Schritt 12 dieses
+  Fahrplans). Eine Nachricht im Monat rechtfertigt weder die Einrichtung —
+  VAPID-Schlüsselpaar, vier Secrets bei Supabase, zwei bei GitHub, eines bei
+  Vercel — noch den Schalter in den Einstellungen. Entfernt sind der
+  Einstellungsbereich, die Berechtigungsabfrage, die Push-Teile des Service
+  Workers, die Edge Function `monatsreport`, der GitHub-Workflow, das Skript zur
+  Schlüsselerzeugung und die Dokumentation dazu. `0012_ohne_push.sql` räumt die
+  Tabellen ab; `0011_monatsreport.sql` bleibt unverändert stehen, weil sie
+  bereits ausgeführt ist. Der Service Worker selbst bleibt — er gehört zur PWA.
+- **Der Schalter „Bon-Fotos nach Erkennung löschen" ist weg.** Das Verhalten ist
+  fest: Das Foto wird immer verworfen und nie hochgeladen. Der Schalter konnte
+  daran nichts ändern und behauptete trotzdem, es zu tun.
+- **Die Erklärungen in der Einstellungs-Übersicht stehen unter dem Namen**,
+  kleiner und gedämpft, das Chevron mittig zur ganzen Zeile — wie in den
+  iOS-Einstellungen. Nebeneinander brachen sie auf 390 px um und lasen sich als
+  ein einziger Satz.
+- **Die Tab-Leiste hat wieder vier Tabs** (siehe den Kasten im Abschnitt
+  *Tab-Leiste*): Die Bestpreise geben ihren Tab ab und werden zum zweiten
+  Bereich der Analysen.
 
 # Offene Kleinigkeiten
 

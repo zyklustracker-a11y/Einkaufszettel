@@ -983,6 +983,12 @@ zwei Tabs kürzer — **„Preise" statt „Bestpreise", „Gesund" statt
 „Gesundheit"**, genau wie im Konzept vorgeschlagen. Die Screens behalten ihre
 vollen Titel; gekürzt ist nur, was in die Leiste muss.
 
+> *Mit Schritt 15 zurückgenommen: Am Gerät waren sechs Felder zu gedrängt, und
+> der Scan-Knopf saß nicht mehr mittig. Der Zettel behält seinen Tab — die
+> Begründung darüber gilt unverändert —, die Bestpreise geben ihren ab und
+> sitzen jetzt hinter einem Umschalter in den Analysen. Damit sind auch die
+> Kürzungen hinfällig; die Leiste beschriftet wieder aus.*
+
 **Median und Quartilsabstand, nicht Mittelwert und Standardabweichung.** Ein
 Urlaub reißt eine Lücke von drei Wochen in einen Sechs-Tage-Rhythmus: Der
 Mittelwert wandert dadurch dauerhaft nach oben, der Median nicht. Für die
@@ -1156,6 +1162,36 @@ Sie stand daneben, weil Name und Erklärung dort `<span>` sind und ohne
 ein einziger Satz und brach auf 390 px obendrein um. Das Chevron sitzt mittig
 zur **ganzen** Zeile und nicht zum Namen, sonst rutschte es bei einer
 zweizeiligen Erklärung nach oben.
+
+**Die Tab-Leiste hat wieder vier Tabs: Übersicht · Zettel · Analysen ·
+Gesundheit.** Mit Schritt 9 war der Einkaufszettel als fünfter dazugekommen —
+sechs Felder auf 390 px. Am Gerät hat sich gezeigt, was das Konzept als
+Möglichkeit offengelassen hatte: Es ist zu gedrängt, und schwerer wiegt, dass
+der Scan-Knopf damit **nicht mehr mittig** saß. Er ist der einzige Weg in den
+Scan-Ablauf und der am häufigsten getroffene Punkt der ganzen App; zwei Tabs
+links und zwei rechts setzen ihn ohne Rechnerei in die Mitte.
+
+Weichen mussten die **Bestpreise**, nicht der Zettel: Der Zettel wird im Laden
+benutzt und muss einen Daumen entfernt sein (die Begründung aus Schritt 9 gilt
+unverändert). Die Bestpreise beantworten dieselbe Frage wie die Analysen — „was
+kostet was, und geht es günstiger" — und sitzen deshalb jetzt dort. Damit passen
+auch die ausgeschriebenen Beschriftungen wieder; die Kürzungen aus Schritt 9
+(„Preise", „Gesund") sind zurückgenommen.
+
+**Der Umschalter sind zwei Verweise, keine Umschaltung im Screen.**
+`/bestpreise` und `/bestpreise/:productId` bleiben unverändert bestehen, ebenso
+beide Screens; es ändert sich nur der Weg dorthin. Ein `useState` im
+Analysen-Screen hätte die Zurück-Geste des Browsers und jeden Verweis auf ein
+einzelnes Produkt gekostet — für nichts. Preis dafür ist die Liste `alsoActive`
+in der Tab-Leiste: Ein `NavLink` kennt nur seine eigene Adresse und wüsste sonst
+nicht, dass der Analysen-Tab auch auf `/bestpreise` leuchten muss.
+
+**Beide Screens tragen die Überschrift „Analysen".** Der Umschalter direkt
+darunter sagt bereits, welcher Bereich zu sehen ist; eine Überschrift, die beim
+Umschalten wechselt, ließe den Eindruck entstehen, man hätte den Bereich
+verlassen. Das Suchfeld der Bestpreise steht unmittelbar unter dem Umschalter —
+**die Produktsuche ist der Grund, warum es die Bestpreise gibt**, und darf durch
+den Umweg über die Analysen keine Zeile tiefer rutschen als nötig.
 
 ### Zurückgenommen mit Schritt 15 (Monatsreport als Push)
 

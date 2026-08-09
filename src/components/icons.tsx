@@ -14,24 +14,11 @@ export function GridIcon() {
   )
 }
 
-export function TagIcon() {
-  return (
-    <svg width="23" height="23" viewBox="0 0 23 23" aria-hidden="true">
-      <rect
-        x="3"
-        y="3"
-        width="17"
-        height="17"
-        rx="4"
-        transform="rotate(45 11.5 11.5)"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
-      <circle cx="11.5" cy="11.5" r="2.6" fill="currentColor" />
-    </svg>
-  )
-}
+/*
+ * Das Preisschild (`TagIcon`) ist mit Schritt 15 entfallen: Es war das Symbol
+ * des Bestpreise-Tabs, und den gibt es nicht mehr — die Bestpreise sitzen jetzt
+ * hinter dem Umschalter in den Analysen und brauchen dort kein Symbol.
+ */
 
 /**
  * Der Einkaufszettel: ein Blatt mit Häkchen.

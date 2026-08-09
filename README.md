@@ -31,20 +31,24 @@ wenn sich das Logo ändert).
 | `/scan` | Kamera mit Rahmenhilfe |
 | `/scan/verarbeitung` | „KI liest deinen Bon…" – ruft die Edge Function auf |
 | `/scan/pruefen` | Das Erkannte prüfen, inkl. Summenabgleich und Rohantwort |
-| `/bestpreise` | Durchsuchbare Produktliste mit Bestpreis je Produkt |
+| `/bestpreise` | Analysen › Bestpreise: durchsuchbare Produktliste mit Bestpreis je Produkt |
 | `/bestpreise/:productId` | Preisverlauf und alle Käufe eines Produkts |
 | `/zettel` | Einkaufszettel: Vorschläge aus dem Kaufrhythmus, Abhaken, eigene Einträge |
-| `/analysen` | Zeitraum-Umschalter, Verlauf, Kategorien, Sparpotenzial, Top 10, Kraftstoff |
+| `/analysen` | Analysen › Auswertung: Verlauf, Kategorien, Sparpotenzial, Top 10, Kraftstoff |
 | `/gesundheit` | Score-Verlauf, verarbeitet/unverarbeitet, kritische Ausgaben |
 | `/einkauf/:receiptId` | Gespeicherter Bon mit Positionen, korrigieren oder löschen |
-| `/einstellungen` | Übersicht: Bereichsnamen, zwei Schalter, Abmelden |
+| `/einstellungen` | Übersicht: Bereiche mit Erklärung, Erscheinungsbild, Abmelden |
 | `/einstellungen/budget` | Monatsbudget |
 | `/einstellungen/kategorien` | Kategorien anlegen, umbenennen, umfärben, abschalten |
 | `/einstellungen/merkmale` | Merkmale anlegen, gewichten, gruppieren, abschalten |
 | `/einstellungen/haushalt` | Wer zum Haushalt gehört, Familie einladen |
 
-Die Tab-Bar (Übersicht · Preise · Zettel · Scan · Analysen · Gesund) liegt über
-allen Tabs-Screens; Scan-Flow und Einstellungen laufen ohne sie.
+Die Tab-Bar (Übersicht · Zettel · **Scan** · Analysen · Gesundheit) liegt über
+allen Tab-Screens; Scan-Flow und Einstellungen laufen ohne sie. Vier Tabs, zwei
+links und zwei rechts — dadurch sitzt der Scan-Knopf mittig. Die Bestpreise
+haben keinen eigenen Tab: Sie sind der zweite Bereich der Analysen und stehen
+dort hinter einem Umschalter („Auswertung" ↔ „Bestpreise"), der zwischen
+`/analysen` und `/bestpreise` wechselt.
 
 ## Aufbau
 
@@ -55,7 +59,7 @@ src/
   data/index.ts     Zugriffsschicht: der einzige Ort, den Supabase ersetzt
   lib/format.ts     Deutsche Darstellung (2,49 € · 14.08.2026 · vor 33 Tagen)
   lib/derive.ts     Alles Abgeleitete: Bestpreise, Sparpotenzial, Charts, Budget
-  state/AppState    Theme und Einstellungen, in localStorage gesichert
+  state/AppState    Erscheinungsbild – die einzige Einstellung, die am Gerät hängt
   components/       Tab-Bar, Bottom-Sheet, Charts, kleine UI-Bausteine
   screens/          Eine Datei pro Screen plus CSS-Modul
   styles/tokens.css Design-Tokens für Light und Dark

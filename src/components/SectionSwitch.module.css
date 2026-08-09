@@ -1,0 +1,39 @@
+/* Der Umschalter zwischen „Auswertung" und „Bestpreise".
+
+   Optisch ein Segmented Control, wie man es von iOS kennt: eine gedämpfte
+   Schiene, darin ein heller Reiter für das, was gerade zu sehen ist. Er benutzt
+   dieselben Token wie die Chips daneben (--chip, --card, --shadow) und erfindet
+   keine neue Farbe. */
+
+.track {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 13px;
+  background: var(--chip);
+  margin-bottom: 16px;
+}
+
+.segment {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* Der aktive Reiter hebt sich durch Fläche ab, nicht durch Farbe: Grün ist in
+   dieser App die Farbe für „ausgewählt" in Chips und für Beträge — hier wäre es
+   ein zweiter Anspruch auf dieselbe Bedeutung. */
+.segment--active {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}

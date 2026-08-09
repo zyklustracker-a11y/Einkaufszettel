@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { BarChart, CategoryBars, SparkAxis, Sparkline } from '../components/charts'
+import { SectionSwitch } from '../components/SectionSwitch'
 import { Async, EmptyState } from '../components/states'
 import { SearchField } from '../components/ui'
 import { getAnalyticsData, getCategories, getMerchantName, searchItemSpending, useQuery } from '../data'
@@ -26,6 +27,12 @@ export function Analytics() {
   return (
     <div className="screen screen--tabbed">
       <h1 className="screenTitle">Analysen</h1>
+      {/*
+        Der Umschalter steht über dem Ladezustand, nicht darin: Er gehört zur
+        Navigation und nicht zu den Daten. Sonst verschwände der Weg zu den
+        Bestpreisen, solange die Auswertung lädt oder ein Fehler steht.
+      */}
+      <SectionSwitch />
       <Async state={state}>{(data) => <AnalyticsBody data={data} />}</Async>
     </div>
   )

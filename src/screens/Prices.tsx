@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { SectionSwitch } from '../components/SectionSwitch'
 import { Async, EmptyState } from '../components/states'
 import { SearchField } from '../components/ui'
 import { getMerchantName, getPriceOverview, useQuery } from '../data'
@@ -21,12 +22,26 @@ function priceLabel(product: ProductPriceOverview): string {
   return 'Bestpreis'
 }
 
+/**
+ * Die Bestpreise sind seit Schritt 15 der zweite Bereich der Analysen.
+ *
+ * Die Überschrift heißt deshalb „Analysen" und nicht mehr „Bestpreise": Der
+ * Umschalter direkt darunter sagt bereits, welcher der beiden Bereiche zu sehen
+ * ist. Zweimal dasselbe Wort untereinander wäre eine verschenkte Zeile — und
+ * eine Überschrift, die sich beim Umschalten ändert, ließe den Eindruck
+ * entstehen, man hätte den Bereich verlassen. Route und Screen sind unverändert.
+ *
+ * Das Suchfeld steht bewusst unmittelbar unter dem Umschalter: Die Produktsuche
+ * ist der Grund, warum es die Bestpreise gibt. Sie darf durch den Umweg über die
+ * Analysen keine Zeile tiefer rutschen als nötig.
+ */
 export function Prices() {
   const state = useQuery(getPriceOverview, [])
 
   return (
     <div className="screen screen--tabbed">
-      <h1 className="screenTitle">Bestpreise</h1>
+      <h1 className="screenTitle">Analysen</h1>
+      <SectionSwitch />
       <Async state={state}>{(products) => <PricesBody products={products} />}</Async>
     </div>
   )
