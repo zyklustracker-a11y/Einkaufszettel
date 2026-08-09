@@ -333,6 +333,63 @@ Einkaufszettel Vorschläge macht.
 
 ---
 
+## 2h. Die achte Migration: Einkaufszettel
+
+`migrations/0008_einkaufszettel.sql` gehört zu Schritt 9.
+
+| Was | Wofür |
+|---|---|
+| `shopping_lists`, `shopping_list_items` | eine offene Liste je Haushalt |
+| `v_product_rhythm` | Kaufrhythmus je Produkt: Median, Streuung, Fälligkeit |
+| `v_shopping_suggestions` | was heute fällig ist |
+| `shopping_list_refresh()` | Liste holen und Vorschläge ergänzen |
+| `v_household_stats` erweitert | die Schwelle (4 Einkäufe, 14 Tage) |
+| `save_receipt()` erweitert | hakt beim Speichern ab, was auf dem Zettel stand |
+
+Genauso ausführen wie oben. Erwartet: **Success. No rows returned.**
+
+**Prüfen, was die App über deine Rhythmen weiß:**
+
+```sql
+select product_name, purchase_count, median_gap_days, spread_days,
+       days_since_last, expected_price_cents
+from public.v_product_rhythm
+order by median_gap_days;
+```
+
+Erwartet: eine Zeile je Produkt, das du **mindestens dreimal** gekauft hast.
+`median_gap_days` ist der übliche Abstand in Tagen, `spread_days` die Streuung.
+Ist die Streuung groß, kommt das Produkt bewusst nicht auf den Zettel — dann ist
+es kein Rhythmus, sondern Zufall.
+
+**Und was daraus ein Vorschlag wird:**
+
+```sql
+select product_name, median_gap_days, days_since_last, due_in_days
+from public.v_shopping_suggestions
+order by due_in_days;
+```
+
+Negatives `due_in_days` heißt überfällig. Ist die Liste leer, ist gerade nichts
+fällig — das ist der Normalfall direkt nach einem Großeinkauf.
+
+**Wie weit die Schwelle ist:**
+
+```sql
+select receipt_count, required_receipts, day_span, required_days, suggestions_ready
+from public.v_household_stats;
+```
+
+Solange `suggestions_ready` auf `false` steht, zeigt der Zettel-Tab den
+Fortschritt statt einer Liste. Eigene Einträge kannst du trotzdem schon
+hinschreiben.
+
+> **Die Schwelle steht nur hier.** Der Balken in der App liest `required_receipts`
+> und `required_days` aus dieser Sicht. Wer sie ändern will, ändert sie in der
+> Migration — und beides bleibt in Übereinstimmung.
+
+---
+
 ## 3. Prüfen, ob alles angekommen ist
 
 Öffne eine neue Abfrage und führe diese vier Blöcke nacheinander aus.

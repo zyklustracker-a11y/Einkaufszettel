@@ -275,4 +275,110 @@ begin
 end
 $$;
 
+
+-- ============================================================================
+-- Einkaufszettel — geprüft als Haushalt C
+--
+-- Er ist eigens dafür angelegt: gleichmäßige Kauftage, die in die Monatslogik
+-- der Haushalte oben nicht passen.
+--
+--   Milch      Tag −21, −14, −7   → Abstände 7, 7    → stabil, heute fällig
+--   Bananen    Tag −12, −6, −1    → Abstände 6, 5    → stabil, noch nicht fällig
+--   Grillkohle Tag −120, −110, −5 → Abstände 10, 105 → zufällig
+-- ============================================================================
+
+select set_config('request.jwt.claim.sub', '33333333-3333-3333-3333-333333333333', false);
+
+do $$
+declare
+  r record;
+  n bigint;
+  v_list uuid;
+begin
+  /* ============================================================ Rhythmus */
+
+  select count(*) into n from public.v_product_rhythm;
+  assert n = 3, format('Rhythmus: 3 Produkte erwartet, %s', n);
+
+  select * into r from public.v_product_rhythm where product_name = 'H-Milch';
+  assert r.median_gap_days = 7, format('Milch-Rhythmus: 7 Tage erwartet, %s', r.median_gap_days);
+  assert r.spread_days = 0, format('Milch-Streuung: 0 erwartet, %s', r.spread_days);
+  assert r.days_since_last = 7, format('Milch zuletzt vor 7 Tagen erwartet, %s', r.days_since_last);
+  assert r.expected_price_cents = 129,
+    format('Milch-Preis: 129 erwartet, %s', r.expected_price_cents);
+
+  -- Der Median ist gegen Ausreißer unempfindlich — genau deshalb steht er hier
+  -- und nicht der Mittelwert. Grillkohle: Abstände 10 und 105 Tage.
+  select * into r from public.v_product_rhythm where product_name = 'Grillkohle';
+  assert r.median_gap_days = 58, format('Grillkohle-Median: 58 erwartet, %s', r.median_gap_days);
+  assert r.spread_days > 34,
+    format('Grillkohle-Streuung: über 34 erwartet, %s', r.spread_days);
+
+  /* ========================================================== Vorschläge */
+
+  select count(*) into n from public.v_shopping_suggestions;
+  assert n = 1, format('Vorschläge: 1 erwartet, %s', n);
+
+  select * into r from public.v_shopping_suggestions;
+  assert r.product_name = 'H-Milch', format('Vorschlag: H-Milch erwartet, %s', r.product_name);
+  assert r.due_in_days = 0, format('Fälligkeit: 0 erwartet, %s', r.due_in_days);
+
+  -- Grillkohle taucht nie auf: Der Quartilsabstand ist größer als 60 % des
+  -- Medians, also ist das kein Rhythmus, sondern Zufall.
+  select count(*) into n from public.v_shopping_suggestions where product_name = 'Grillkohle';
+  assert n = 0, 'Vorschläge: zufälliges Produkt nicht ausgeschlossen';
+
+  -- Bananen sind erst vor einem Tag gekauft worden.
+  select count(*) into n from public.v_shopping_suggestions where product_name = 'Bananen';
+  assert n = 0, 'Vorschläge: noch nicht fälliges Produkt vorgeschlagen';
+
+  /* ============================================================= Die Liste */
+
+  v_list := public.shopping_list_refresh();
+  assert v_list is not null, 'shopping_list_refresh() hat keine Liste geliefert';
+
+  select count(*) into n from public.v_shopping_list_items;
+  assert n = 1, format('Zettel: 1 Eintrag erwartet, %s', n);
+
+  select * into r from public.v_shopping_list_items;
+  assert r.label = 'H-Milch', format('Zettel-Eintrag: H-Milch erwartet, %s', r.label);
+  assert r.source = 'suggestion', format('Quelle: suggestion erwartet, %s', r.source);
+  assert r.checked = false, 'Ein neuer Eintrag ist nicht abgehakt';
+  assert r.median_gap_days = 7, 'Die Begründung („üblich alle 7") fehlt am Eintrag';
+
+  -- Ein zweiter Aufruf ergänzt nichts doppelt und legt keine zweite Liste an.
+  assert public.shopping_list_refresh() = v_list, 'Zweite offene Liste angelegt';
+  select count(*) into n from public.v_shopping_list_items;
+  assert n = 1, format('Zettel nach erneutem Aufruf: 1 Eintrag erwartet, %s', n);
+
+  -- Ein weggewischter Vorschlag kommt in diesem Durchgang nicht wieder.
+  update public.shopping_list_items set removed_at = now() where list_id = v_list;
+  perform public.shopping_list_refresh();
+  select count(*) into n from public.v_shopping_list_items;
+  assert n = 0, format('Weggewischter Vorschlag kam zurück (%s Einträge)', n);
+
+  -- Zurücknehmen, damit der Abgleich unten etwas zum Abhaken hat.
+  update public.shopping_list_items set removed_at = null where list_id = v_list;
+
+  /* =========================================== Abgleich nach dem Einkauf */
+
+  perform public.save_receipt(jsonb_build_object(
+    'haendler', 'REWE', 'haendler_art', 'retail', 'haendler_art_quelle', 'model',
+    'gekauft_am', current_date::text,
+    'summe_cent', 129, 'trinkgeld_cent', 0, 'waehrung', 'EUR',
+    'positionen', jsonb_build_array(
+      jsonb_build_object('rohtext', 'H-MILCH', 'art', 'artikel', 'name', 'H-Milch',
+        'kategorie', 'dairy', 'merkmale', jsonb_build_array('milch'),
+        'menge_basis', 1, 'menge_einheit', 'stk', 'einzelpreis_cent', 129,
+        'zeilensumme_cent', 129, 'quelle', 'model')
+    )
+  ));
+
+  select * into r from public.v_shopping_list_items;
+  assert r.checked = true, 'Der Einkauf hat den Zettel nicht abgehakt';
+
+  raise notice 'Alle Einkaufszettel-Prüfungen bestanden.';
+end
+$$;
+
 reset role;

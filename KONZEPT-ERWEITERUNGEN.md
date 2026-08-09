@@ -427,6 +427,29 @@ mit drei Präzisierungen:
   sich der halbe Cent Rundung über 38 Liter auf drei Cent summiert. Beides ist
   nachgebessert und mit Tests festgenagelt.
 
+# Beim Bauen von Schritt 8 und 9 entschieden
+
+**Schritt 8 (Bestpreise und Analysen).** Die Auswertungen rechneten längst gegen
+echte Daten; es fehlten Schwellen. Dazu kam ein Fund: Der Grundpreis war die
+ganze Zeit leer, weil er aus `canonical_products.size_base` kam — einer Spalte,
+die `save_receipt` nie füllt. Er wird jetzt aus dem Einzelpreis gewonnen, der bei
+Ware nach Gewicht ohnehin der Grundpreis ist.
+
+**Schritt 9 (Einkaufszettel).** Vier Stellen weichen vom Wortlaut oben ab:
+
+- **Der Zettel ist ein eigener Tab.** Die Entscheidung fällt zugunsten des Tabs,
+  weil er im Laden benutzt wird — eine Dashboard-Karte kostet dort einen Tipper
+  und eine Scrollbewegung. Dafür heißen zwei Tabs kürzer: „Preise" und
+  „Gesund", wie im Abschnitt oben vorgeschlagen.
+- **Der erwartete Preis ist der günstigste tatsächlich bezahlte Zeilenbetrag**
+  der letzten sechs Monate, nicht Bestpreis × Menge. Ein Einzelpreis mal einer
+  Medianmenge ergibt eine Zahl, die so nie auf einem Bon stand.
+- **Die Streuung wird über den Quartilsabstand gemessen** (höchstens 60 % des
+  Medians, mindestens vier Tage Spielraum). Er ist gegen Ausreißer
+  unempfindlich, und die sind hier der Normalfall.
+- **Die Liste gibt es ab dem ersten Tag, die Vorschläge erst ab der Schwelle.**
+  Ein Zettel, auf den man nichts schreiben darf, ist kein Zettel.
+
 # Offene Kleinigkeiten
 
 - ~~**„Korrigieren" im Einkaufs-Detail**~~ *Erledigt mit Schritt 5b. Der Knopf

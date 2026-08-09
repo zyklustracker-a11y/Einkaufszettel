@@ -1,0 +1,424 @@
+import { useState } from 'react'
+import { Async, EmptyState } from '../components/states'
+import { ProgressBar } from '../components/ui'
+import {
+  addShoppingItem,
+  completeShoppingList,
+  germanDataError,
+  getMerchantName,
+  getShoppingList,
+  removeShoppingItem,
+  setShoppingItemChecked,
+  useQuery,
+} from '../data'
+import { formatAmount, formatEuro } from '../lib/format'
+import type { HouseholdStats, RhythmProduct, ShoppingItem, ShoppingList } from '../types'
+import styles from './ShoppingList.module.css'
+
+/**
+ * Der Einkaufszettel.
+ *
+ * **Warum ein eigener Tab und keine Karte im Dashboard.** Das Konzept lässt
+ * beides offen und will die Entscheidung „am Gerät" (KONZEPT-ERWEITERUNGEN.md,
+ * Abschnitt 6). Sie fällt zugunsten des Tabs, aus zwei Gründen:
+ *
+ *   1. **Der Zettel wird im Laden benutzt**, im Stehen, mit einer Hand am
+ *      Wagen. Eine Karte im Dashboard kostet dort einen Tipper und eine
+ *      Scrollbewegung — und zwar genau in dem Moment, in dem es schnell gehen
+ *      soll. Der Tab ist einen Daumen entfernt.
+ *   2. **Er ist kein Bericht, sondern ein Arbeitsblatt.** Auf dem Dashboard
+ *      steht, was war; hier hakt man ab, was noch kommt. Diese beiden Sorten
+ *      Screen zu mischen macht beide unklarer.
+ *
+ * Der Platz reicht: Fünf Tabs plus Scan-Knopf ergeben auf 390 px rund 64 px je
+ * Feld, und die Beschriftungen sind entsprechend kurz gewählt (Übersicht ·
+ * Preise · Zettel · Analysen · Gesund). Sollte es am Gerät doch zu gedrängt
+ * wirken, ist der Rückweg klein: Die Komponenten unten hängen an keiner Route.
+ */
+export function ShoppingListScreen() {
+  const state = useQuery(getShoppingList, [])
+
+  return (
+    <div className="screen screen--tabbed">
+      <h1 className="screenTitle">Einkaufszettel</h1>
+      <Async state={state}>
+        {(list) => <Body list={list} reload={state.reload} />}
+      </Async>
+    </div>
+  )
+}
+
+function Body({ list, reload }: { list: ShoppingList; reload: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  /** Jede Änderung läuft hier durch: ein Ladezustand, eine Fehlerstelle. */
+  const run = async (action: () => Promise<unknown>) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await action()
+      reload()
+    } catch (cause) {
+      setError(germanDataError(cause))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const open = list.items.filter((item) => !item.checked)
+  const done = list.items.filter((item) => item.checked)
+
+  return (
+    <>
+      {!list.stats.suggestionsReady && <Progress stats={list.stats} rhythms={list.rhythms} />}
+
+      {error && (
+        <p className={styles.error} role="alert">
+          {error}
+        </p>
+      )}
+
+      {list.items.length === 0 ? (
+        <EmptyState inline title={list.stats.suggestionsReady ? 'Gerade ist nichts fällig' : 'Noch kein Vorschlag'}>
+          {list.stats.suggestionsReady
+            ? 'Alles, was du regelmäßig kaufst, ist noch frisch. Sobald etwas fällig wird, steht es hier – bis dahin kannst du eigene Einträge ergänzen.'
+            : 'Vorschläge kommen, sobald genug Einkäufe erfasst sind. Eigene Einträge kannst du jederzeit hinschreiben.'}
+        </EmptyState>
+      ) : (
+        <>
+          <Summary items={list.items} />
+          <Groups
+            items={open}
+            busy={busy}
+            onToggle={(item) => void run(() => setShoppingItemChecked(item.id, true))}
+            onRemove={(item) => void run(() => removeShoppingItem(item.id))}
+          />
+
+          {done.length > 0 && (
+            <section className={styles.doneCard}>
+              <div className={styles.doneTitle}>
+                Erledigt · {done.length} von {list.items.length}
+              </div>
+              {done.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={styles.doneRow}
+                  disabled={busy}
+                  onClick={() => void run(() => setShoppingItemChecked(item.id, false))}
+                >
+                  <span className={styles.tickDone} aria-hidden="true">
+                    ✓
+                  </span>
+                  <span className={styles.doneLabel}>{item.label}</span>
+                </button>
+              ))}
+            </section>
+          )}
+        </>
+      )}
+
+      <AddItem busy={busy} onAdd={(label) => run(() => addShoppingItem(list.listId, label))} />
+
+      {list.items.length > 0 && (
+        <>
+          <button
+            type="button"
+            className={styles.complete}
+            disabled={busy}
+            onClick={() => void run(() => completeShoppingList(list.listId))}
+          >
+            Einkauf abschließen
+          </button>
+          <p className={styles.footnote}>
+            Damit wird der Zettel geschlossen; beim nächsten Öffnen entsteht ein neuer. Was du
+            gescannt hast, hakt die App schon beim Speichern des Bons selbst ab.
+          </p>
+        </>
+      )}
+
+      {list.stats.suggestionsReady && list.items.length > 0 && (
+        <p className={styles.footnote}>
+          Basiert auf {list.stats.receiptCount} Einkäufen – wird mit jedem weiteren genauer.
+        </p>
+      )}
+    </>
+  )
+}
+
+/* ============================================================== Fortschritt */
+
+/**
+ * „Dein Einkaufszettel entsteht gerade."
+ *
+ * Zwei Balken statt einem, weil die Schwelle aus zwei Bedingungen besteht: Zeit
+ * allein nützt nichts, wenn nicht eingekauft wurde. Die Zahlen kommen aus der
+ * Datenbank — dort entscheidet dieselbe Schwelle, ob überhaupt Vorschläge
+ * entstehen, und zwei Fassungen wären zwei Wahrheiten.
+ *
+ * **Der Balken darf rückwärts gehen**, wenn ein Bon gelöscht wird. Das ist
+ * richtig so: Er zeigt den Stand und nicht den Fleiß.
+ */
+function Progress({ stats, rhythms }: { stats: HouseholdStats; rhythms: RhythmProduct[] }) {
+  const receiptsLeft = Math.max(0, stats.requiredReceipts - stats.receiptCount)
+  const daysLeft = Math.max(0, stats.requiredDays - stats.daySpan)
+
+  if (stats.receiptCount === 0) {
+    return (
+      <EmptyState title="Dein Einkaufszettel entsteht aus deinen Einkäufen" scanHint>
+        Ich lerne aus deinen Bons, was du regelmäßig brauchst – und schlage es vor, wenn es wieder
+        fällig ist. Nach {stats.requiredReceipts} Einkäufen über {stats.requiredDays} Tage geht es
+        los.
+      </EmptyState>
+    )
+  }
+
+  return (
+    <section className="card">
+      <div className="cardTitle" style={{ marginBottom: 6 }}>
+        Dein Einkaufszettel entsteht gerade
+      </div>
+      <p className={styles.intro}>
+        Ich lerne aus deinen Einkäufen, was du regelmäßig brauchst.
+      </p>
+
+      <div className={styles.bar}>
+        <ProgressBar
+          fraction={Math.min(1, stats.receiptCount / stats.requiredReceipts)}
+          label="Einkäufe"
+        />
+        <div className={styles.barLabel}>
+          {stats.receiptCount} von {stats.requiredReceipts} Einkäufen
+        </div>
+      </div>
+
+      <div className={styles.bar}>
+        <ProgressBar
+          fraction={Math.min(1, stats.daySpan / stats.requiredDays)}
+          label="Zeitraum"
+        />
+        <div className={styles.barLabel}>
+          {stats.daySpan} von {stats.requiredDays} Tagen
+        </div>
+      </div>
+
+      <p className={styles.intro}>
+        {receiptsLeft === 0 && daysLeft === 0
+          ? 'Gleich geht es los.'
+          : `Noch ${[
+              receiptsLeft > 0 ? `${receiptsLeft} ${receiptsLeft === 1 ? 'Einkauf' : 'Einkäufe'}` : null,
+              daysLeft > 0 ? `${daysLeft} ${daysLeft === 1 ? 'Tag' : 'Tage'}` : null,
+            ]
+              .filter(Boolean)
+              .join(' und ')}, dann kann ich dir einen Zettel vorschlagen.`}
+      </p>
+
+      {/*
+        Die wichtigste Zeile des ganzen Zustands: echte Zwischenergebnisse statt
+        nur ein Balken. Ein Produkt erscheint hier, sobald es dreimal gekauft
+        wurde — auch wenn die Gesamtschwelle noch fehlt.
+      */}
+      {rhythms.length > 0 && (
+        <p className={styles.recognised}>
+          Schon erkannt:{' '}
+          {rhythms
+            .slice(0, 4)
+            .map((rhythm) => `${rhythm.name} alle ${rhythm.medianGapDays} Tage`)
+            .join(' · ')}
+        </p>
+      )}
+    </section>
+  )
+}
+
+/* ================================================================= Die Liste */
+
+function Summary({ items }: { items: ShoppingItem[] }) {
+  const open = items.filter((item) => !item.checked)
+  const known = open.filter((item) => item.expectedPriceCents !== null)
+  const expected = known.reduce((sum, item) => sum + (item.expectedPriceCents ?? 0), 0)
+
+  return (
+    <div className={styles.summary}>
+      <div>
+        <div className={styles.summaryCount}>
+          {open.length} {open.length === 1 ? 'Eintrag' : 'Einträge'} offen
+        </div>
+        <div className={styles.summaryHint}>
+          {known.length === 0
+            ? 'Für die Kostenschätzung fehlen noch bekannte Preise.'
+            : known.length === open.length
+              ? 'Geschätzt nach deinen bisher günstigsten Preisen'
+              : `Preis für ${known.length} von ${open.length} Einträgen bekannt`}
+        </div>
+      </div>
+      <div className={styles.summaryAmount}>{formatEuro(expected)}</div>
+    </div>
+  )
+}
+
+/** Nach Kategorie gruppiert — so, wie man den Laden durchläuft. */
+function Groups({
+  items,
+  busy,
+  onToggle,
+  onRemove,
+}: {
+  items: ShoppingItem[]
+  busy: boolean
+  onToggle: (item: ShoppingItem) => void
+  onRemove: (item: ShoppingItem) => void
+}) {
+  const groups = new Map<string, ShoppingItem[]>()
+  for (const item of items) {
+    const list = groups.get(item.categoryName) ?? []
+    list.push(item)
+    groups.set(item.categoryName, list)
+  }
+
+  const ordered = [...groups.entries()].sort(
+    (a, b) => (a[1][0]?.categorySort ?? 999) - (b[1][0]?.categorySort ?? 999),
+  )
+
+  return (
+    <>
+      {ordered.map(([name, group]) => (
+        <section key={name} className={styles.group}>
+          <div className={styles.groupHead}>
+            <span
+              className={styles.swatch}
+              style={{ background: group[0]?.categoryColor ?? 'var(--muted)' }}
+              aria-hidden="true"
+            />
+            {name}
+          </div>
+          {group.map((item) => (
+            <Row
+              key={item.id}
+              item={item}
+              busy={busy}
+              onToggle={() => onToggle(item)}
+              onRemove={() => onRemove(item)}
+            />
+          ))}
+        </section>
+      ))}
+    </>
+  )
+}
+
+/**
+ * Die Begründung unter dem Namen: „zuletzt vor 9 Tagen · üblich alle 7".
+ *
+ * Sie steht ausdrücklich da und nicht in einem Aufklappbereich. Ein Vorschlag
+ * ohne Begründung ist eine Behauptung; mit ihr kann der Nutzer entscheiden, ob
+ * die App richtig liegt.
+ */
+function reason(item: ShoppingItem): string | null {
+  if (item.medianGapDays === null || item.daysSinceLast === null) return null
+  const last =
+    item.daysSinceLast === 0
+      ? 'zuletzt heute'
+      : item.daysSinceLast === 1
+        ? 'zuletzt gestern'
+        : `zuletzt vor ${item.daysSinceLast} Tagen`
+  return `${last} · üblich alle ${item.medianGapDays}`
+}
+
+function Row({
+  item,
+  busy,
+  onToggle,
+  onRemove,
+}: {
+  item: ShoppingItem
+  busy: boolean
+  onToggle: () => void
+  onRemove: () => void
+}) {
+  const amount =
+    item.quantityBase !== null && item.quantityUnit !== null
+      ? item.quantityUnit === 'stk'
+        ? `${item.quantityBase} ×`
+        : formatAmount(
+            item.quantityUnit === 'g' || item.quantityUnit === 'ml'
+              ? item.quantityBase
+              : item.quantityBase / 1000,
+            item.quantityUnit === 'kg' || item.quantityUnit === 'g' ? 'kg' : 'l',
+          )
+      : null
+
+  const why = reason(item)
+  const merchant = item.bestMerchantId ? getMerchantName(item.bestMerchantId) : null
+
+  return (
+    <div className={styles.row}>
+      <button
+        type="button"
+        className={styles.tick}
+        disabled={busy}
+        aria-label={`${item.label} abhaken`}
+        onClick={onToggle}
+      />
+      <span className={styles.main}>
+        <span className={styles.label}>
+          {item.label}
+          {amount && <span className={styles.amount}> {amount}</span>}
+        </span>
+        {(why || merchant) && (
+          <span className={styles.meta}>
+            {[why, merchant ? `günstig bei ${merchant}` : null].filter(Boolean).join(' · ')}
+          </span>
+        )}
+      </span>
+      {item.expectedPriceCents !== null && (
+        <span className={styles.price}>{formatEuro(item.expectedPriceCents)}</span>
+      )}
+      <button
+        type="button"
+        className={styles.remove}
+        disabled={busy}
+        aria-label={`${item.label} entfernen`}
+        onClick={onRemove}
+      >
+        ×
+      </button>
+    </div>
+  )
+}
+
+/* ================================================================ Ergänzen */
+
+function AddItem({ busy, onAdd }: { busy: boolean; onAdd: (label: string) => Promise<void> }) {
+  const [text, setText] = useState('')
+
+  const submit = async () => {
+    if (text.trim() === '') return
+    await onAdd(text)
+    setText('')
+  }
+
+  return (
+    <div className={styles.add}>
+      <input
+        className={styles.addInput}
+        value={text}
+        placeholder="Eigener Eintrag, z. B. Blumen"
+        aria-label="Eigener Eintrag"
+        onChange={(event) => setText(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') void submit()
+        }}
+      />
+      <button
+        type="button"
+        className={styles.addButton}
+        disabled={busy || text.trim() === ''}
+        onClick={() => void submit()}
+      >
+        Hinzufügen
+      </button>
+    </div>
+  )
+}

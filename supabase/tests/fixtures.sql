@@ -21,8 +21,10 @@ do $$
 declare
   v_user_a  uuid := '11111111-1111-1111-1111-111111111111';
   v_user_b  uuid := '22222222-2222-2222-2222-222222222222';
+  v_user_c  uuid := '33333333-3333-3333-3333-333333333333';
   v_house_a uuid;
   v_house_b uuid;
+  i         integer;
   m0        date := date_trunc('month', current_date)::date;
   pm        date := (date_trunc('month', current_date) - interval '1 month')::date;
 begin
@@ -30,7 +32,8 @@ begin
   -- Kategorien und Merkmale an — genau wie beim ersten Login.
   insert into auth.users (id, email) values
     (v_user_a, 'a@example.test'),
-    (v_user_b, 'b@example.test');
+    (v_user_b, 'b@example.test'),
+    (v_user_c, 'c@example.test');
 
   select household_id into v_house_a from public.household_members where user_id = v_user_a;
   select household_id into v_house_b from public.household_members where user_id = v_user_b;
@@ -181,6 +184,61 @@ begin
         'zeilensumme_cent', 9999, 'quelle', 'user')
     )
   ));
+
+  /* ------------------------------------------------------------ Haushalt C
+   *
+   * Ein Haushalt mit **Rhythmus**. Er ist nur für den Einkaufszettel da: Er
+   * braucht Kauftage in gleichmäßigem Abstand, und die passen nicht in die
+   * Monatslogik der Haushalte oben.
+   *
+   *   Milch      Tag −21, −14, −7   → Abstände 7, 7   → stabil, heute fällig
+   *   Bananen    Tag −12, −6, −1    → Abstände 6, 5   → stabil, noch nicht fällig
+   *   Grillkohle Tag −120, −110, −5 → Abstände 10, 105 → zufällig, nie vorgeschlagen
+   */
+
+  perform set_config('request.jwt.claim.sub', v_user_c::text, false);
+
+  for i in 1..3 loop
+    perform public.save_receipt(jsonb_build_object(
+      'haendler', 'REWE', 'haendler_art', 'retail', 'haendler_art_quelle', 'model',
+      'gekauft_am', (current_date - (28 - i * 7))::text,
+      'summe_cent', 129, 'trinkgeld_cent', 0, 'waehrung', 'EUR',
+      'positionen', jsonb_build_array(
+        jsonb_build_object('rohtext', 'H-MILCH', 'art', 'artikel', 'name', 'H-Milch',
+          'kategorie', 'dairy', 'merkmale', jsonb_build_array('milch'),
+          'menge_basis', 1, 'menge_einheit', 'stk', 'einzelpreis_cent', 129,
+          'zeilensumme_cent', 129, 'quelle', 'user')
+      )
+    ));
+  end loop;
+
+  foreach i in array array[12, 6, 1] loop
+    perform public.save_receipt(jsonb_build_object(
+      'haendler', 'REWE', 'haendler_art', 'retail', 'haendler_art_quelle', 'model',
+      'gekauft_am', (current_date - i)::text,
+      'summe_cent', 199, 'trinkgeld_cent', 0, 'waehrung', 'EUR',
+      'positionen', jsonb_build_array(
+        jsonb_build_object('rohtext', 'BANANEN', 'art', 'artikel', 'name', 'Bananen',
+          'kategorie', 'produce', 'merkmale', jsonb_build_array(),
+          'menge_basis', 1000, 'menge_einheit', 'kg', 'einzelpreis_cent', 199,
+          'zeilensumme_cent', 199, 'quelle', 'user')
+      )
+    ));
+  end loop;
+
+  foreach i in array array[120, 110, 5] loop
+    perform public.save_receipt(jsonb_build_object(
+      'haendler', 'REWE', 'haendler_art', 'retail', 'haendler_art_quelle', 'model',
+      'gekauft_am', (current_date - i)::text,
+      'summe_cent', 499, 'trinkgeld_cent', 0, 'waehrung', 'EUR',
+      'positionen', jsonb_build_array(
+        jsonb_build_object('rohtext', 'GRILLKOHLE 3KG', 'art', 'artikel', 'name', 'Grillkohle',
+          'kategorie', 'nonfood', 'merkmale', jsonb_build_array(),
+          'menge_basis', 1, 'menge_einheit', 'stk', 'einzelpreis_cent', 499,
+          'zeilensumme_cent', 499, 'quelle', 'user')
+      )
+    ));
+  end loop;
 
   perform set_config('request.jwt.claim.sub', '', false);
 end

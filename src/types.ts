@@ -305,6 +305,58 @@ export interface HouseholdStats {
   daySpan: number
   productCount: number
   merchantCount: number
+  /**
+   * Die Schwelle für den Einkaufszettel — **aus der Datenbank**, nicht aus dem
+   * Code. Dieselbe Zahl entscheidet dort, ob überhaupt Vorschläge entstehen;
+   * stünde sie zweimal da, zeigte der Balken irgendwann „geschafft", während die
+   * Datenbank noch schwiege.
+   */
+  requiredReceipts: number
+  requiredDays: number
+  suggestionsReady: boolean
+}
+
+/**
+ * Ein erkannter Kaufrhythmus.
+ *
+ * Erscheint schon **vor** der Schwelle: „Schon erkannt: H-Milch alle 6 Tage".
+ * Der Nutzer sieht damit echte Zwischenergebnisse statt nur einen Balken.
+ */
+export interface RhythmProduct {
+  name: string
+  purchaseCount: number
+  medianGapDays: number
+  daysSinceLast: number
+}
+
+/** Ein Eintrag auf dem Einkaufszettel. */
+export interface ShoppingItem {
+  id: string
+  /** Null bei einem eigenen Eintrag ohne bekanntes Produkt. */
+  productId: string | null
+  label: string
+  quantityBase: number | null
+  quantityUnit: 'kg' | 'g' | 'l' | 'ml' | 'stk' | null
+  /** Der günstigste kürzlich bezahlte Betrag. Null bei eigenen Einträgen. */
+  expectedPriceCents: number | null
+  source: 'suggestion' | 'manual'
+  checked: boolean
+  categoryKey: string | null
+  categoryName: string
+  categorySort: number
+  categoryColor: string | null
+  /** Die Begründung: „üblich alle 7 Tage". Null bei eigenen Einträgen. */
+  medianGapDays: number | null
+  daysSinceLast: number | null
+  bestMerchantId: string | null
+}
+
+export interface ShoppingList {
+  listId: string
+  items: ShoppingItem[]
+  stats: HouseholdStats
+  /** Alle erkannten Rhythmen, auch die noch nicht fälligen. */
+  rhythms: RhythmProduct[]
 }
 
 /** Eine Zeile unter „Häufigste Käufe". */

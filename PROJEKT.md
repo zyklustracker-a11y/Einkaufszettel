@@ -968,6 +968,64 @@ Wahrheiten.
 laufende Monat oft leer, und „0 Käufe" sieht aus, als hätte die Suche nichts
 gefunden — obwohl das Produkt im Vormonat dreimal vorkam.
 
+### Ergänzt mit Schritt 9 (Einkaufszettel)
+
+**Er ist ein eigener Tab geworden, kein Dashboard-Baustein.** Das Konzept ließ
+beides offen und wollte die Entscheidung „am Gerät". Sie fällt zugunsten des
+Tabs: Der Zettel wird **im Laden** benutzt, im Stehen, mit einer Hand am Wagen —
+eine Karte im Dashboard kostet dort einen Tipper und eine Scrollbewegung, genau
+in dem Moment, in dem es schnell gehen soll. Und er ist kein Bericht, sondern
+ein Arbeitsblatt: Auf dem Dashboard steht, was war; hier hakt man ab, was noch
+kommt. Beides zu mischen macht beides unklarer.
+
+Der Platz reicht: sechs Felder auf 390 px sind rund 64 px je Feld. Dafür heißen
+zwei Tabs kürzer — **„Preise" statt „Bestpreise", „Gesund" statt
+„Gesundheit"**, genau wie im Konzept vorgeschlagen. Die Screens behalten ihre
+vollen Titel; gekürzt ist nur, was in die Leiste muss.
+
+**Median und Quartilsabstand, nicht Mittelwert und Standardabweichung.** Ein
+Urlaub reißt eine Lücke von drei Wochen in einen Sechs-Tage-Rhythmus: Der
+Mittelwert wandert dadurch dauerhaft nach oben, der Median nicht. Für die
+Streuung gilt dasselbe — der Quartilsabstand ist gegen einzelne Ausreißer
+unempfindlich, und die sind hier der Normalfall.
+
+**Nur stabile Rhythmen kommen ungefragt auf den Zettel.** Der Quartilsabstand
+darf höchstens 60 % des Medians betragen (mindestens vier Tage). Milch alle sechs
+bis acht Tage ist ein Rhythmus; Grillkohle im Mai und im August ist keiner — der
+Median wäre rechnerisch da, sagte aber nichts voraus. Ein Zettel, der Unsinn
+vorschlägt, wird nach dem zweiten Mal nicht mehr geöffnet.
+
+**Der erwartete Preis ist der günstigste tatsächlich bezahlte Zeilenbetrag der
+letzten sechs Monate — nicht Bestpreis × Menge.** Das weicht vom Konzept ab, und
+zwar bewusst: Ein Einzelpreis mal einer Medianmenge ergibt eine Zahl, die so nie
+auf einem Bon stand, und bei einer Position ohne Einzelpreis wäre sie schlicht
+falsch. Der günstigste bezahlte Betrag ist dagegen einer, den es wirklich gab —
+samt der Menge, die man üblicherweise mitnimmt.
+
+**Die Schwelle steht in der Datenbank, nicht im Browser.** `v_household_stats`
+liefert `required_receipts`, `required_days` und `suggestions_ready`. Dieselbe
+Schwelle entscheidet in `shopping_list_refresh()`, ob überhaupt Vorschläge
+entstehen; stünde sie zweimal da, zeigte der Balken irgendwann „geschafft",
+während die Datenbank noch schwiege.
+
+**Die Liste gibt es von Anfang an, die Vorschläge erst ab der Schwelle.** Eigene
+Einträge sind ab dem ersten Tag möglich — ein Zettel, auf den man nichts
+schreiben darf, ist kein Zettel.
+
+**Ein weggewischter Vorschlag wird nicht gelöscht, sondern mit `removed_at`
+markiert.** Sonst schlüge ihn der nächste Aufruf sofort wieder vor. Mit dem
+abgeschlossenen Einkauf ist die Erinnerung vorbei — sie galt für *diesen*
+Durchgang.
+
+**Abgehakt wird in `save_receipt`.** Sie weiß, welche Produkte gerade
+geschrieben wurden, und sie ist eine Transaktion: Entweder ist der Bon da und
+der Zettel abgehakt, oder nichts von beidem. Ein zweiter Aufruf aus dem Browser
+könnte dazwischen abbrechen.
+
+**Die Begründung steht sichtbar am Eintrag** („zuletzt vor 9 Tagen · üblich alle
+7") und nicht in einem Aufklappbereich. Ein Vorschlag ohne Begründung ist eine
+Behauptung; mit ihr kann der Nutzer entscheiden, ob die App richtig liegt.
+
 ### Die Sichten werden gegen erzeugte Testdaten geprüft
 
 `supabase/tests/` legt eine wegwerfbare Datenbank an, spielt alle Migrationen
@@ -1042,7 +1100,7 @@ nur die Voreinstellung.
 | 6 | Verarbeitung im Hintergrund (`scan_jobs`) | erledigt |
 | 7 | Spritkosten | erledigt |
 | 8 | Bestpreise und Analysen scharf schalten | erledigt |
-| 9 | Einkaufszettel | offen |
+| 9 | Einkaufszettel | erledigt |
 | 10 | Merkmale selbst anlegen und gewichten | offen |
 | 11 | Einstellungen als Übersicht mit eigenen Screens | offen |
 | 12 | Familie einladen | offen |

@@ -33,6 +33,39 @@ export function TagIcon() {
   )
 }
 
+/**
+ * Der Einkaufszettel: ein Blatt mit Häkchen.
+ *
+ * Bewusst kein Einkaufswagen — der stünde für „kaufen", und der Tab steht für
+ * „aufschreiben und abhaken". Die Strichstärke ist dieselbe wie bei den vier
+ * Nachbarn, sonst fiele er in der Leiste aus dem Rahmen.
+ */
+export function ListIcon() {
+  return (
+    <svg width="23" height="23" viewBox="0 0 23 23" aria-hidden="true">
+      <rect x="3.5" y="1.5" width="16" height="20" rx="3.5" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M7.5 8.2 L9.3 10 L12.6 6.7"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7.5 15.2 L9.3 17 L12.6 13.7"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <rect x="14.4" y="8.2" width="4" height="2" rx="1" fill="currentColor" />
+      <rect x="14.4" y="15.2" width="4" height="2" rx="1" fill="currentColor" />
+    </svg>
+  )
+}
+
 export function BarsIcon() {
   return (
     <svg width="23" height="23" viewBox="0 0 23 23" aria-hidden="true">

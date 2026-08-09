@@ -45,6 +45,10 @@
 .label {
   font-size: 10.5px;
   font-weight: 600;
+  /* Seit Schritt 9 sind es sechs Felder auf 390 px. Ein Umbruch würde die Leiste
+     höher machen und die Symbole verschieben — lieber abgeschnitten als
+     verrutscht, und die Beschriftungen sind entsprechend kurz gewählt. */
+  white-space: nowrap;
 }
 
 .scanSlot {

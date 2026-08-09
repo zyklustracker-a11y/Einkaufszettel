@@ -65,6 +65,19 @@ export type { ScanJob } from './scanJobs'
  */
 export { saveReceipt, deleteReceipt } from './save'
 
+/**
+ * Der Einkaufszettel. Die Rechenarbeit steckt in den Sichten
+ * (`v_product_rhythm`, `v_shopping_suggestions`); hier steht das Bedienen.
+ */
+export {
+  getShoppingList,
+  setShoppingItemChecked,
+  setShoppingItemQuantity,
+  removeShoppingItem,
+  addShoppingItem,
+  completeShoppingList,
+} from './shopping'
+
 export {
   getDashboardData,
   getAnalyticsData,

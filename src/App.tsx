@@ -12,11 +12,12 @@ import { PurchaseDetail } from './screens/PurchaseDetail'
 import { ScanCamera } from './screens/ScanCamera'
 import { ScanProcessing } from './screens/ScanProcessing'
 import { ScanReview } from './screens/ScanReview'
+import { ShoppingListScreen } from './screens/ShoppingList'
 import { SettingsScreen } from './screens/Settings'
 import { useAuth } from './state/AuthContext'
 
 /** Routes that sit behind the tab bar. The scan flow and settings are modal-ish. */
-const TABBED = ['/', '/bestpreise', '/analysen', '/gesundheit', '/einkauf']
+const TABBED = ['/', '/bestpreise', '/zettel', '/analysen', '/gesundheit', '/einkauf']
 
 /** Where an unauthenticated visitor is sent, and where a login lands. */
 export const LOGIN_PATH = '/anmelden'
@@ -69,6 +70,7 @@ export function App() {
             <Route path="/scan/pruefen" element={<ScanReview />} />
             <Route path="/bestpreise" element={<Prices />} />
             <Route path="/bestpreise/:productId" element={<ProductDetail />} />
+            <Route path="/zettel" element={<ShoppingListScreen />} />
             <Route path="/analysen" element={<Analytics />} />
             <Route path="/gesundheit" element={<Health />} />
             <Route path="/einkauf/:receiptId" element={<PurchaseDetail />} />

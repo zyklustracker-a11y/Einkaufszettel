@@ -33,12 +33,13 @@ wenn sich das Logo ändert).
 | `/scan/pruefen` | Das Erkannte prüfen, inkl. Summenabgleich und Rohantwort |
 | `/bestpreise` | Durchsuchbare Produktliste mit Bestpreis je Produkt |
 | `/bestpreise/:productId` | Preisverlauf und alle Käufe eines Produkts |
-| `/analysen` | Zeitraum-Umschalter, Verlauf, Kategorien, Sparpotenzial, Top 10 |
+| `/zettel` | Einkaufszettel: Vorschläge aus dem Kaufrhythmus, Abhaken, eigene Einträge |
+| `/analysen` | Zeitraum-Umschalter, Verlauf, Kategorien, Sparpotenzial, Top 10, Kraftstoff |
 | `/gesundheit` | Score-Verlauf, verarbeitet/unverarbeitet, kritische Ausgaben |
 | `/einkauf/:receiptId` | Gespeicherter Bon mit Positionen, korrigieren oder löschen |
 | `/einstellungen` | Budget, Dark Mode, Haushalt, Bon-Fotos, Abmelden |
 
-Die Tab-Bar (Übersicht · Bestpreise · Scan · Analysen · Gesundheit) liegt über
+Die Tab-Bar (Übersicht · Preise · Zettel · Scan · Analysen · Gesund) liegt über
 allen Tabs-Screens; Scan-Flow und Einstellungen laufen ohne sie.
 
 ## Aufbau

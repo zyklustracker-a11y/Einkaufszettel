@@ -407,6 +407,9 @@ interface StatsRow {
   day_span: number
   product_count: number
   merchant_count: number
+  required_receipts: number
+  required_days: number
+  suggestions_ready: boolean
 }
 
 /**
@@ -420,7 +423,7 @@ export async function getHouseholdStats(): Promise<HouseholdStats> {
   const row = unwrapMaybe(
     await supabase
       .from('v_household_stats')
-      .select('receipt_count, first_purchased_on, last_purchased_on, day_span, product_count, merchant_count')
+      .select('receipt_count, first_purchased_on, last_purchased_on, day_span, product_count, merchant_count, required_receipts, required_days, suggestions_ready')
       .maybeSingle(),
   ) as StatsRow | null
 
@@ -431,6 +434,11 @@ export async function getHouseholdStats(): Promise<HouseholdStats> {
     daySpan: row?.day_span ?? 0,
     productCount: row?.product_count ?? 0,
     merchantCount: row?.merchant_count ?? 0,
+    // Ersatzwerte nur, falls die Migration noch nicht gelaufen ist. Die
+    // gültigen Zahlen stehen in `v_household_stats`.
+    requiredReceipts: row?.required_receipts ?? 4,
+    requiredDays: row?.required_days ?? 14,
+    suggestionsReady: row?.suggestions_ready ?? false,
   }
 }
 
