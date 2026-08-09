@@ -1,16 +1,45 @@
 import { useState } from 'react'
+import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { Async } from '../components/states'
+import { ChevronRightIcon } from '../components/icons'
 import { Avatar, BackLink, Toggle } from '../components/ui'
 import { germanDataError, getMonthlyBudgetCents, saveMonthlyBudgetCents, useQuery } from '../data'
+import { formatEuroWhole } from '../lib/format'
 import { useAppState } from '../state/AppState'
 import { useAuth } from '../state/AuthContext'
 import { CategorySettings } from './CategorySettings'
 import { TraitSettings } from './TraitSettings'
 import styles from './Settings.module.css'
 
+/**
+ * Die Einstellungen — eine Übersicht mit eigenen Screens dahinter.
+ *
+ * Bis Schritt 11 stand hier alles untereinander: Budget, zwei Schalter, der
+ * Haushalt, die Kategorieverwaltung und die Merkmalsverwaltung. Mit jedem
+ * Bereich wurde der Screen länger, und die beiden Verwaltungen mit ihren
+ * Listen und Blättern machten zusammen den größten Teil aus — wer das Budget
+ * ändern wollte, scrollte an vierzehn Merkmalen vorbei.
+ *
+ * Jetzt zeigt die Übersicht **nur die Bereichsnamen**, wie man es von iOS kennt:
+ * eine Zeile je Bereich, ein Chevron rechts, dahinter ein eigener Screen mit
+ * Zurück-Weg. Die Bereiche selbst sind unverändert — es sind dieselben
+ * Komponenten, sie stehen nur nicht mehr alle gleichzeitig da.
+ *
+ * **Zwei Schalter bleiben auf der Übersicht.** Dark Mode und „Bon-Fotos löschen"
+ * sind je ein einziger Zustand; ein eigener Screen dafür wäre ein Tipper mehr
+ * für dieselbe Bewegung. Die Faustregel: Was in eine Zeile passt und keine
+ * Erklärung braucht, bleibt oben.
+ *
+ * **Die Reihenfolge folgt der Häufigkeit, nicht der Technik.** Das Budget wird
+ * am ehesten geändert, danach kommt, was die Erkennung steuert (Kategorien,
+ * Merkmale), dann der Haushalt. Abmelden steht ganz unten, weil es der einzige
+ * Eintrag ist, den man nicht versehentlich treffen soll.
+ */
 export function SettingsScreen() {
   const { theme, toggleTheme, deleteReceiptPhotos, toggleDeleteReceiptPhotos } = useAppState()
   const { user, signOut } = useAuth()
+  const budget = useQuery(getMonthlyBudgetCents, [])
 
   return (
     <div className="screen">
@@ -19,9 +48,47 @@ export function SettingsScreen() {
         Einstellungen
       </h1>
 
-      <BudgetCard />
+      <nav className={styles.group}>
+        <Row
+          to="/einstellungen/budget"
+          title="Monatsbudget"
+          value={
+            budget.data && budget.data > 0 ? formatEuroWhole(budget.data) : 'noch keins'
+          }
+        />
+      </nav>
 
+      <div className={styles.groupLabel}>Was die Erkennung steuert</div>
+      <nav className={styles.group}>
+        <Row
+          to="/einstellungen/kategorien"
+          title="Kategorien"
+          hint="Anlegen, umbenennen, umfärben, abschalten"
+        />
+        <Row
+          to="/einstellungen/merkmale"
+          title="Merkmale"
+          hint="Gewichte, Gruppen und die Erklärung fürs Modell"
+        />
+      </nav>
+
+      <div className={styles.groupLabel}>Haushalt</div>
+      <nav className={styles.group}>
+        <Row
+          to="/einstellungen/haushalt"
+          title="Haushalt"
+          value={user?.name ?? undefined}
+          hint="Wer dazugehört"
+        />
+      </nav>
+
+      <div className={styles.groupLabel}>Darstellung</div>
       <section className={styles.group}>
+        {/*
+          Reine Schalter bleiben hier: ein einziger Zustand, keine Erklärung
+          nötig. Ein eigener Screen dafür wäre ein Tipper mehr für dieselbe
+          Bewegung.
+        */}
         <div className={styles.settingRow}>
           <div style={{ flex: 1 }} className={styles.settingTitle}>
             Dark Mode
@@ -41,8 +108,96 @@ export function SettingsScreen() {
         </div>
       </section>
 
+      <button type="button" className={styles.signOut} onClick={signOut}>
+        Konto abmelden
+      </button>
+      <div className={styles.version}>Receipt AI 1.0 · Privater Haushalt</div>
+    </div>
+  )
+}
+
+/** Eine Zeile der Übersicht: Name, optionaler Stand, Chevron. */
+function Row({
+  to,
+  title,
+  value,
+  hint,
+}: {
+  to: string
+  title: string
+  /** Der aktuelle Stand, rechts in gedämpfter Farbe — wie in den iOS-Einstellungen. */
+  value?: string
+  hint?: string
+}) {
+  return (
+    <Link to={to} className={styles.navRow}>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span className={styles.settingTitle}>{title}</span>
+        {hint && <span className={styles.settingHint}>{hint}</span>}
+      </span>
+      {value && <span className={styles.navValue}>{value}</span>}
+      <span className={styles.chevron} aria-hidden="true">
+        <ChevronRightIcon />
+      </span>
+    </Link>
+  )
+}
+
+/* ============================================================ Die Bereiche */
+
+/**
+ * Der Rahmen für einen Bereichs-Screen.
+ *
+ * Zurück-Weg und Titel stehen an einer Stelle, damit die vier Bereiche nicht
+ * viermal leicht unterschiedlich aussehen.
+ */
+function SettingsPage({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="screen">
+      <BackLink to="/einstellungen">Einstellungen</BackLink>
+      <h1 className="pageTitle" style={{ marginBottom: 18 }}>
+        {title}
+      </h1>
+      {children}
+    </div>
+  )
+}
+
+export function BudgetSettingsScreen() {
+  return (
+    <SettingsPage title="Monatsbudget">
+      <BudgetCard />
+      <p className={styles.pageNote}>
+        Das Budget gehört dem Haushalt und liegt in der Datenbank, nicht auf diesem Gerät – alle
+        sehen dieselbe Zahl. Es gilt ab dem laufenden Monat und danach weiter, bis du es änderst.
+      </p>
+    </SettingsPage>
+  )
+}
+
+export function CategorySettingsScreen() {
+  return (
+    <SettingsPage title="Kategorien">
+      <CategorySettings />
+    </SettingsPage>
+  )
+}
+
+export function TraitSettingsScreen() {
+  return (
+    <SettingsPage title="Merkmale">
+      <TraitSettings />
+    </SettingsPage>
+  )
+}
+
+export function HouseholdSettingsScreen() {
+  const { user } = useAuth()
+
+  return (
+    <SettingsPage title="Haushalt">
       <section className={styles.householdCard}>
-        <div className={styles.householdTitle}>Haushalt</div>
+        <div className={styles.householdTitle}>Mitglieder</div>
         {user && (
           <div className={styles.member}>
             <Avatar name={user.name} src={user.avatarUrl} round />
@@ -54,21 +209,7 @@ export function SettingsScreen() {
           </div>
         )}
       </section>
-
-      {/*
-        Die Kategorien stehen über den Merkmalen: Eine Kategorie muss jede
-        Position haben, ein Merkmal keine. Was häufiger gebraucht wird, steht
-        weiter oben.
-      */}
-      <CategorySettings />
-
-      <TraitSettings />
-
-      <button type="button" className={styles.signOut} onClick={signOut}>
-        Konto abmelden
-      </button>
-      <div className={styles.version}>Receipt AI 1.0 · Privater Haushalt</div>
-    </div>
+    </SettingsPage>
   )
 }
 

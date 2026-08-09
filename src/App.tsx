@@ -13,7 +13,13 @@ import { ScanCamera } from './screens/ScanCamera'
 import { ScanProcessing } from './screens/ScanProcessing'
 import { ScanReview } from './screens/ScanReview'
 import { ShoppingListScreen } from './screens/ShoppingList'
-import { SettingsScreen } from './screens/Settings'
+import {
+  BudgetSettingsScreen,
+  CategorySettingsScreen,
+  HouseholdSettingsScreen,
+  SettingsScreen,
+  TraitSettingsScreen,
+} from './screens/Settings'
 import { useAuth } from './state/AuthContext'
 
 /** Routes that sit behind the tab bar. The scan flow and settings are modal-ish. */
@@ -82,7 +88,18 @@ export function App() {
               aktualisiert statt angelegt.
             */}
             <Route path="/einkauf/:receiptId/bearbeiten" element={<ScanReview />} />
+            {/*
+              Die Einstellungen sind seit Schritt 11 eine Übersicht mit eigenen
+              Screens dahinter — jeder mit Zurück-Weg, wie man es von iOS kennt.
+              Eigene Routen und keine Zustandsumschaltung im Screen: Nur so
+              funktioniert die Zurück-Geste des Browsers, und nur so lässt sich
+              ein Bereich verlinken.
+            */}
             <Route path="/einstellungen" element={<SettingsScreen />} />
+            <Route path="/einstellungen/budget" element={<BudgetSettingsScreen />} />
+            <Route path="/einstellungen/kategorien" element={<CategorySettingsScreen />} />
+            <Route path="/einstellungen/merkmale" element={<TraitSettingsScreen />} />
+            <Route path="/einstellungen/haushalt" element={<HouseholdSettingsScreen />} />
           </Route>
         </Route>
 

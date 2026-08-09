@@ -1063,6 +1063,35 @@ trifft ein Daumen den gewünschten Wert nicht, und der Unterschied zwischen −3
 Fremdschlüssel am Merkmal. Ein abgeschaltetes verschwindet aus Prompt, Auswahl
 und Score; die Zuordnung am Produkt bleibt stehen.
 
+### Ergänzt mit Schritt 11 (Einstellungen als Übersicht)
+
+**Der Screen wurde mit jedem Bereich länger.** Zuletzt standen Budget, zwei
+Schalter, der Haushalt, vierzehn Kategorien und vierzehn Merkmale untereinander
+— wer das Budget ändern wollte, scrollte an allem vorbei. Die beiden
+Verwaltungen machten dabei den größten Teil aus, obwohl man sie am seltensten
+braucht.
+
+**Jetzt zeigt die Übersicht nur die Bereichsnamen**, wie man es von iOS kennt:
+eine Zeile je Bereich, ein Chevron rechts, dahinter ein eigener Screen mit
+Zurück-Weg. Die Bereiche selbst sind unverändert — es sind dieselben
+Komponenten, sie stehen nur nicht mehr alle gleichzeitig da.
+
+**Eigene Routen, keine Umschaltung im Screen.** `/einstellungen/budget`,
+`/einstellungen/kategorien`, `/einstellungen/merkmale`,
+`/einstellungen/haushalt`. Mit einem Zustand im Screen funktionierte weder die
+Zurück-Geste noch ein Verweis auf einen bestimmten Bereich — und beides ist auf
+einem Telefon der halbe Bedienweg.
+
+**Zwei Schalter bleiben oben.** Dark Mode und „Bon-Fotos löschen" sind je ein
+einziger Zustand; ein eigener Screen dafür wäre ein Tipper mehr für dieselbe
+Bewegung. Die Faustregel: Was in eine Zeile passt und keine Erklärung braucht,
+bleibt auf der Übersicht.
+
+**Die Reihenfolge folgt der Häufigkeit, nicht der Technik.** Erst das Budget,
+dann was die Erkennung steuert (Kategorien, Merkmale), dann der Haushalt, dann
+die Darstellung. „Konto abmelden" steht ganz unten — der einzige Eintrag, den man
+nicht versehentlich treffen soll.
+
 ### Die Sichten werden gegen erzeugte Testdaten geprüft
 
 `supabase/tests/` legt eine wegwerfbare Datenbank an, spielt alle Migrationen
@@ -1139,7 +1168,7 @@ nur die Voreinstellung.
 | 8 | Bestpreise und Analysen scharf schalten | erledigt |
 | 9 | Einkaufszettel | erledigt |
 | 10 | Merkmale selbst anlegen und gewichten | erledigt |
-| 11 | Einstellungen als Übersicht mit eigenen Screens | offen |
+| 11 | Einstellungen als Übersicht mit eigenen Screens | erledigt |
 | 12 | Familie einladen | offen |
 | 13 | Monatsreport als Push-Benachrichtigung | offen |
 

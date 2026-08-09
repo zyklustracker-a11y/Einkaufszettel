@@ -37,7 +37,11 @@ wenn sich das Logo ändert).
 | `/analysen` | Zeitraum-Umschalter, Verlauf, Kategorien, Sparpotenzial, Top 10, Kraftstoff |
 | `/gesundheit` | Score-Verlauf, verarbeitet/unverarbeitet, kritische Ausgaben |
 | `/einkauf/:receiptId` | Gespeicherter Bon mit Positionen, korrigieren oder löschen |
-| `/einstellungen` | Budget, Dark Mode, Haushalt, Bon-Fotos, Abmelden |
+| `/einstellungen` | Übersicht: Bereichsnamen, zwei Schalter, Abmelden |
+| `/einstellungen/budget` | Monatsbudget |
+| `/einstellungen/kategorien` | Kategorien anlegen, umbenennen, umfärben, abschalten |
+| `/einstellungen/merkmale` | Merkmale anlegen, gewichten, gruppieren, abschalten |
+| `/einstellungen/haushalt` | Wer zum Haushalt gehört |
 
 Die Tab-Bar (Übersicht · Preise · Zettel · Scan · Analysen · Gesund) liegt über
 allen Tabs-Screens; Scan-Flow und Einstellungen laufen ohne sie.
