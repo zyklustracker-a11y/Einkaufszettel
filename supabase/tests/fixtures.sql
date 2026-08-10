@@ -194,6 +194,18 @@ begin
    *   Milch      Tag −21, −14, −7   → Abstände 7, 7   → stabil, heute fällig
    *   Bananen    Tag −12, −6, −1    → Abstände 6, 5   → stabil, noch nicht fällig
    *   Grillkohle Tag −120, −110, −5 → Abstände 10, 105 → zufällig, nie vorgeschlagen
+   *
+   * Dazu ein **zweiter Laden** für die Ladenwahl (Schritt 20). Er kauft an
+   * Tagen ein, an denen dasselbe Produkt ohnehin schon einmal gekauft wurde —
+   * damit bleiben die Kauftage und alle Rhythmen oben unverändert, und nur die
+   * Preise bekommen einen Vergleich:
+   *
+   *   Milch      REWE 1,29 €  ·  ALDI SÜD 1,19 €   → günstiger bei ALDI SÜD
+   *   Bananen    REWE 1,99 €  ·  ALDI SÜD 2,19 €   → günstiger bei REWE
+   *   Grillkohle REWE 4,99 €  ·  gibt es bei ALDI SÜD nicht
+   *
+   * Genau der Fall, um den es geht: Beide Läden sind bei je einer Position
+   * vorn, und der dritte Eintrag kennt nur einen von beiden.
    */
 
   perform set_config('request.jwt.claim.sub', v_user_c::text, false);
@@ -239,6 +251,32 @@ begin
       )
     ));
   end loop;
+
+  -- Der zweite Laden. Beide Bons liegen auf einem Tag, an dem dasselbe Produkt
+  -- schon gekauft wurde — die Kauftage und damit die Rhythmen bleiben gleich.
+  perform public.save_receipt(jsonb_build_object(
+    'haendler', 'ALDI SÜD', 'haendler_art', 'retail', 'haendler_art_quelle', 'model',
+    'gekauft_am', (current_date - 14)::text,
+    'summe_cent', 119, 'trinkgeld_cent', 0, 'waehrung', 'EUR',
+    'positionen', jsonb_build_array(
+      jsonb_build_object('rohtext', 'H-MILCH', 'art', 'artikel', 'name', 'H-Milch',
+        'kategorie', 'dairy', 'merkmale', jsonb_build_array('milch'),
+        'menge_basis', 1, 'menge_einheit', 'stk', 'einzelpreis_cent', 119,
+        'zeilensumme_cent', 119, 'quelle', 'user')
+    )
+  ));
+
+  perform public.save_receipt(jsonb_build_object(
+    'haendler', 'ALDI SÜD', 'haendler_art', 'retail', 'haendler_art_quelle', 'model',
+    'gekauft_am', (current_date - 6)::text,
+    'summe_cent', 219, 'trinkgeld_cent', 0, 'waehrung', 'EUR',
+    'positionen', jsonb_build_array(
+      jsonb_build_object('rohtext', 'BANANEN', 'art', 'artikel', 'name', 'Bananen',
+        'kategorie', 'produce', 'merkmale', jsonb_build_array(),
+        'menge_basis', 1000, 'menge_einheit', 'kg', 'einzelpreis_cent', 219,
+        'zeilensumme_cent', 219, 'quelle', 'user')
+    )
+  ));
 
   perform set_config('request.jwt.claim.sub', '', false);
 end

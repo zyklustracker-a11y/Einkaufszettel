@@ -1,9 +1,16 @@
+import type { PostgrestError } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { DataError, germanDataError, unwrap } from './client'
 import { reference } from './reference'
 import { getHouseholdStats } from './queries'
 import type { ExtractedUnit } from '../lib/extraction'
-import type { HouseholdStats, RhythmProduct, ShoppingItem, ShoppingList } from '../types'
+import type {
+  BasketMerchant,
+  HouseholdStats,
+  RhythmProduct,
+  ShoppingItem,
+  ShoppingList,
+} from '../types'
 
 /**
  * Der Einkaufszettel.
@@ -18,6 +25,12 @@ import type { HouseholdStats, RhythmProduct, ShoppingItem, ShoppingList } from '
  */
 
 const SAVE_FAILED = 'Der Einkaufszettel konnte nicht geändert werden. Bitte noch einmal versuchen.'
+
+/** Das Antwortpaar von PostgREST, wenn der Zeilentyp von Hand gesetzt wird. */
+interface Antwort<T> {
+  data: T | null
+  error: PostgrestError | null
+}
 
 interface ItemRow {
   id: string
@@ -36,10 +49,24 @@ interface ItemRow {
   median_gap_days: number | null
   days_since_last: number | null
   best_merchant_id: string | null
+  best_price_cents: number | null
+  best_seen_on: string | null
 }
 
-const ITEM_COLUMNS =
+/**
+ * Die Spalten des Zettels — in zwei Fassungen.
+ *
+ * `0017_ladenwahl.sql` hängt `best_price_cents` und `best_seen_on` an die
+ * Sicht. Zwischen dem Ausrollen der Oberfläche und dem Ausführen der Migration
+ * liegen aber immer ein paar Minuten, und in dieser Zeit gibt es die beiden
+ * Spalten noch nicht. Der Zettel fragt dann ohne sie — ohne Ladenempfehlung,
+ * aber vollständig bedienbar. Eine Fehlermeldung an dieser Stelle wäre die
+ * härtere Reaktion auf ein Problem, das sich von selbst erledigt.
+ */
+const ITEM_COLUMNS_BASE =
   'id, list_id, canonical_product_id, label, quantity_base, quantity_unit, expected_price_cents, source, checked, category_key, category_name, category_sort, category_color, median_gap_days, days_since_last, best_merchant_id'
+
+const ITEM_COLUMNS = `${ITEM_COLUMNS_BASE}, best_price_cents, best_seen_on`
 
 function toItem(row: ItemRow): ShoppingItem {
   return {
@@ -58,6 +85,8 @@ function toItem(row: ItemRow): ShoppingItem {
     medianGapDays: row.median_gap_days,
     daysSinceLast: row.days_since_last,
     bestMerchantId: row.best_merchant_id,
+    bestPriceCents: row.best_price_cents,
+    bestSeenOn: row.best_seen_on,
   }
 }
 
@@ -90,6 +119,45 @@ async function loadRhythms(): Promise<RhythmProduct[]> {
     purchaseCount: row.purchase_count,
     medianGapDays: row.median_gap_days,
     daysSinceLast: row.days_since_last,
+  }))
+}
+
+interface BasketRow {
+  merchant_id: string
+  covered_items: number
+  missing_items: number
+  basket_total_cents: number
+  optimum_total_cents: number
+  optimum_merchant_count: number
+  priced_items: number
+}
+
+/**
+ * Was der Zettel in jedem einzelnen Laden kostet.
+ *
+ * Gerechnet wird in `0017_ladenwahl.sql`. Hier steht nur das Abholen — und die
+ * Nachsicht: Fehlt die Sicht (die Migration ist noch nicht gelaufen), gibt es
+ * eben keine Ladenempfehlung. Der Zettel selbst funktioniert ohne sie
+ * weiter, und dafür soll er nicht mit einer Fehlermeldung stehen bleiben.
+ */
+async function loadBasket(): Promise<BasketMerchant[]> {
+  const { data, error } = await supabase
+    .from('v_shopping_basket_merchants')
+    .select(
+      'merchant_id, covered_items, missing_items, basket_total_cents, optimum_total_cents, optimum_merchant_count, priced_items',
+    )
+    .order('basket_total_cents')
+
+  if (error || !data) return []
+
+  return (data as unknown as BasketRow[]).map((row) => ({
+    merchantId: row.merchant_id,
+    coveredItems: row.covered_items,
+    missingItems: row.missing_items,
+    basketTotalCents: row.basket_total_cents,
+    optimumTotalCents: row.optimum_total_cents,
+    optimumMerchantCount: row.optimum_merchant_count,
+    pricedItems: row.priced_items,
   }))
 }
 
@@ -129,18 +197,49 @@ export async function getShoppingList(): Promise<ShoppingList> {
     )
   }
 
-  const [items, stats, rhythms] = await Promise.all([
-    supabase
-      .from('v_shopping_list_items')
-      .select(ITEM_COLUMNS)
-      .eq('list_id', listId)
-      .order('created_at')
-      .then((r) => unwrap<ItemRow[]>(r)),
+  const [items, stats, rhythms, merchants] = await Promise.all([
+    loadItems(listId),
     getHouseholdStats(),
     loadRhythms(),
+    loadBasket(),
   ])
 
-  return { listId, items: items.map(toItem), stats, rhythms }
+  return { listId, items: items.map(toItem), stats, rhythms, merchants }
+}
+
+/**
+ * Die Einträge selbst — und der eine Fall, in dem zweimal gefragt wird.
+ *
+ * Postgres antwortet auf eine unbekannte Spalte mit 42703. Das heißt hier
+ * genau eine Sache: `0017_ladenwahl.sql` ist noch nicht gelaufen. Dann wird
+ * ohne die beiden neuen Spalten gefragt und der Zettel arbeitet weiter — nur
+ * ohne den günstigsten Laden. Sobald die Migration da ist, greift beim
+ * nächsten Öffnen wieder die vollständige Abfrage; niemand muss etwas
+ * anfassen.
+ */
+async function loadItems(listId: string): Promise<ItemRow[]> {
+  /* Die Spaltenliste ist hier eine Variable, und damit kann PostgREST den
+     Zeilentyp nicht mehr selbst ableiten — er steht deshalb am Aufruf. */
+  const frage = async <T>(columns: string): Promise<Antwort<T[]>> => {
+    const result = await supabase
+      .from('v_shopping_list_items')
+      .select(columns)
+      .eq('list_id', listId)
+      .order('created_at')
+    return result as unknown as Antwort<T[]>
+  }
+
+  const result = await frage<ItemRow>(ITEM_COLUMNS)
+  if (result.error?.code !== '42703') return unwrap<ItemRow[]>(result)
+
+  const ohneLaden = await frage<Omit<ItemRow, 'best_price_cents' | 'best_seen_on'>>(
+    ITEM_COLUMNS_BASE,
+  )
+  return unwrap(ohneLaden).map((row) => ({
+    ...row,
+    best_price_cents: null,
+    best_seen_on: null,
+  }))
 }
 
 /**

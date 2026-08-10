@@ -11,8 +11,15 @@ import {
   setShoppingItemChecked,
   useQuery,
 } from '../data'
+import { chooseStore } from '../lib/basket'
 import { formatAmount, formatEuro } from '../lib/format'
-import type { HouseholdStats, RhythmProduct, ShoppingItem, ShoppingList } from '../types'
+import type {
+  BasketMerchant,
+  HouseholdStats,
+  RhythmProduct,
+  ShoppingItem,
+  ShoppingList,
+} from '../types'
 import styles from './ShoppingList.module.css'
 
 /**
@@ -84,6 +91,7 @@ function Body({ list, reload }: { list: ShoppingList; reload: () => void }) {
       ) : (
         <>
           <Summary items={list.items} />
+          <WhereToShop merchants={list.merchants} openCount={open.length} />
           <Groups
             items={open}
             busy={busy}
@@ -279,10 +287,23 @@ function Progress({ stats, rhythms }: { stats: HouseholdStats; rhythms: RhythmPr
 
 /* ================================================================= Die Liste */
 
+/**
+ * Der Preis einer Position — und warum zwei Quellen dafür in Frage kommen.
+ *
+ * `bestPriceCents` ist der günstigste Betrag beim günstigsten Laden, jedes Mal
+ * frisch gerechnet. `expectedPriceCents` steht seit dem Eintragen am Datensatz
+ * und altert. Solange es den ersten gibt, gilt er: Sonst stünde neben „ALDI
+ * SÜD" eine Zahl, die von woanders stammt — und die Summe oben passte nicht zu
+ * der Empfehlung darunter.
+ */
+function itemPriceCents(item: ShoppingItem): number | null {
+  return item.bestPriceCents ?? item.expectedPriceCents
+}
+
 function Summary({ items }: { items: ShoppingItem[] }) {
   const open = items.filter((item) => !item.checked)
-  const known = open.filter((item) => item.expectedPriceCents !== null)
-  const expected = known.reduce((sum, item) => sum + (item.expectedPriceCents ?? 0), 0)
+  const known = open.filter((item) => itemPriceCents(item) !== null)
+  const expected = known.reduce((sum, item) => sum + (itemPriceCents(item) ?? 0), 0)
 
   return (
     <div className={styles.summary}>
@@ -300,6 +321,87 @@ function Summary({ items }: { items: ShoppingItem[] }) {
       </div>
       <div className={styles.summaryAmount}>{formatEuro(expected)}</div>
     </div>
+  )
+}
+
+/* ============================================================== Wo kaufen? */
+
+/**
+ * Ein Laden für den ganzen Zettel.
+ *
+ * **Warum das nicht dasselbe ist wie die Bestpreise.** Die stehen an jeder
+ * Zeile und beantworten „wo war dieses Produkt am günstigsten". Wer ihnen
+ * Position für Position folgt, fährt für zehn Einträge in vier Läden — die
+ * Zeit frisst die Differenz, und niemand macht es zweimal. Diese Karte
+ * beantwortet die andere Frage: In welchem **einen** Laden wird dieser Einkauf
+ * insgesamt am billigsten?
+ *
+ * **Beide Zahlen stehen da.** Was der eine Laden kostet und was der Umweg über
+ * alle brächte. Ob 2,20 € drei zusätzliche Läden wert sind, kann nur der
+ * Einkaufende entscheiden — aber nur, wenn er beide Zahlen sieht.
+ */
+function WhereToShop({
+  merchants,
+  openCount,
+}: {
+  merchants: BasketMerchant[]
+  openCount: number
+}) {
+  const advice = chooseStore(merchants)
+  if (!advice) return null
+
+  const { best, others, extraCents, detourWorthMentioning } = advice
+  const withoutPrice = Math.max(0, openCount - best.pricedItems)
+
+  return (
+    <section className={styles.shopCard}>
+      <div className={styles.shopHead}>Wo kaufen?</div>
+
+      <div className={styles.shopBest}>
+        <span className={styles.shopName}>{getMerchantName(best.merchantId)}</span>
+        <span className={styles.shopTotal}>{formatEuro(best.basketTotalCents)}</span>
+      </div>
+
+      <p className={styles.shopWhy}>
+        {best.missingItems === 0
+          ? `Alle ${best.coveredItems} bepreisten Positionen hast du dort schon einmal gekauft.`
+          : `${best.coveredItems} von ${best.pricedItems} Positionen hast du dort schon gekauft; ` +
+            `für die ${best.missingItems === 1 ? 'übrige' : 'übrigen'} ist dein bisher günstigster Preis gerechnet.`}
+      </p>
+
+      <p className={styles.shopDetour}>
+        {detourWorthMentioning
+          ? `Jede Position im jeweils günstigsten Laden wären ${formatEuro(best.optimumTotalCents)} – ` +
+            `${formatEuro(extraCents)} weniger, dafür ${best.optimumMerchantCount} Läden.`
+          : best.optimumMerchantCount > 1
+            ? `Der Weg über ${best.optimumMerchantCount} Läden brächte nur ${formatEuro(extraCents)} – das lohnt sich nicht.`
+            : 'Günstiger wird es auch mit mehreren Läden nicht.'}
+      </p>
+
+      {others.length > 0 && (
+        <ul className={styles.shopList}>
+          {others.slice(0, 3).map((merchant) => (
+            <li key={merchant.merchantId} className={styles.shopRow}>
+              <span className={styles.shopOtherName}>{getMerchantName(merchant.merchantId)}</span>
+              {/* „10 von 10" ist keine Auskunft. Die Zahl steht nur da, wenn
+                  der Laden etwas vom Zettel gar nicht führt. */}
+              {merchant.missingItems > 0 && (
+                <span className={styles.shopOtherCount}>
+                  {merchant.coveredItems} von {merchant.pricedItems}
+                </span>
+              )}
+              <span className={styles.shopOtherTotal}>{formatEuro(merchant.basketTotalCents)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <p className={styles.shopFootnote}>
+        Gerechnet mit dem günstigsten Betrag, den du in den letzten sechs Monaten dort bezahlt hast.
+        {withoutPrice > 0 &&
+          ` Für ${withoutPrice} ${withoutPrice === 1 ? 'Eintrag' : 'Einträge'} kennt die App noch keinen Preis.`}
+      </p>
+    </section>
   )
 }
 
@@ -396,6 +498,7 @@ function Row({
 
   const why = reason(item)
   const merchant = item.bestMerchantId ? getMerchantName(item.bestMerchantId) : null
+  const price = itemPriceCents(item)
 
   return (
     <div className={styles.row}>
@@ -411,14 +514,22 @@ function Row({
           {item.label}
           {amount && <span className={styles.amount}> {amount}</span>}
         </span>
-        {(why || merchant) && (
-          <span className={styles.meta}>
-            {[why, merchant ? `günstig bei ${merchant}` : null].filter(Boolean).join(' · ')}
-          </span>
-        )}
+        {why && <span className={styles.meta}>{why}</span>}
       </span>
-      {item.expectedPriceCents !== null && (
-        <span className={styles.price}>{formatEuro(item.expectedPriceCents)}</span>
+      {/*
+        Preis und Laden stehen übereinander in einer eigenen Spalte.
+
+        Vorher hing „günstig bei ALDI SÜD" hinten an der Begründung — in einer
+        Zeile mit `text-overflow: ellipsis`. Auf einem Telefon war davon
+        regelmäßig nur „· g…" übrig: Die Auskunft war gerechnet, gespeichert,
+        geladen und dann abgeschnitten. Hier kann sie nicht mehr verschwinden,
+        weil die Spalte sich nach ihrem Inhalt richtet.
+      */}
+      {(price !== null || merchant) && (
+        <span className={styles.priceBox}>
+          {price !== null && <span className={styles.price}>{formatEuro(price)}</span>}
+          {merchant && <span className={styles.merchant}>{merchant}</span>}
+        </span>
       )}
       <button
         type="button"

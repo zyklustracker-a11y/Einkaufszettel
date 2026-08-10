@@ -1467,6 +1467,62 @@ irgendwann keine Bilder mehr annimmt, erzeugt eine Ablehnung ohne erkennbare
 Ursache. Die Möglichkeiten stehen als Tabelle in
 `supabase/functions/README.md`, Abschnitt 1.1a.
 
+### Ergänzt mit Schritt 20 (Ladenwahl: ein Laden statt zehn)
+
+**Der günstigste Laden je Position war schon berechnet — und wurde
+abgeschnitten.** `v_shopping_list_items` lieferte seit Schritt 9 eine
+`best_merchant_id`, der Screen setzte sie hinten an die Begründung („zuletzt vor
+9 Tagen · üblich alle 7 · günstig bei ALDI SÜD"), und diese Zeile hat
+`text-overflow: ellipsis`. Auf 393 px blieb davon „· g…" übrig. Die Auskunft war
+gerechnet, gespeichert, geladen — und unsichtbar. Preis und Laden stehen jetzt
+in einer eigenen, rechtsbündigen Spalte, die sich nach ihrem Inhalt richtet.
+Abschneiden kann sie dort nichts mehr.
+
+**Die eigentliche Frage ist aber eine andere.** „Wo war dieses Produkt am
+günstigsten" ist richtig vor dem Regal und falsch vor der Haustür: Wer ihr
+Position für Position folgt, fährt für zehn Einträge in vier Läden. Die Zeit
+frisst die Differenz, und niemand macht es zweimal. `v_shopping_basket_merchants`
+(`0017_ladenwahl.sql`) rechnet deshalb den **ganzen offenen Zettel je Laden**
+durch und stellt zwei Zahlen nebeneinander:
+
+| | Summe | Bedeutung |
+|---|---|---|
+| Alles bei ALDI SÜD | 30,76 € | eine Fahrt |
+| Alles bei REWE | 33,28 € | eine Fahrt |
+| jede Position im günstigsten Laden | 29,96 € | zwei Fahrten, 0,80 € weniger |
+
+*(Beispieldatenbestand aus der Präsentation, nicht die echten Zahlen.)*
+
+**Beide Zahlen stehen da, entschieden wird nicht für den Nutzer.** Ob 0,80 € den
+zweiten Laden wert sind, hängt an Weg, Zeit und Laune — das kann die App nicht
+wissen. Was sie kann: es ausrechnen und hinschreiben. Unter zwanzig Cent
+Unterschied schweigt sie dazu („das lohnt sich nicht"); dieselbe Rauschschwelle
+wie beim Sparpotenzial, aus demselben Grund.
+
+**Fehlende Positionen werden zum günstigsten bekannten Preis gerechnet, nicht
+weggelassen.** Sonst gewönne jeder Laden, der wenig führt, allein durch seine
+Lücken. Wie viele es sind, steht daneben („8 von 10 Positionen hast du dort
+schon gekauft"). Einträge ohne jedes bekannte Produkt — „Blumen für Oma" — fallen
+ganz heraus: Sie kosten überall dasselbe Unbekannte.
+
+**Derselbe Preisbegriff wie beim erwarteten Preis**, nur nach Laden getrennt:
+der günstigste tatsächlich bezahlte Zeilenbetrag der letzten sechs Monate. Das
+ist kein Detail, sondern die Bedingung dafür, dass die Zahlen zusammenpassen:
+Die Schätzung über dem Zettel ist die Summe der günstigsten Beträge über alle
+Läden — also genau das Optimum, das die Karte als Vergleich nennt. Zwei
+Preisbegriffe ergäben zwei Summen, die sich auf demselben Screen
+widersprechen.
+
+**Ein Laden ist keine Wahl, eine Position keine Empfehlung.** `chooseStore` in
+`src/lib/basket.ts` gibt `null` zurück, solange es weniger als zwei Läden oder
+weniger als zwei bepreiste Positionen gibt — bei einer einzigen Position wäre die
+Karte nur der Bestpreis von der Zeile darunter, größer gesetzt. Bei gleicher
+Summe gewinnt der Laden mit mehr Positionen: Zwei gleich teure Warenkörbe sind
+nicht gleich gut, wenn man in dem einen die Hälfte nicht bekommt.
+
+**Abgehakte Einträge zählen nicht mehr mit.** Was schon im Wagen liegt, ändert
+die Frage nicht mehr, wohin man fahren sollte.
+
 ### Die Sichten werden gegen erzeugte Testdaten geprüft
 
 `supabase/tests/` legt eine wegwerfbare Datenbank an, spielt alle Migrationen
@@ -1552,6 +1608,7 @@ nur die Voreinstellung.
 | 17 | Prüfung der ganzen App; Sparpotenzial in Geld, Pfand raus, Top-10 entfernt | erledigt |
 | 18 | Positive Merkmale (`bio`, `vollkorn`) und `NEUTRAL_SCORE` | erledigt |
 | 19 | Befunde der Prüfung behoben, Positionen ohne Zuordnung nachpflegbar | erledigt |
+| 20 | Ladenwahl: günstigster Laden je Position sichtbar, ein Laden für den ganzen Zettel | erledigt |
 
 Ab Schritt 6 zählt der Fahrplan aus `KONZEPT-ERWEITERUNGEN.md` weiter. Die
 Nummerierung der beiden Dateien ist seit Schritt 5 dieselbe; 11 (Einstellungen)
