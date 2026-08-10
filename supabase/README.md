@@ -587,10 +587,11 @@ letzte sechs Monate), `v_product_cheapest_merchant` und
 `v_shopping_basket_merchants`. `v_shopping_list_items` bekommt zwei Spalten
 dazu: den Preis beim günstigsten Laden und dessen Datum.
 
-**Diese Migration ist Pflicht, sobald die neue App-Fassung läuft.** Der
-Einkaufszettel fragt die beiden neuen Spalten ab; ohne sie zeigt er statt der
-Liste den Hinweis, genau diese Datei auszuführen. Alle anderen Screens sind
-nicht betroffen.
+**Die Reihenfolge ist egal.** Läuft die neue App-Fassung, bevor diese Datei
+ausgeführt wurde, merkt der Einkaufszettel das (Postgres antwortet mit 42703)
+und fragt einfach ohne die neuen Spalten — dann fehlt die Ladenempfehlung, alles
+andere funktioniert. Sobald die Migration da ist, steht sie beim nächsten Öffnen
+von selbst da; anfassen muss man dafür nichts.
 
 **Danach prüfen**, wo dein offener Zettel am günstigsten wird:
 

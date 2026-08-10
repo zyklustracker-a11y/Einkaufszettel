@@ -1,3 +1,4 @@
+import type { PostgrestError } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { DataError, germanDataError, unwrap } from './client'
 import { reference } from './reference'
@@ -25,6 +26,12 @@ import type {
 
 const SAVE_FAILED = 'Der Einkaufszettel konnte nicht geändert werden. Bitte noch einmal versuchen.'
 
+/** Das Antwortpaar von PostgREST, wenn der Zeilentyp von Hand gesetzt wird. */
+interface Antwort<T> {
+  data: T | null
+  error: PostgrestError | null
+}
+
 interface ItemRow {
   id: string
   list_id: string
@@ -46,8 +53,20 @@ interface ItemRow {
   best_seen_on: string | null
 }
 
-const ITEM_COLUMNS =
-  'id, list_id, canonical_product_id, label, quantity_base, quantity_unit, expected_price_cents, source, checked, category_key, category_name, category_sort, category_color, median_gap_days, days_since_last, best_merchant_id, best_price_cents, best_seen_on'
+/**
+ * Die Spalten des Zettels — in zwei Fassungen.
+ *
+ * `0017_ladenwahl.sql` hängt `best_price_cents` und `best_seen_on` an die
+ * Sicht. Zwischen dem Ausrollen der Oberfläche und dem Ausführen der Migration
+ * liegen aber immer ein paar Minuten, und in dieser Zeit gibt es die beiden
+ * Spalten noch nicht. Der Zettel fragt dann ohne sie — ohne Ladenempfehlung,
+ * aber vollständig bedienbar. Eine Fehlermeldung an dieser Stelle wäre die
+ * härtere Reaktion auf ein Problem, das sich von selbst erledigt.
+ */
+const ITEM_COLUMNS_BASE =
+  'id, list_id, canonical_product_id, label, quantity_base, quantity_unit, expected_price_cents, source, checked, category_key, category_name, category_sort, category_color, median_gap_days, days_since_last, best_merchant_id'
+
+const ITEM_COLUMNS = `${ITEM_COLUMNS_BASE}, best_price_cents, best_seen_on`
 
 function toItem(row: ItemRow): ShoppingItem {
   return {
@@ -189,30 +208,38 @@ export async function getShoppingList(): Promise<ShoppingList> {
 }
 
 /**
- * Die Einträge selbst — und die einzige Stelle, an der eine fehlende Migration
- * wirklich weh tut.
+ * Die Einträge selbst — und der eine Fall, in dem zweimal gefragt wird.
  *
- * `ITEM_COLUMNS` nennt seit Schritt 20 zwei Spalten, die es vor
- * `0017_ladenwahl.sql` nicht gibt. Postgres antwortet darauf mit 42703
- * („column does not exist"), und `germanDataError` machte daraus bisher „Die
- * Daten konnten nicht geladen werden" — ein Satz, der in den Neustart schickt
- * statt in den SQL-Editor.
+ * Postgres antwortet auf eine unbekannte Spalte mit 42703. Das heißt hier
+ * genau eine Sache: `0017_ladenwahl.sql` ist noch nicht gelaufen. Dann wird
+ * ohne die beiden neuen Spalten gefragt und der Zettel arbeitet weiter — nur
+ * ohne den günstigsten Laden. Sobald die Migration da ist, greift beim
+ * nächsten Öffnen wieder die vollständige Abfrage; niemand muss etwas
+ * anfassen.
  */
 async function loadItems(listId: string): Promise<ItemRow[]> {
-  const result = await supabase
-    .from('v_shopping_list_items')
-    .select(ITEM_COLUMNS)
-    .eq('list_id', listId)
-    .order('created_at')
-
-  if (result.error?.code === '42703') {
-    throw new DataError(
-      'Der Einkaufszettel kennt den günstigsten Laden noch nicht. Bitte ' +
-        'supabase/migrations/0017_ladenwahl.sql einmal im SQL-Editor ausführen.',
-    )
+  /* Die Spaltenliste ist hier eine Variable, und damit kann PostgREST den
+     Zeilentyp nicht mehr selbst ableiten — er steht deshalb am Aufruf. */
+  const frage = async <T>(columns: string): Promise<Antwort<T[]>> => {
+    const result = await supabase
+      .from('v_shopping_list_items')
+      .select(columns)
+      .eq('list_id', listId)
+      .order('created_at')
+    return result as unknown as Antwort<T[]>
   }
 
-  return unwrap<ItemRow[]>(result)
+  const result = await frage<ItemRow>(ITEM_COLUMNS)
+  if (result.error?.code !== '42703') return unwrap<ItemRow[]>(result)
+
+  const ohneLaden = await frage<Omit<ItemRow, 'best_price_cents' | 'best_seen_on'>>(
+    ITEM_COLUMNS_BASE,
+  )
+  return unwrap(ohneLaden).map((row) => ({
+    ...row,
+    best_price_cents: null,
+    best_seen_on: null,
+  }))
 }
 
 /**
