@@ -3,7 +3,13 @@ import { DataError, germanDataError, unwrap } from './client'
 import { reference } from './reference'
 import { getHouseholdStats } from './queries'
 import type { ExtractedUnit } from '../lib/extraction'
-import type { HouseholdStats, RhythmProduct, ShoppingItem, ShoppingList } from '../types'
+import type {
+  BasketMerchant,
+  HouseholdStats,
+  RhythmProduct,
+  ShoppingItem,
+  ShoppingList,
+} from '../types'
 
 /**
  * Der Einkaufszettel.
@@ -36,10 +42,12 @@ interface ItemRow {
   median_gap_days: number | null
   days_since_last: number | null
   best_merchant_id: string | null
+  best_price_cents: number | null
+  best_seen_on: string | null
 }
 
 const ITEM_COLUMNS =
-  'id, list_id, canonical_product_id, label, quantity_base, quantity_unit, expected_price_cents, source, checked, category_key, category_name, category_sort, category_color, median_gap_days, days_since_last, best_merchant_id'
+  'id, list_id, canonical_product_id, label, quantity_base, quantity_unit, expected_price_cents, source, checked, category_key, category_name, category_sort, category_color, median_gap_days, days_since_last, best_merchant_id, best_price_cents, best_seen_on'
 
 function toItem(row: ItemRow): ShoppingItem {
   return {
@@ -58,6 +66,8 @@ function toItem(row: ItemRow): ShoppingItem {
     medianGapDays: row.median_gap_days,
     daysSinceLast: row.days_since_last,
     bestMerchantId: row.best_merchant_id,
+    bestPriceCents: row.best_price_cents,
+    bestSeenOn: row.best_seen_on,
   }
 }
 
@@ -90,6 +100,45 @@ async function loadRhythms(): Promise<RhythmProduct[]> {
     purchaseCount: row.purchase_count,
     medianGapDays: row.median_gap_days,
     daysSinceLast: row.days_since_last,
+  }))
+}
+
+interface BasketRow {
+  merchant_id: string
+  covered_items: number
+  missing_items: number
+  basket_total_cents: number
+  optimum_total_cents: number
+  optimum_merchant_count: number
+  priced_items: number
+}
+
+/**
+ * Was der Zettel in jedem einzelnen Laden kostet.
+ *
+ * Gerechnet wird in `0017_ladenwahl.sql`. Hier steht nur das Abholen — und die
+ * Nachsicht: Fehlt die Sicht (die Migration ist noch nicht gelaufen), gibt es
+ * eben keine Ladenempfehlung. Der Zettel selbst funktioniert ohne sie
+ * weiter, und dafür soll er nicht mit einer Fehlermeldung stehen bleiben.
+ */
+async function loadBasket(): Promise<BasketMerchant[]> {
+  const { data, error } = await supabase
+    .from('v_shopping_basket_merchants')
+    .select(
+      'merchant_id, covered_items, missing_items, basket_total_cents, optimum_total_cents, optimum_merchant_count, priced_items',
+    )
+    .order('basket_total_cents')
+
+  if (error || !data) return []
+
+  return (data as unknown as BasketRow[]).map((row) => ({
+    merchantId: row.merchant_id,
+    coveredItems: row.covered_items,
+    missingItems: row.missing_items,
+    basketTotalCents: row.basket_total_cents,
+    optimumTotalCents: row.optimum_total_cents,
+    optimumMerchantCount: row.optimum_merchant_count,
+    pricedItems: row.priced_items,
   }))
 }
 
@@ -129,18 +178,41 @@ export async function getShoppingList(): Promise<ShoppingList> {
     )
   }
 
-  const [items, stats, rhythms] = await Promise.all([
-    supabase
-      .from('v_shopping_list_items')
-      .select(ITEM_COLUMNS)
-      .eq('list_id', listId)
-      .order('created_at')
-      .then((r) => unwrap<ItemRow[]>(r)),
+  const [items, stats, rhythms, merchants] = await Promise.all([
+    loadItems(listId),
     getHouseholdStats(),
     loadRhythms(),
+    loadBasket(),
   ])
 
-  return { listId, items: items.map(toItem), stats, rhythms }
+  return { listId, items: items.map(toItem), stats, rhythms, merchants }
+}
+
+/**
+ * Die Einträge selbst — und die einzige Stelle, an der eine fehlende Migration
+ * wirklich weh tut.
+ *
+ * `ITEM_COLUMNS` nennt seit Schritt 20 zwei Spalten, die es vor
+ * `0017_ladenwahl.sql` nicht gibt. Postgres antwortet darauf mit 42703
+ * („column does not exist"), und `germanDataError` machte daraus bisher „Die
+ * Daten konnten nicht geladen werden" — ein Satz, der in den Neustart schickt
+ * statt in den SQL-Editor.
+ */
+async function loadItems(listId: string): Promise<ItemRow[]> {
+  const result = await supabase
+    .from('v_shopping_list_items')
+    .select(ITEM_COLUMNS)
+    .eq('list_id', listId)
+    .order('created_at')
+
+  if (result.error?.code === '42703') {
+    throw new DataError(
+      'Der Einkaufszettel kennt den günstigsten Laden noch nicht. Bitte ' +
+        'supabase/migrations/0017_ladenwahl.sql einmal im SQL-Editor ausführen.',
+    )
+  }
+
+  return unwrap<ItemRow[]>(result)
 }
 
 /**

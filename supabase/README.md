@@ -578,6 +578,34 @@ Zuordnung**.
 > etwa 90. Die Reihenfolge der Monate untereinander bleibt gleich — das obere
 > Ende der Skala unterscheidet dafür wieder etwas.
 
+### `0017_ladenwahl.sql`
+
+Beantwortet die Frage, die der Einkaufszettel bisher offen ließ: **in welchem
+einen Laden** wird der ganze Zettel am günstigsten. Dafür entstehen
+`v_product_merchant_price` (günstigster bezahlter Betrag je Produkt und Laden,
+letzte sechs Monate), `v_product_cheapest_merchant` und
+`v_shopping_basket_merchants`. `v_shopping_list_items` bekommt zwei Spalten
+dazu: den Preis beim günstigsten Laden und dessen Datum.
+
+**Diese Migration ist Pflicht, sobald die neue App-Fassung läuft.** Der
+Einkaufszettel fragt die beiden neuen Spalten ab; ohne sie zeigt er statt der
+Liste den Hinweis, genau diese Datei auszuführen. Alle anderen Screens sind
+nicht betroffen.
+
+**Danach prüfen**, wo dein offener Zettel am günstigsten wird:
+
+```sql
+select merchant_name, covered_items, missing_items,
+       basket_total_cents, optimum_total_cents, optimum_merchant_count
+from public.v_shopping_basket_merchants
+order by basket_total_cents;
+```
+
+Erwartet: eine Zeile je Laden, in dem du etwas vom Zettel schon einmal gekauft
+hast. Die erste Zeile ist die Empfehlung; `optimum_total_cents` sagt, was der
+Weg über mehrere Läden brächte. Kommt nichts zurück, steht auf dem Zettel noch
+nichts mit bekanntem Preis — dann ist auch in der App keine Karte zu sehen.
+
 ---
 
 ## 3. Prüfen, ob alles angekommen ist

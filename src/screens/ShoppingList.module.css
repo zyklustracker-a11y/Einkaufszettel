@@ -73,6 +73,105 @@
   white-space: nowrap;
 }
 
+/* -------------------------------------------------------------- Wo kaufen? */
+
+/* Grün getönt statt weiß: Die Karte ist die einzige Empfehlung auf diesem
+   Screen — alles andere ist Bestand. Ein eigener Grundton hebt sie heraus,
+   ohne dass ein Farbstreifen oder ein Rahmen dafür nötig wäre. */
+.shopCard {
+  background: var(--green-soft);
+  border-radius: 18px;
+  padding: 14px 16px 12px;
+  margin-bottom: 14px;
+}
+
+.shopHead {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--green);
+  margin-bottom: 6px;
+}
+
+.shopBest {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+/* Lange Ladennamen dürfen umbrechen — „Bäckerei Schmid am Markt" ist keine
+   Ausnahme, sondern der Normalfall auf dem Land. */
+.shopName {
+  flex: 1;
+  min-width: 0;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.shopTotal {
+  flex: 0 0 auto;
+  font-size: 19px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.shopWhy {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.shopDetour {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.shopList {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 10px 0 0;
+  border-top: 1px solid rgba(22, 145, 92, 0.18);
+}
+
+.shopRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 13px;
+}
+
+.shopOtherName {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.shopOtherCount {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.shopOtherTotal {
+  flex: 0 0 auto;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.shopFootnote {
+  margin: 10px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
 /* ------------------------------------------------------------- die Gruppen */
 
 .group {
@@ -159,11 +258,33 @@
   white-space: nowrap;
 }
 
+/* Preis und Laden übereinander, rechtsbündig. Die Spalte richtet sich nach
+   ihrem Inhalt und darf bis zu 40 % der Zeile einnehmen — genug für „ALDI SÜD"
+   in einer Zeile und für „Bäckerei Schmid" in zweien. Abgeschnitten wird hier
+   nichts mehr; genau daran war die Auskunft vorher gescheitert. */
+.priceBox {
+  flex: 0 1 auto;
+  max-width: 40%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+}
+
 .price {
   font-size: 14px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.merchant {
+  margin-top: 1px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--green);
+  overflow-wrap: anywhere;
 }
 
 .remove {

@@ -371,7 +371,30 @@ export interface ShoppingItem {
   /** Die Begründung: „üblich alle 7 Tage". Null bei eigenen Einträgen. */
   medianGapDays: number | null
   daysSinceLast: number | null
+  /** Der Laden, in dem dieses Produkt zuletzt am günstigsten war. */
   bestMerchantId: string | null
+  /** Was es dort gekostet hat — ohne die Zahl wäre der Ladenname eine Behauptung. */
+  bestPriceCents: number | null
+  bestSeenOn: string | null
+}
+
+/**
+ * Was der offene Zettel in **einem** Laden kosten würde.
+ *
+ * Gerechnet wird in `v_shopping_basket_merchants`; hier steht nur das Ergebnis.
+ * `optimumTotalCents` und `optimumMerchantCount` sind für alle Läden gleich —
+ * sie beschreiben den Vergleichsfall „jede Position dort kaufen, wo sie am
+ * günstigsten ist", also den Weg über mehrere Läden.
+ */
+export interface BasketMerchant {
+  merchantId: string
+  coveredItems: number
+  missingItems: number
+  basketTotalCents: number
+  optimumTotalCents: number
+  optimumMerchantCount: number
+  /** Wie viele Positionen des Zettels überhaupt einen bekannten Preis haben. */
+  pricedItems: number
 }
 
 export interface ShoppingList {
@@ -380,6 +403,8 @@ export interface ShoppingList {
   stats: HouseholdStats
   /** Alle erkannten Rhythmen, auch die noch nicht fälligen. */
   rhythms: RhythmProduct[]
+  /** Je Laden eine Zeile — leer, solange es nichts zu vergleichen gibt. */
+  merchants: BasketMerchant[]
 }
 
 /** Eine Zeile unter „Häufigste Käufe". */

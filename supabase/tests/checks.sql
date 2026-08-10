@@ -313,8 +313,11 @@ begin
   assert r.median_gap_days = 7, format('Milch-Rhythmus: 7 Tage erwartet, %s', r.median_gap_days);
   assert r.spread_days = 0, format('Milch-Streuung: 0 erwartet, %s', r.spread_days);
   assert r.days_since_last = 7, format('Milch zuletzt vor 7 Tagen erwartet, %s', r.days_since_last);
-  assert r.expected_price_cents = 129,
-    format('Milch-Preis: 129 erwartet, %s', r.expected_price_cents);
+  -- 119 und nicht 129: Der erwartete Preis ist der günstigste **bezahlte**
+  -- Betrag, und seit dem zweiten Laden ist das der von ALDI SÜD. Genau daran
+  -- hängt auch die Ladenwahl weiter unten.
+  assert r.expected_price_cents = 119,
+    format('Milch-Preis: 119 erwartet, %s', r.expected_price_cents);
 
   -- Der Median ist gegen Ausreißer unempfindlich — genau deshalb steht er hier
   -- und nicht der Mittelwert. Grillkohle: Abstände 10 und 105 Tage.
@@ -387,6 +390,134 @@ begin
   assert r.checked = true, 'Der Einkauf hat den Zettel nicht abgehakt';
 
   raise notice 'Alle Einkaufszettel-Prüfungen bestanden.';
+end
+$$;
+
+
+-- ============================================================================
+-- Ladenwahl — ebenfalls Haushalt C
+--
+-- Der Zettel bekommt drei Positionen, und die Preise sind so gewählt, dass die
+-- Frage überhaupt eine ist:
+--
+--   Milch      REWE 1,29 €  ·  ALDI SÜD 1,19 €
+--   Bananen    REWE 1,99 €  ·  ALDI SÜD 2,19 €
+--   Grillkohle REWE 4,99 €  ·  bei ALDI SÜD nie gekauft
+--
+-- Daraus folgt von Hand:
+--
+--   alles bei REWE      1,29 + 1,99 + 4,99 = 8,27 €   (3 von 3 bekannt)
+--   alles bei ALDI SÜD  1,19 + 2,19 + 4,99 = 8,37 €   (2 von 3, Rest zum
+--                                                      günstigsten bekannten Preis)
+--   Einzeloptimum       1,19 + 1,99 + 4,99 = 8,17 €   über zwei Läden
+--
+-- REWE gewinnt also, obwohl es bei der Milch **nicht** der günstigste Laden
+-- ist — und die zehn Cent Unterschied zum Optimum sind genau die Zahl, die im
+-- Zettel danebensteht. Das ist der ganze Sinn der Sicht.
+-- ============================================================================
+
+do $$
+declare
+  r        record;
+  n        bigint;
+  v_house  uuid;
+  v_list   uuid;
+begin
+  select l.household_id, l.id into v_house, v_list
+  from public.shopping_lists l
+  where l.completed_at is null
+  limit 1;
+
+  -- Die Milch wurde von der Prüfung oben abgehakt. Für die Ladenwahl zählt
+  -- nur, was noch offen ist — also wieder aufmachen.
+  update public.shopping_list_items set checked_at = null where list_id = v_list;
+
+  -- Zwei eigene Einträge dazu, wie über das Eingabefeld im Zettel.
+  insert into public.shopping_list_items
+    (household_id, list_id, canonical_product_id, label, source)
+  select v_house, v_list, cp.id, cp.name, 'manual'
+  from public.canonical_products cp
+  where cp.household_id = v_house and cp.name in ('Bananen', 'Grillkohle')
+  on conflict do nothing;
+
+  select count(*) into n from public.v_shopping_list_items where list_id = v_list;
+  assert n = 3, format('Zettel für die Ladenwahl: 3 Positionen erwartet, %s', n);
+
+  /* ------------------------------------------------ Preis je Produkt und Laden */
+
+  select count(*) into n from public.v_product_merchant_price where product_id in (
+    select id from public.canonical_products where household_id = v_house and name = 'H-Milch'
+  );
+  assert n = 2, format('Milch: 2 Läden erwartet, %s', n);
+
+  select * into r from public.v_product_cheapest_merchant p
+  join public.canonical_products cp
+    on cp.id = p.product_id and cp.household_id = p.household_id
+  where cp.name = 'H-Milch';
+  assert r.price_cents = 119, format('Günstigste Milch: 119 erwartet, %s', r.price_cents);
+  assert r.merchant_name = 'ALDI SÜD',
+    format('Günstigste Milch bei ALDI SÜD erwartet, %s', r.merchant_name);
+
+  -- Am Zettel selbst muss der Preis mitkommen, sonst steht der Ladenname als
+  -- bloße Behauptung da.
+  select * into r from public.v_shopping_list_items where label = 'H-Milch';
+  assert r.best_price_cents = 119,
+    format('Zettel-Eintrag ohne Preis beim günstigsten Laden (%s)', r.best_price_cents);
+  assert r.best_seen_on is not null, 'Zettel-Eintrag ohne Datum zum günstigsten Preis';
+
+  /* ------------------------------------------------------ Der ganze Warenkorb */
+
+  select count(*) into n from public.v_shopping_basket_merchants;
+  assert n = 2, format('Ladenwahl: 2 Läden erwartet, %s', n);
+
+  select * into r from public.v_shopping_basket_merchants where merchant_name = 'REWE';
+  assert r.covered_items = 3, format('REWE: 3 bekannte Positionen erwartet, %s', r.covered_items);
+  assert r.missing_items = 0, format('REWE: 0 fehlende erwartet, %s', r.missing_items);
+  assert r.basket_total_cents = 827,
+    format('REWE-Warenkorb: 827 erwartet, %s', r.basket_total_cents);
+
+  select * into r from public.v_shopping_basket_merchants where merchant_name = 'ALDI SÜD';
+  assert r.covered_items = 2, format('ALDI SÜD: 2 bekannte Positionen erwartet, %s', r.covered_items);
+  assert r.missing_items = 1, format('ALDI SÜD: 1 fehlende erwartet, %s', r.missing_items);
+  -- Die fehlende Position wird zum günstigsten bekannten Preis gerechnet, nicht
+  -- weggelassen — sonst gewönne jeder Laden allein durch seine Lücken.
+  assert r.basket_total_cents = 837,
+    format('ALDI-Warenkorb: 837 erwartet, %s', r.basket_total_cents);
+
+  assert r.optimum_total_cents = 817,
+    format('Einzeloptimum: 817 erwartet, %s', r.optimum_total_cents);
+  assert r.optimum_merchant_count = 2,
+    format('Einzeloptimum über 2 Läden erwartet, %s', r.optimum_merchant_count);
+  assert r.priced_items = 3,
+    format('3 bepreiste Positionen erwartet, %s', r.priced_items);
+
+  -- Der günstigste Laden ist nicht der mit dem günstigsten Einzelpreis.
+  select merchant_name into r from public.v_shopping_basket_merchants
+  order by basket_total_cents asc limit 1;
+  assert r.merchant_name = 'REWE',
+    format('Empfehlung: REWE erwartet, %s', r.merchant_name);
+
+  /* ----------------------------------------------------- Abgehakt zählt nicht */
+
+  update public.shopping_list_items set checked_at = now()
+  where list_id = v_list and label = 'Grillkohle';
+
+  select * into r from public.v_shopping_basket_merchants where merchant_name = 'ALDI SÜD';
+  assert r.priced_items = 2,
+    format('Abgehakte Position noch im Warenkorb (%s)', r.priced_items);
+  assert r.basket_total_cents = 338,
+    format('ALDI-Warenkorb ohne Grillkohle: 338 erwartet, %s', r.basket_total_cents);
+
+  /* ------------------------------------------- Ein Eintrag ohne bekannten Preis */
+
+  insert into public.shopping_list_items (household_id, list_id, label, source)
+  values (v_house, v_list, 'Blumen für Oma', 'manual');
+
+  select * into r from public.v_shopping_basket_merchants where merchant_name = 'REWE';
+  assert r.priced_items = 2,
+    format('Eintrag ohne Produkt in die Rechnung geraten (%s)', r.priced_items);
+
+  raise notice 'Alle Ladenwahl-Prüfungen bestanden.';
 end
 $$;
 
