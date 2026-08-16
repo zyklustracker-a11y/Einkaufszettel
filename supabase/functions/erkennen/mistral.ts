@@ -7,6 +7,8 @@
  * steht in `prompt.ts`; was mit der Antwort passiert, in `validate.ts`.
  */
 
+import type { ResponseDiagnostics } from './debug.ts'
+
 const ENDPOINT = 'https://api.mistral.ai/v1/chat/completions'
 
 /**
@@ -86,7 +88,22 @@ export type MistralFailure =
   | 'modell_abgelehnt'
 
 export type MistralOutcome =
-  | { ok: true; text: string; model: string; durationMs: number }
+  | {
+      ok: true
+      text: string
+      model: string
+      durationMs: number
+      /**
+       * Was die Schnittstelle über das Ende der Antwort sagt.
+       *
+       * Bis Schritt 18 wurde das hier weggeworfen — und damit die einzige
+       * Angabe, an der sich eine **abgeschnittene** Antwort von einer
+       * **kaputten** unterscheiden lässt. Beide kommen als unlesbares JSON an;
+       * die eine ist ein zu langer Bon, die andere ein Modellfehler. Ohne
+       * `finish_reason` sind beide dasselbe Rätsel.
+       */
+      diagnostics: ResponseDiagnostics
+    }
   | { ok: false; reason: MistralFailure; detail: string; model: string }
 
 export interface MistralRequest {
@@ -143,6 +160,30 @@ function readContent(payload: unknown): string | null {
   }
 
   return null
+}
+
+/**
+ * Abbruchgrund und Token-Verbrauch aus dem OpenAI-kompatiblen Umschlag.
+ *
+ * Beides ist optional — nicht jede Version meldet `usage`, und ein Fehlen ist
+ * kein Fehler. Deshalb überall null statt einer Ausnahme: Ein fehlender
+ * Zählerstand darf einen gelesenen Bon nicht kosten.
+ */
+function readDiagnostics(payload: unknown, textLength: number): ResponseDiagnostics {
+  const choices = (payload as { choices?: unknown }).choices
+  const first = Array.isArray(choices) ? (choices[0] as { finish_reason?: unknown }) : null
+  const usage = (payload as { usage?: { prompt_tokens?: unknown; completion_tokens?: unknown } })
+    .usage
+
+  const count = (value: unknown): number | null =>
+    typeof value === 'number' && Number.isFinite(value) ? value : null
+
+  return {
+    finishReason: typeof first?.finish_reason === 'string' ? first.finish_reason : null,
+    inputTokens: count(usage?.prompt_tokens),
+    outputTokens: count(usage?.completion_tokens),
+    textLength,
+  }
 }
 
 /**
@@ -240,7 +281,13 @@ export async function callMistral(request: MistralRequest): Promise<MistralOutco
           model,
         }
       }
-      return { ok: true, text, model, durationMs: Date.now() - started }
+      return {
+        ok: true,
+        text,
+        model,
+        durationMs: Date.now() - started,
+        diagnostics: readDiagnostics(payload, text.length),
+      }
     }
 
     const detail = (await response.text().catch(() => '')).slice(0, 500)

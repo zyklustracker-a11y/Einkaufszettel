@@ -65,6 +65,7 @@ import {
 } from './prompt.ts'
 import { DEFAULT_TEXT_MODEL, callMistral } from './mistral.ts'
 import type { MistralFailure } from './mistral.ts'
+import { isTruncated, logModelResponse, tail } from './debug.ts'
 import { isUnreadable, parseModelJson, validateExtraction } from './validate.ts'
 import type {
   ExtractedSuggestion,
@@ -611,8 +612,33 @@ async function handleStructure(
     return await abort(failure.code, failure.message, failure.status)
   }
 
+  /*
+   * Erst protokollieren, dann prüfen. Die Reihenfolge ist Absicht: Jeder
+   * Fehlausgang unten kehrt zurück, und ein Protokoll, das erst nach der
+   * Prüfung geschrieben wird, fehlt genau bei den Scans, um deretwillen es da
+   * ist.
+   */
+  logModelResponse('struktur', outcome.model, outcome.durationMs, outcome.diagnostics, outcome.text)
+
   const parsed = parseModelJson(outcome.text)
   if (parsed === null) {
+    /*
+     * Die Unterscheidung, um die es geht: An `max_tokens` abgeschnitten ist
+     * etwas anderes als kaputt geschrieben. Sie steht als Fehler im Protokoll
+     * und nicht nur als Hinweis, weil sie den nächsten Schritt bestimmt — die
+     * eine Ursache braucht mehr Ausgabe-Budget, die andere einen besseren
+     * Prompt.
+     */
+    console.error(
+      'Struktur-JSON unlesbar:',
+      JSON.stringify({
+        finishReason: outcome.diagnostics.finishReason,
+        truncated: isTruncated(outcome.diagnostics.finishReason),
+        outputTokens: outcome.diagnostics.outputTokens,
+        textLength: outcome.diagnostics.textLength,
+        tail: tail(outcome.text),
+      }),
+    )
     return await abort(
       'modell_json',
       'Die Antwort der Erkennung war unbrauchbar. Bitte den Bon noch einmal scannen.',
@@ -717,6 +743,14 @@ async function handleAssignment(
     console.error('Mistral (Zuordnung):', outcome.reason, outcome.detail)
     return failFromMistral(outcome.reason, outcome.model, outcome.detail)
   }
+
+  logModelResponse(
+    'zuordnung',
+    outcome.model,
+    outcome.durationMs,
+    outcome.diagnostics,
+    outcome.text,
+  )
 
   const result = validateAssignments(outcome.text, {
     categoryKeys: context.categories.map((category) => category.key),
