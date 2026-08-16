@@ -79,6 +79,17 @@ export interface ResponseDiagnostics {
   outputTokens: number | null
   /** Länge des Rohtexts in Zeichen. */
   textLength: number
+  /**
+   * Lief der Aufruf mit Mistrals JSON-Modus?
+   *
+   * Entscheidend für die Deutung eines kaputten JSON: Mit eingeschaltetem Modus
+   * ist syntaktisch falsches JSON bei *abgeschlossener* Generierung kaum
+   * möglich — dann war die Antwort fast sicher abgeschnitten. Ohne den Modus
+   * (der 400-Rückfall in `callMistral` schaltet ihn ab) sind beide Ursachen
+   * offen. Ohne diese Angabe im Protokoll wäre nicht zu sagen, welcher der
+   * beiden Fälle vorlag.
+   */
+  jsonMode: boolean
 }
 
 /**
@@ -120,6 +131,7 @@ export function logModelResponse(
     inputTokens: diagnostics.inputTokens,
     outputTokens: diagnostics.outputTokens,
     textLength: diagnostics.textLength,
+    jsonMode: diagnostics.jsonMode,
     /*
      * Der eine abgeleitete Wert, der hier statt beim Lesen steht: Wer das
      * Protokoll durchsieht, soll nicht erst wissen müssen, welche Werte von

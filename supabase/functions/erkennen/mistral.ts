@@ -169,7 +169,11 @@ function readContent(payload: unknown): string | null {
  * kein Fehler. Deshalb überall null statt einer Ausnahme: Ein fehlender
  * Zählerstand darf einen gelesenen Bon nicht kosten.
  */
-function readDiagnostics(payload: unknown, textLength: number): ResponseDiagnostics {
+function readDiagnostics(
+  payload: unknown,
+  textLength: number,
+  jsonMode: boolean,
+): ResponseDiagnostics {
   const choices = (payload as { choices?: unknown }).choices
   const first = Array.isArray(choices) ? (choices[0] as { finish_reason?: unknown }) : null
   const usage = (payload as { usage?: { prompt_tokens?: unknown; completion_tokens?: unknown } })
@@ -183,6 +187,7 @@ function readDiagnostics(payload: unknown, textLength: number): ResponseDiagnost
     inputTokens: count(usage?.prompt_tokens),
     outputTokens: count(usage?.completion_tokens),
     textLength,
+    jsonMode,
   }
 }
 
@@ -286,7 +291,7 @@ export async function callMistral(request: MistralRequest): Promise<MistralOutco
         text,
         model,
         durationMs: Date.now() - started,
-        diagnostics: readDiagnostics(payload, text.length),
+        diagnostics: readDiagnostics(payload, text.length, jsonMode),
       }
     }
 
