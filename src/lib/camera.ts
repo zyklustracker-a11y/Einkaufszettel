@@ -74,6 +74,22 @@ export const JPEG_QUALITY = 0.85
  */
 const ANALYSIS_MAX_EDGE = 1400
 
+/**
+ * Obergrenze für die **Arbeitskopie**, auf der gedreht und zugeschnitten wird.
+ *
+ * Dieselbe Rechnung wie oben, nur ernster: Ein 12-Megapixel-Foto sind 48 MB als
+ * Zahlenfeld, und `rotateBitmap` legt ein zweites gleicher Größe an. Zusammen
+ * mit dem Kontrastausgleich stünden zeitweise weit über hundert Megabyte im
+ * Speicher — auf einem älteren iPhone der sichere Absturz, und zwar mitten im
+ * Scan, mit dem Bon in der Hand.
+ *
+ * 3000 px lange Kante sind knapp 7 Megapixel. Nach dem Zuschnitt auf den Bon
+ * bleiben davon typischerweise 1500–2500 px auf seiner Länge — also genau die
+ * Größenordnung, die am Ende ohnehin hinausgeht. Was hier verloren geht, hätte
+ * das Verkleinern gleich danach ohnehin weggenommen.
+ */
+const WORK_MAX_EDGE = 3000
+
 /** Ein fertig aufbereitetes Bon-Foto. */
 export interface CapturedImage {
   /** Die erste (oder einzige) Kachel. */
@@ -229,6 +245,30 @@ async function prepare(
   const maxEdge = options.maxEdge ?? MAX_EDGE
   const quality = options.quality ?? JPEG_QUALITY
 
+  /*
+   * 0. Der schnelle Weg: Ist alles abgeschaltet, wird die Quelle direkt in der
+   *    Zielgröße gezeichnet — genau wie vor Schritt 18.
+   *
+   * Das ist nicht bloß eine Abkürzung, sondern der Grund, warum sich die
+   * Schalter überhaupt zum A/B-Vergleich eignen: Mit `NO_FLAGS` läuft
+   * buchstäblich der alte Code, ohne dass irgendwo ein Zahlenfeld über das
+   * ganze Foto angelegt würde.
+   */
+  if (!flags.autoRotate && !flags.autoCrop && !flags.contrast && !flags.tiling) {
+    const size = fitWithinBox(sourceWidth, sourceHeight, maxEdge)
+    return {
+      blob: await toJpeg(draw(source, size.width, size.height), quality),
+      tiles: [],
+      width: size.width,
+      height: size.height,
+      sourceWidth,
+      sourceHeight,
+      sourceBlob,
+      rotatedBy: 0,
+      flags,
+    }
+  }
+
   /* 1. Analysieren — auf einer kleinen Kopie, um Speicher zu sparen. */
   let blob = null
   let rotation = 0
@@ -239,8 +279,14 @@ async function prepare(
     if (blob && flags.autoRotate) rotation = rotationFor(blob)
   }
 
-  /* 2. Auf voller Auflösung zeichnen und drehen. */
-  let bitmap = toBitmap(draw(source, sourceWidth, sourceHeight))
+  /*
+   * 2. Die Arbeitskopie zeichnen und drehen.
+   *
+   * Gedeckelt auf `WORK_MAX_EDGE` — siehe dort. Ein Foto, das ohnehin kleiner
+   * ist, wird dabei nicht angefasst.
+   */
+  const work = fitWithinBox(sourceWidth, sourceHeight, WORK_MAX_EDGE)
+  let bitmap = toBitmap(draw(source, work.width, work.height))
   if (rotation !== 0) bitmap = rotateBitmap(bitmap, rotation)
 
   /* 3./4. Auf dem gedrehten Bild neu suchen und zuschneiden. */
