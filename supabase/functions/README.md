@@ -127,10 +127,10 @@ geht nichts nach Supabase.
 
 **Über die Weboberfläche:** Supabase → **Edge Functions** → **Deploy a new
 function** → **Via Editor**, Name `erkennen` (genau so, klein geschrieben — die
-App ruft diese Adresse auf), dann die acht Dateien anlegen: `index.ts`,
-`prompt.ts`, `mistral.ts`, `validate.ts`, `lines.ts`, `assign.ts`,
-`mappings.ts`, `rates.ts`. Die
-`*.test.ts` werden nicht gebraucht, die Tests laufen auf deinem Rechner.
+App ruft diese Adresse auf), dann die zehn Dateien anlegen: `index.ts`,
+`prompt.ts`, `mistral.ts`, `validate.ts`, `lines.ts`, `repair.ts`, `debug.ts`,
+`assign.ts`, `mappings.ts`, `rates.ts`. Die `*.test.ts` und `fixtures.ts`
+werden nicht gebraucht, die Tests laufen auf deinem Rechner.
 
 **Mit der Supabase-CLI:**
 
@@ -165,12 +165,39 @@ eingetragen ist.
 Läuft etwas schief, sagt die App auf Deutsch, was los ist. Die technische
 Ursache steht im Protokoll: **Supabase → Edge Functions → erkennen → Logs**.
 
+### 2.1 Was im Protokoll steht
+
+Seit Schritt 18 schreibt jeder Modellaufruf eine Zeile:
+
+```
+erkennen: {"stufe":"struktur","model":"…","durationMs":14203,"finishReason":"length",
+"inputTokens":1834,"outputTokens":8000,"textLength":9871,
+"responseFormat":"json_object","continuations":2,"truncated":true}
+```
+
+Der wichtigste Wert ist `truncated`. Steht dort `true`, endete die Antwort an
+der Token-Grenze; `continuations` sagt, wie oft weitergeschrieben wurde.
+`responseFormat` zeigt, welchen Antwortmodus das eingestellte Modell tatsächlich
+kann — steht dort dauerhaft `none`, kennt es weder `json_schema` noch
+`json_object`.
+
+Für die Fehlersuche zusätzlich die letzten 200 Zeichen der Antwort:
+
+```bash
+supabase secrets set ERKENNEN_DEBUG=1     # anschalten
+supabase secrets unset ERKENNEN_DEBUG     # wieder aus
+```
+
+Ohne den Schalter läuft nur die knappe Form mit — Zahlen und Kennungen, kein
+Bon-Inhalt.
+
 | Meldung in der App | Was zu tun ist |
 |---|---|
 | „…noch nicht eingerichtet: In Supabase fehlt das Secret MISTRAL_API_KEY" | Secret anlegen (1.1) |
 | „Bitte melde dich an" / „Anmeldung ist abgelaufen" | einmal ab- und wieder anmelden |
 | „Das Kontingent bei Mistral ist gerade erschöpft" | ein paar Minuten warten; die Funktion hat schon dreimal mit Pause wiederholt |
-| „Die Antwort der Erkennung war unbrauchbar" | Rohantwort ansehen, Prompt nachschärfen (siehe unten) |
+| „Die Antwort der Erkennung war unbrauchbar" | Seit Schritt 18 nur noch, wenn sich **gar nichts** retten ließ. Rohantwort ansehen, dann im Protokoll `finishReason` prüfen (2.1) |
+| „Einige Positionen konnten nicht sicher gelesen werden" | Kein Fehler, sondern ein Teilergebnis. Gelb umrandete Zeilen prüfen, fehlende mit „Position hinzufügen" ergänzen |
 | „Auf dem Foto war kein lesbarer Kassenzettel" | Bon flach hinlegen, mehr Licht, ganze Länge im Rahmen |
 | „Die Bon-Erkennung ist auf dem Server nicht eingerichtet" | Funktion heißt nicht `erkennen` oder wurde nicht ausgerollt |
 
@@ -241,6 +268,9 @@ Bons unter keinen Umständen beeinflussen können.
 | `assign.ts` | Durchgang 2 prüfen: Kategorien und Merkmale gegen die Liste des Haushalts |
 | `mappings.ts` | Das Gedächtnis: bekannte Rohtexte aus der Datenbank einsetzen |
 | `rates.ts` | Der EZB-Referenzkurs zum Bon-Datum, samt Zwischenspeicher. Ohne Schlüssel, ohne Anmeldung |
+| `repair.ts` | JSON aus der Antwort holen — auch aus einer abgeschnittenen |
+| `debug.ts` | Das Protokoll: Abbruchgrund, Token-Verbrauch, Länge der Antwort |
+| `fixtures.ts` | Die beiden echten Bons als Testdaten. **Wird nicht ausgerollt** |
 | `*.test.ts` | Tests dazu — laufen mit `npm test` mit |
 
 Die Typdefinitionen liegen bewusst in `validate.ts` und nicht in einer eigenen
