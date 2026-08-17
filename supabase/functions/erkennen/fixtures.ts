@@ -18,10 +18,28 @@
  * Lesen** und ausdrücklich keine Wahrheit:
  *
  *     Edeka:  abgetippt 117,87 €  ·  gedruckt 120,67 €  ·  2,80 € Unterschied
- *     toom:   abgetippt  90,74 €  ·  gedruckt  87,75 €  ·  2,99 € Unterschied
+ *     toom:   abgetippt  80,75 €  ·  gedruckt  87,75 €  ·  7,00 € Unterschied
  *
  * Beim Edeka-Bon kommen zu den falsch gelesenen Beträgen noch fehlende Zeilen:
  * Der Bon nennt 35 Posten, abgetippt sind 32.
+ *
+ * ---------------------------------------------------------------------------
+ * WAS DER STEUERBLOCK VERRÄT — und was noch zu klären ist
+ * ---------------------------------------------------------------------------
+ *
+ * Der MwSt-Block am Bonfuß ist auf beiden Fotos gut lesbar und seine Klassen
+ * ergeben exakt die gedruckte Summe. Damit lässt sich die Lücke **eingrenzen**,
+ * statt nur „irgendwo fehlen 2,80 €" zu sagen:
+ *
+ *     toom    7 %:  abgetippt 52,48  ·  gedruckt 59,48  →  7,00 € fehlen
+ *     toom   19 %:  abgetippt 28,27  ·  gedruckt 28,27  →  stimmt genau ✓
+ *
+ *     Edeka   A (7 %):  abgetippt 96,81  ·  gedruckt 96,22  →  0,59 € zu viel
+ *     Edeka   B (19 %): abgetippt 21,06  ·  gedruckt 24,45  →  3,39 € fehlen
+ *
+ * Beim toom-Bon ist damit **eine einzige Zeile** offen: In der 7-%-Klasse fehlen
+ * genau 7,00 €. Beim Edeka-Bon liegt zusätzlich mindestens eine Zeile in der
+ * falschen Klasse — sonst könnte A nicht zu hoch und B zugleich zu niedrig sein.
  *
  * ---------------------------------------------------------------------------
  * WARUM DAS TROTZDEM BRAUCHBARE FIXTURES SIND
@@ -168,9 +186,22 @@ export const TOOM: Fixture = {
     waehrung: 'EUR',
     summe_cent: 8775,
     posten: null,
+    /*
+     * KORRIGIERT: Hier standen 2376 und 5559 — das sind die **Netto**-Beträge
+     * aus dem MwSt-Block, nicht die Brutto-Beträge. Der Bon druckt je Klasse
+     * „Netto-Entgelt" und „MwSt-Betrag" getrennt; gebraucht wird ihre Summe:
+     *
+     *     19 %:  23,76 netto + 4,51 MwSt = 28,27 brutto
+     *      7 %:  55,59 netto + 3,89 MwSt = 59,48 brutto
+     *                                      ─────────────
+     *                                      87,75 = die gedruckte Summe
+     *
+     * Dass die beiden Klassen exakt die Gesamtsumme ergeben, ist die Probe —
+     * und sie geht nur mit den Brutto-Werten auf. Der Test daneben prüft das.
+     */
     steuerblock: [
-      { kennzeichen: '19', brutto_cent: 2376 },
-      { kennzeichen: '7', brutto_cent: 5559 },
+      { kennzeichen: '19', brutto_cent: 2827 },
+      { kennzeichen: '7', brutto_cent: 5948 },
     ],
     zeilen: [
       '4250787606599 2,000 STK a 5,99 Calibrachoa-Mix 11,98 7',
@@ -184,7 +215,10 @@ export const TOOM: Fixture = {
       '4388860687774 1,000 STK Gartenhandschuh 3,29 19',
       '4260767805966 1,000 STK KRAEUTER-DIP 2,99 7',
       '8054392600210 1,000 STK Kraeuter Mix 4,29 7',
-      '4063565596247 1,000 STK FLIEGENGITTERTU 9,99 7',
+      // 19 und nicht 7: Erst damit ergeben die 19-%-Zeilen (3,29 + 9,99 + 14,99)
+      // exakt die gedruckten 28,27 € dieser Klasse. Ein Fliegengitter ist auch
+      // sachlich kein ermäßigter Posten.
+      '4063565596247 1,000 STK FLIEGENGITTERTU 9,99 19',
       '4042448169419 1,000 STK Klett für Fenste 14,99 19',
     ],
     unsichere_zeilen: [],

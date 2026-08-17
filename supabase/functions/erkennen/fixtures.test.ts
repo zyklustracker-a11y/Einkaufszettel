@@ -237,3 +237,50 @@ test('beide Bons überstehen eine abgeschnittene Antwort', async (t) => {
     })
   }
 })
+
+/* ============================================ Die Probe über den Steuerblock */
+
+test('der gedruckte Steuerblock ergibt die gedruckte Summe', async (t) => {
+  /*
+   * Die einzige Selbstprüfung, die ein Bon von sich aus mitbringt.
+   *
+   * Der MwSt-Block am Fuß nennt je Steuerklasse einen Bruttobetrag, und die
+   * müssen zusammen die Summe ergeben — sonst wäre der Bon in sich falsch, und
+   * das kommt bei einer Kasse nicht vor. Genau daran ist aufgefallen, dass im
+   * toom-Fixture die **Netto**-Beträge standen: 23,76 + 55,59 sind 79,35 und
+   * nicht 87,75.
+   *
+   * Der Test ist deshalb mehr als eine Zahlenprüfung: Er ist der Grund, warum
+   * die Zeilenbeträge überhaupt eingrenzbar sind. Stimmt der Block, lässt sich
+   * je Klasse sagen, wie viel fehlt — statt nur „irgendwo fehlen 2,80 €".
+   */
+  for (const [name, fixture] of [
+    ['Edeka', EDEKA],
+    ['toom', TOOM],
+  ] as const) {
+    await t.test(`${name}: Klassen zusammen = Gesamtsumme`, () => {
+      const bon = validateExtraction(fixture.model, fixture.today)
+      const klassen = bon.printedTaxGroups.reduce((sum, group) => sum + group.grossCents, 0)
+      assert.equal(klassen, fixture.erwartet.summeCent)
+    })
+  }
+})
+
+test('toom: die 19-%-Klasse geht auf', () => {
+  /*
+   * Und das ist die Gegenprobe zur Zuordnung: Gartenhandschuh (3,29),
+   * Fliegengitter (9,99) und Klettband (14,99) ergeben zusammen exakt die
+   * gedruckten 28,27 € der 19-%-Klasse.
+   *
+   * Genau daran hing die Erkenntnis, dass das Fliegengitter 19 % trägt und
+   * nicht 7 % — vom Foto allein war die Ziffer nicht zu unterscheiden. Der
+   * Steuerblock hat es entschieden, nicht das Auge.
+   */
+  const bon = validateExtraction(TOOM.model, TOOM.today)
+  const neunzehn = bon.taxGroups.find((group) => group.code === '19')
+
+  assert.ok(neunzehn, 'keine 19-%-Klasse im Abgleich')
+  assert.equal(neunzehn.grossCents, 2827)
+  assert.equal(neunzehn.itemsTotalCents, 2827)
+  assert.equal(neunzehn.differenceCents, 0)
+})
