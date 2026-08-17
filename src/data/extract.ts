@@ -247,7 +247,14 @@ export async function extractReceipt(
   const token = await sessionToken()
 
   onPhase?.('vorbereiten')
-  const image = await toBase64(capture.blob)
+  /*
+   * Alle Kacheln zugleich, nicht nacheinander: Sie werden ohnehin zusammen
+   * verschickt, und `FileReader` läuft asynchron — hintereinander wäre es die
+   * Summe der Wartezeiten statt der längsten.
+   */
+  const [image, ...tiles] = await Promise.all(
+    [capture.blob, ...capture.tiles].map(toBase64),
+  )
 
   /* ------------------------------------------------- Durchgang 1: lesen */
 
@@ -256,6 +263,9 @@ export async function extractReceipt(
     token,
     {
       image,
+      // Nur mitschicken, wenn es welche gibt: Eine ältere Edge Function kennt
+      // das Feld nicht, und ein leeres Feld wäre trotzdem ein Unterschied.
+      ...(tiles.length > 0 ? { kacheln: tiles } : {}),
       mimeType: capture.blob.type || 'image/jpeg',
       ...(jobId ? { jobId } : {}),
     },

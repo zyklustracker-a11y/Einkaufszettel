@@ -9,6 +9,7 @@ import {
   resumeScan,
   startScanJob,
 } from '../data'
+import { MAX_EDGE_RETRY, reprocess } from '../lib/camera'
 import type { CapturedImage } from '../lib/camera'
 import type { ExtractionPhase, ExtractionResponse } from '../lib/extraction'
 import { getPendingCapture } from '../lib/capture'
@@ -414,9 +415,36 @@ export function ScanProcessing() {
        */
       requestRef.current = {
         attempt,
-        promise: startScanJob().then((jobId) => {
+        promise: startScanJob().then(async (jobId) => {
           jobIdRef.current = jobId
-          return extractReceipt(capture, enterPhase, jobId)
+
+          /*
+           * DER ZWEITE VERSUCH IST EIN ANDERER VERSUCH.
+           *
+           * Beim ersten Durchlauf geht das Bild so hinaus, wie der Kamera-Screen
+           * es aufbereitet hat. Ab dem zweiten wird dasselbe Foto **neu**
+           * aufbereitet: mehr Auflösung, und bei einem langen Bon überlappende
+           * Kacheln (`lib/camera.ts`, `reprocess`).
+           *
+           * Ohne das wäre „Noch einmal versuchen" eine Wiederholung derselben
+           * Anfrage — und bei Temperatur 0 liefert dieselbe Anfrage fast
+           * dasselbe Ergebnis. Der Nutzer wartete ein zweites Mal auf denselben
+           * Fehler und verbrauchte dafür Kontingent.
+           *
+           * Schlägt das Neu-Aufbereiten fehl (kein Speicher für ein großes
+           * Canvas), gilt das bisherige Bild. Ein Versuch mit dem alten Bild ist
+           * mehr wert als gar keiner.
+           */
+          let sending = capture
+          if (attempt > 0) {
+            try {
+              sending = await reprocess(capture, { maxEdge: MAX_EDGE_RETRY })
+            } catch {
+              sending = capture
+            }
+          }
+
+          return extractReceipt(sending, enterPhase, jobId)
         }),
       }
     }
@@ -593,8 +621,16 @@ export function ScanProcessing() {
         </p>
       )}
 
+      {/*
+        Die Kontrollzeile. Seit Schritt 18 steht hier auch, was die
+        Vorverarbeitung getan hat — ohne das lässt sich am Gerät nicht
+        unterscheiden, ob ein Bon schlecht gelesen wurde, weil er quer lag, oder
+        obwohl er gedreht wurde.
+      */}
       <p className={styles.meta}>
         {dimensions(capture)} · {sizeInKb(capture.blob.size)} · JPEG
+        {capture.rotatedBy !== 0 && ` · ${capture.rotatedBy}° gedreht`}
+        {capture.tiles.length > 0 && ` · ${capture.tiles.length + 1} Kacheln`}
       </p>
     </div>
   )
