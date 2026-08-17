@@ -27,6 +27,7 @@ import {
   TICK_MS,
 } from '../lib/progress'
 import { clearPendingExtraction, setPendingExtraction } from '../lib/scanResult'
+import { blankScan, isWorthReviewing } from '../lib/salvage'
 import { expectedDurations, recordPhaseDuration } from '../lib/timing'
 import styles from './ScanProcessing.module.css'
 
@@ -57,10 +58,39 @@ const HOPELESS = [
 /** Der Satz für einen Fehlschlag, zu dem der Server nichts Genaueres gesagt hat. */
 const GENERIC_FAIL = 'Die Erkennung hat nicht geklappt. Bitte versuch es noch einmal.'
 
+/**
+ * Was der Nutzer beim nächsten Foto anders machen kann.
+ *
+ * Sie stehen erst seit Schritt 18 hier, und der Grund ist unangenehm: Bis dahin
+ * stand auf dem Fehlerbildschirm nur, **dass** es nicht ging. Wer nicht weiß,
+ * woran es lag, macht beim zweiten Versuch dasselbe Foto — und bekommt dasselbe
+ * Ergebnis.
+ *
+ * Bewusst drei und nicht acht. Es sind die drei, die auf den Bons, an denen die
+ * Erkennung tatsächlich gescheitert ist, jeweils der Grund waren.
+ */
+const PHOTO_TIPS = [
+  'Den Bon aufrecht fotografieren, nicht quer — die Schrift wird sonst beim Verkleinern zu klein.',
+  'Nur den Bon ins Bild nehmen. Liegt ein zweites Blatt daneben, liest die Erkennung mit.',
+  'Flach hinlegen, gutes Licht, keine Schatten oder Falten quer über den Zeilen.',
+]
+
+/**
+ * Fehler, bei denen das Foto der Grund sein kann — und nur bei denen sind die
+ * Aufnahme-Tipps angebracht.
+ *
+ * Bei einer abgelaufenen Anmeldung „achte auf gutes Licht" zu schreiben, wäre
+ * nicht hilfreich, sondern eine Zumutung: Es schiebt dem Nutzer einen Fehler
+ * zu, den er nicht gemacht hat.
+ */
+const PHOTO_RELATED = ['bild_unlesbar', 'nichts_erkannt', 'modell_json', 'bild_zu_gross']
+
 interface ScanError {
   /** Bereits auf Deutsch und direkt anzeigbar. */
   message: string
   retryable: boolean
+  /** Kann das Foto der Grund sein? Dann werden die Tipps eingeblendet. */
+  photoRelated: boolean
   /**
    * Die Rohantwort des Modells, falls es eine gab.
    *
@@ -77,10 +107,11 @@ function describe(cause: unknown): ScanError {
     return {
       message: cause.message,
       retryable: !HOPELESS.includes(cause.code),
+      photoRelated: PHOTO_RELATED.includes(cause.code),
       raw: cause.raw,
     }
   }
-  return { message: GENERIC_FAIL, retryable: true, raw: null }
+  return { message: GENERIC_FAIL, retryable: true, photoRelated: false, raw: null }
 }
 
 /** Dateigröße in KB – nur zur Kontrolle, dass das Verkleinern wirkt. */
@@ -188,6 +219,14 @@ export function ScanProcessing() {
   const settledRef = useRef(false)
   const finishTimerRef = useRef(0)
 
+  /**
+   * Ins Formular gehen — mit dem, was da ist.
+   *
+   * Seit Schritt 18 nicht mehr nur der Erfolgsweg: Auch ein Teilergebnis und
+   * das leere Formular für „Manuell erfassen" laufen hier durch. Der
+   * Korrektur-Screen kann mit allen dreien umgehen, und es gibt keinen Grund,
+   * für den halb gelesenen Bon einen zweiten Weg zu bauen.
+   */
   const finish = useCallback(
     (result: ExtractionResponse) => {
       if (settledRef.current) return
@@ -226,6 +265,41 @@ export function ScanProcessing() {
   }, [])
 
   /**
+   * Das Ergebnis eines Durchlaufs einordnen — Formular oder Fehler.
+   *
+   * ---------------------------------------------------------------------------
+   * DER EIGENTLICHE UX-FIX AUS SCHRITT 18
+   * ---------------------------------------------------------------------------
+   *
+   * Vorher gab es hier nur `finish(result)`. Ein Ergebnis, das durchkam, war
+   * gut; alles andere war ein Fehler. Dazwischen lag aber der häufigste Fall:
+   * ein Bon, von dem Händler, Summe und die meisten Positionen gelesen wurden.
+   *
+   * Jetzt entscheidet `isWorthReviewing` (siehe `lib/salvage.ts`): Ist
+   * irgendetwas Verwertbares da, geht es ins Formular — der Hinweis darüber
+   * sagt, dass es unvollständig sein kann. Nur wenn wirklich nichts ankam,
+   * bleibt der Fehlerbildschirm, und der hat seit Schritt 18 Tipps und einen
+   * Weg nach vorn statt einer Sackgasse.
+   */
+  const settle = useCallback(
+    (result: ExtractionResponse) => {
+      if (isWorthReviewing(result.extraction)) {
+        finish(result)
+        return
+      }
+
+      failWith(
+        new ExtractionError(
+          'nichts_erkannt',
+          'Auf dem Foto war nichts zu erkennen, was nach einem Kassenzettel aussieht — weder ' +
+            'ein Händler noch eine Summe noch eine einzelne Position.',
+        ),
+      )
+    },
+    [finish, failWith],
+  )
+
+  /**
    * Nachsehen, ob der Server inzwischen fertig ist.
    *
    * Wird an zwei Stellen aufgerufen: wenn die Seite wieder sichtbar wird, und
@@ -241,7 +315,7 @@ export function ScanProcessing() {
 
     if (job.status === 'done' && job.result) {
       try {
-        finish(await resumeScan(job.result, enterPhase))
+        settle(await resumeScan(job.result, enterPhase))
         return true
       } catch (cause) {
         failWith(cause)
@@ -259,7 +333,7 @@ export function ScanProcessing() {
     // `enterPhase` wird bei jedem Rendern neu erzeugt, ist aber nur ein Melder
     // und trägt keinen Zustand.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [finish, failWith])
+  }, [settle, failWith])
 
   /*
    * Zurück aus dem Hintergrund: einmal nachfragen. Das ist der eigentliche
@@ -350,7 +424,7 @@ export function ScanProcessing() {
     requestRef.current.promise.then(
       (result) => {
         if (cancelled) return
-        finish(result)
+        settle(result)
       },
       (cause: unknown) => {
         if (cancelled) return
@@ -370,7 +444,7 @@ export function ScanProcessing() {
       cancelled = true
       window.clearTimeout(finishTimerRef.current)
     }
-  }, [capture, attempt, finish, failWith, recover])
+  }, [capture, attempt, settle, failWith, recover])
 
   if (!capture) {
     return (
@@ -398,6 +472,24 @@ export function ScanProcessing() {
           <p className={styles.sub}>{error.message}</p>
         </div>
 
+        {/*
+          Was beim nächsten Foto anders geht. Steht über den Knöpfen und nicht
+          darunter: Wer gleich auf „Noch einmal versuchen" tippt, soll die Tipps
+          gelesen haben — sonst entsteht dasselbe Foto und dasselbe Ergebnis.
+
+          Nur bei einem Fehler, an dem das Foto überhaupt schuld sein kann. Bei
+          einer abgelaufenen Anmeldung wären sie eine Zumutung.
+        */}
+        {error.photoRelated && (
+          <ul className={styles.tips}>
+            {PHOTO_TIPS.map((tip) => (
+              <li key={tip} className={styles.tip}>
+                {tip}
+              </li>
+            ))}
+          </ul>
+        )}
+
         {error.raw && (
           <details className={styles.raw}>
             <summary className={styles.rawSummary}>Rohantwort des Modells</summary>
@@ -408,9 +500,34 @@ export function ScanProcessing() {
         <div className={styles.actions}>
           {error.retryable && (
             <button type="button" className={styles.retry} onClick={() => setAttempt((n) => n + 1)}>
-              Noch einmal versuchen
+              {/*
+                Ab dem zweiten Versuch heißt der Knopf anders, weil er etwas
+                anderes tut: Er schickt nicht dieselbe Anfrage noch einmal,
+                sondern das Bild in höherer Auflösung und, bei einem langen Bon,
+                in überlappenden Kacheln (`lib/preprocess.ts`). Ein Knopf, der
+                zweimal dasselbe versucht, ist ein Knopf, der lügt.
+              */}
+              {attempt === 0 ? 'Genauer erkennen' : 'Noch einmal versuchen'}
             </button>
           )}
+
+          {/*
+            Der Weg nach vorn, den es bis Schritt 18 nicht gab. Ohne ihn endet
+            der Bildschirm in einer Sackgasse: Der Nutzer hat den Bon in der
+            Hand, will ihn erfassen — und kann es nicht, weil die Erkennung
+            nicht mitspielt. Das Formular kann er ohnehin bedienen.
+          */}
+          <button
+            type="button"
+            className={styles.manual}
+            onClick={() => {
+              setPendingExtraction(blankScan())
+              navigate('/scan/pruefen', { replace: true })
+            }}
+          >
+            Manuell erfassen
+          </button>
+
           <Link to="/scan" replace className={styles.skip}>
             Neu aufnehmen
           </Link>

@@ -45,6 +45,7 @@ import {
   todayISO,
 } from '../lib/format'
 import { clearPendingExtraction, getPendingExtraction } from '../lib/scanResult'
+import { reviewQuality } from '../lib/salvage'
 import type {
   CategoryId,
   MerchantKind,
@@ -318,6 +319,18 @@ function dateNotice(iso: string, today: string): string | null {
  */
 let nextKey = 1
 
+/**
+ * Ab wann eine Zeile gelb umrandet wird.
+ *
+ * 0,8 und nicht 0,5: Die Konfidenz aus `lines.ts` sinkt nur, wenn es einen
+ * belegbaren Grund gibt — eine vom Modell gemeldete unleserliche Zeile, ein
+ * Name ohne Buchstaben, eine Zeilenprobe, die nicht aufgeht. Schon ein einziger
+ * dieser Gründe (Faktor 0,7 oder tiefer) soll den zweiten Blick auslösen. Wer
+ * die Schwelle tiefer legt, bekommt eine Markierung, die fast nie erscheint —
+ * und die dann niemand kennt, wenn sie einmal erscheint.
+ */
+const LOW_CONFIDENCE = 0.8
+
 const SUPERSEDED_WARNINGS = [
   'summe_weicht_ab',
   'summe_fehlt',
@@ -504,6 +517,26 @@ function ReviewBody({ source }: { source: ReviewSource }) {
 
   const openCategories = withoutCategory(drafts)
   const learned = drafts.filter((draft) => draft.known).map((draft) => draft.key)
+  /*
+   * Zeilen, die die Erkennung nur unsicher gelesen hat. Eine bearbeitete Zeile
+   * fällt heraus: Der Nutzer hat hingesehen, damit ist die Unsicherheit
+   * erledigt — sie weiter zu markieren wäre eine Behauptung gegen sein Urteil.
+   */
+  const uncertain = drafts
+    .filter((draft) => draft.confidence < LOW_CONFIDENCE && !draft.edited)
+    .map((draft) => draft.key)
+
+  /*
+   * Ist an diesem Ergebnis erkennbar etwas unvollständig?
+   *
+   * Zwei Quellen, und sie ergänzen sich: `reviewQuality` sieht die Warnungen
+   * der Erkennung (abgeschnittene Antwort, fehlende Zeilen), `uncertain` sieht
+   * die einzelnen Zeilen. Eine davon genügt für den Hinweis — beides zu
+   * verlangen hieße, den halben Grund zu verschweigen.
+   */
+  const incomplete =
+    uncertain.length > 0 ||
+    (source.scan !== null && reviewQuality(source.scan.extraction) === 'teilweise')
 
   const notes = (source.scan?.extraction.warnings ?? []).filter(
     (warning) => !SUPERSEDED_WARNINGS.includes(warning.code),
@@ -600,6 +633,30 @@ function ReviewBody({ source }: { source: ReviewSource }) {
           />
         ) : (
           <Head backTo="/scan" backLabel="Erneut scannen" title="Prüfen & korrigieren" />
+        )}
+
+        {/*
+          Das Hinweis-Banner über einem Teilergebnis (Schritt 18).
+
+          Es steht ganz oben und nicht bei den Warnungen weiter unten, weil es
+          etwas anderes ist als die: Die Warnungen sagen, WAS auffällig ist. Das
+          hier sagt, dass die Liste womöglich **unvollständig** ist — und das
+          muss man wissen, bevor man anfängt, einzelne Zeilen zu prüfen. Wer erst
+          unten davon liest, hat die Liste schon für vollständig gehalten.
+
+          Nur beim frischen Scan: Ein gespeicherter Bon ist geprüft und abgehakt.
+        */}
+        {source.scan && incomplete && (
+          <div className={`${styles.banner} ${styles['banner--warn']}`} role="status">
+            <div className={styles.bannerIcon} aria-hidden="true">
+              !
+            </div>
+            <div className={styles.bannerText}>
+              Einige Positionen konnten nicht sicher gelesen werden — bitte prüfen. Gelb umrandete
+              Zeilen sind unsicher, und es können auch welche ganz fehlen. Fehlende Zeilen lassen
+              sich unten mit „Position hinzufügen" ergänzen.
+            </div>
+          </div>
         )}
 
         <div className={styles.summary}>
@@ -738,7 +795,12 @@ function ReviewBody({ source }: { source: ReviewSource }) {
                   ? ` ${learned.length} ${learned.length === 1 ? 'Zeile ist' : 'Zeilen sind'} einem Produkt zugeordnet – eine Korrektur hier gilt rückwirkend für alle Käufe.`
                   : ` ${learned.length} ${learned.length === 1 ? 'Zeile war' : 'Zeilen waren'} schon bekannt.`)}
             </div>
-            <ReceiptItemList items={items} onEdit={(item) => setEditing(item.id)} learnedIds={learned} />
+            <ReceiptItemList
+              items={items}
+              onEdit={(item) => setEditing(item.id)}
+              learnedIds={learned}
+              uncertainIds={uncertain}
+            />
             <TraitLegend items={items} />
           </>
         )}

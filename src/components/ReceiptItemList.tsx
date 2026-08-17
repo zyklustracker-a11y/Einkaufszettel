@@ -65,32 +65,57 @@ export function ReceiptItemList({
   items,
   onEdit,
   learnedIds,
+  uncertainIds,
 }: {
   items: ReceiptItem[]
   onEdit?: (item: ReceiptItem) => void
   learnedIds?: readonly string[]
+  /**
+   * Zeilen, die die Erkennung nur unsicher gelesen hat. Sie bekommen eine gelbe
+   * Umrandung — eine Bitte um einen zweiten Blick, keine Fehlermeldung.
+   *
+   * Nur der Korrektur-Screen übergibt das. In der Einkaufs-Ansicht ist der Bon
+   * längst geprüft, und eine Markierung dort wäre eine Behauptung über etwas,
+   * das der Nutzer bereits bestätigt hat.
+   */
+  uncertainIds?: readonly string[]
 }) {
   const traits = getActiveTraits()
   const learned = new Set(learnedIds ?? [])
+  const uncertain = new Set(uncertainIds ?? [])
 
   return (
     <div className={styles.list}>
-      {items.map((item) =>
-        onEdit ? (
+      {items.map((item) => {
+        const className = uncertain.has(item.id)
+          ? `${styles.row} ${styles['row--uncertain']}`
+          : styles.row
+
+        return onEdit ? (
           <button
             key={item.id}
             type="button"
-            className={`${styles.row} ${styles['row--tappable']}`}
+            className={`${className} ${styles['row--tappable']}`}
             onClick={() => onEdit(item)}
+            /*
+             * Die Farbe allein genügt nicht: Wer sie nicht unterscheiden kann,
+             * bekommt die Information über den Vorlesenamen. Ohne das wäre die
+             * Markierung für einen Teil der Nutzer schlicht nicht vorhanden.
+             */
+            aria-label={
+              uncertain.has(item.id)
+                ? `${item.name} — unsicher gelesen, bitte prüfen`
+                : undefined
+            }
           >
             <Row item={item} traits={traits} learned={learned.has(item.id)} />
           </button>
         ) : (
-          <div key={item.id} className={styles.row}>
+          <div key={item.id} className={className}>
             <Row item={item} traits={traits} learned={learned.has(item.id)} />
           </div>
-        ),
-      )}
+        )
+      })}
     </div>
   )
 }

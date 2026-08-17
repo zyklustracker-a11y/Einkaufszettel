@@ -714,3 +714,20 @@
   font-weight: 600;
   cursor: pointer;
 }
+
+/*
+ * Das Hinweis-Banner über einem Teilergebnis (Schritt 18).
+ *
+ * Es erbt die bernsteinfarbene Fläche von `.banner`; der einzige Unterschied
+ * ist die Ausrichtung: Der Text ist drei Zeilen lang, und ein senkrecht
+ * zentriertes Ausrufezeichen daneben stünde dann in der Mitte des Absatzes
+ * statt bei seinem Anfang.
+ */
+.banner--warn {
+  align-items: flex-start;
+}
+
+.banner--warn .bannerIcon {
+  margin-top: 1px;
+  flex: 0 0 auto;
+}

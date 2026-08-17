@@ -96,6 +96,21 @@ export interface ExtractedItem {
    * Zeile wohin geflossen ist — und welche fehlt, wenn eine Summe nicht aufgeht.
    */
   sourceLines: string[]
+  /**
+   * Wie sicher diese Position gelesen wurde, zwischen 0 und 1.
+   *
+   * **Nicht vom Modell geschätzt, sondern gerechnet** (`lines.ts`). Ein Modell,
+   * das je Zeile eine Zahl zwischen 0 und 1 nennen soll, bekommt fünfzig
+   * zusätzliche Schätzaufgaben neben dem Abtippen — und genau solche
+   * Nebenaufgaben haben die Erkennung schon zweimal verdorben. Es zeigt
+   * stattdessen nur mit dem Finger auf das, was es nicht entziffern konnte; die
+   * Zahl entsteht daraus und aus der Frage, wie sauber sich die Zeile zerlegen
+   * ließ.
+   *
+   * Der Korrektur-Screen umrandet alles unter `LOW_CONFIDENCE` gelb. Nicht rot:
+   * Es ist kein Fehler, sondern eine Bitte um einen zweiten Blick.
+   */
+  confidence: number
 }
 
 /**

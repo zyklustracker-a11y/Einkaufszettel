@@ -99,6 +99,63 @@ export interface ParsedItem extends ModelItem {
   sourceLines: string[]
 }
 
+/**
+ * Wie sicher eine Zeile gelesen wurde — gerechnet, nicht geschätzt.
+ *
+ * ---------------------------------------------------------------------------
+ * WARUM DIE ZAHL HIER ENTSTEHT UND NICHT IM MODELL
+ * ---------------------------------------------------------------------------
+ *
+ * Der naheliegende Weg wäre, das Modell je Zeile nach einer Zahl zwischen 0 und
+ * 1 zu fragen. Er ist aus zwei Gründen der schlechtere.
+ *
+ * Erstens: Es wären fünfzig zusätzliche Schätzaufgaben neben dem Abtippen, und
+ * genau solche Nebenaufgaben haben die Erkennung schon zweimal verdorben (siehe
+ * den Kopf von `prompt.ts`). Zweitens sind Sprachmodelle bei kalibrierten
+ * Zahlen notorisch schlecht — sie schreiben 0,95 unter alles, auch unter das,
+ * was sie erfunden haben.
+ *
+ * Das Modell bekommt deshalb nur die eine Aufgabe, die es gut kann: mit dem
+ * Finger auf die Zeilen zeigen, die es nicht entziffern konnte
+ * (`unsichere_zeilen`). Alles Weitere ist hier ablesbar, und zwar an der Zeile
+ * selbst:
+ *
+ *   * Hat das Modell diese Zeile als unsicher markiert?
+ *   * Blieb überhaupt ein Name übrig, oder war die Zeile nur ein Betrag?
+ *   * Steht in dem Namen wenigstens ein Buchstabe? Ein „Artikel" aus reinen
+ *     Ziffern und Satzzeichen ist fast immer ein Lesefehler.
+ *   * Wimmelt es von Zeichen, die auf keinem Kassenbon stehen? Thermodruck wird
+ *     bei schlechtem Foto zu Zeichensalat, und der ist sichtbar.
+ *
+ * Multiplikativ verrechnet: Zwei Auffälligkeiten ziehen zusammen tiefer als
+ * eine, und der Wert bleibt zwischen 0 und 1.
+ */
+const UNSICHER_FAKTOR = 0.5
+const KURZER_NAME_FAKTOR = 0.7
+const OHNE_BUCHSTABE_FAKTOR = 0.5
+const ZEICHENSALAT_FAKTOR = 0.7
+
+/** Zeichen, die auf einem deutschen Kassenbon vorkommen dürfen. */
+const SAUBERE_ZEICHEN = /[A-Za-zÄÖÜäöüß0-9 .,\-+%&/()'*:x]/
+
+function konfidenz(name: string, unsicher: boolean): number {
+  let wert = 1
+
+  if (unsicher) wert *= UNSICHER_FAKTOR
+  if (name.length < 3) wert *= KURZER_NAME_FAKTOR
+  if (!/[A-Za-zÄÖÜäöüß]/.test(name)) wert *= OHNE_BUCHSTABE_FAKTOR
+
+  /*
+   * Anteil ungewöhnlicher Zeichen. Ab einem Zehntel wird es verdächtig: Auf
+   * einem sauber gelesenen Bon steht so gut wie nichts außerhalb der Liste
+   * oben, und wenn doch, dann einzeln.
+   */
+  const fremd = [...name].filter((zeichen) => !SAUBERE_ZEICHEN.test(zeichen)).length
+  if (name.length > 0 && fremd / name.length > 0.1) wert *= ZEICHENSALAT_FAKTOR
+
+  return Math.round(Math.min(1, Math.max(0, wert)) * 100) / 100
+}
+
 export interface ParseResult {
   items: ParsedItem[]
   /**
@@ -217,23 +274,52 @@ function kindOf(name: string, cents: number): ItemKind {
  * sie die vorige an. Beides kommt auf deutschen Bons vor, und beide Fälle sind
  * nebenan getestet.
  */
-export function parseLines(rawLines: unknown): ParseResult {
+export function parseLines(
+  rawLines: unknown,
+  /**
+   * Die Nummern der Zeilen, die das Modell selbst als unsicher gemeldet hat —
+   * 0-basiert, bezogen auf `rawLines`. Leer, wenn es nichts gemeldet hat oder
+   * das Feld nicht kennt.
+   */
+  rawUncertain: unknown = [],
+): ParseResult {
   const lines = Array.isArray(rawLines)
     ? rawLines.filter((line): line is string => typeof line === 'string')
     : []
+
+  const uncertain = new Set(
+    Array.isArray(rawUncertain)
+      ? rawUncertain.filter((entry): entry is number => Number.isInteger(entry))
+      : [],
+  )
 
   const items: ParsedItem[] = []
   const unassigned: string[] = []
 
   /** Zeilen ohne Betrag, die auf ihre Position warten. */
   let pending: string[] = []
+  /**
+   * Die Nummern dieser wartenden Zeilen.
+   *
+   * Getrennt von `pending` mitgeführt, weil die Konfidenz nicht am Text hängt,
+   * sondern an der Zeile: Eine Position aus drei gedruckten Zeilen ist unsicher,
+   * sobald das Modell **eine** davon nicht entziffern konnte — auch wenn genau
+   * dieser Teil im zusammengesetzten Namen unauffällig aussieht.
+   */
+  let pendingIndexes: number[] = []
 
   const push = (item: ParsedItem) => {
     items.push(item)
     pending = []
+    pendingIndexes = []
   }
 
-  for (const raw of lines) {
+  /** War eine der beteiligten Zeilen vom Modell als unsicher gemeldet? */
+  const anyUncertain = (index: number) =>
+    uncertain.has(index) || pendingIndexes.some((entry) => uncertain.has(entry))
+
+  for (let index = 0; index < lines.length; index++) {
+    const raw = lines[index]
     const text = tidy(raw)
     if (text === '') continue
 
@@ -248,9 +334,11 @@ export function parseLines(rawLines: unknown): ParseResult {
         // in den Zeilen darüber steht.
         const name = [...pending, total.before].filter(Boolean).join(' ').trim()
         const sourceLines = [...pending, text]
+        const sicherheit = konfidenz(name, anyUncertain(index))
         push({
           rohtext: name,
           art: kindOf(name, total.cents),
+          konfidenz: sicherheit,
           menge: quantity.amount,
           einheit: normalizeUnit(quantity.unit),
           einzelpreis_cent: quantity.unitPriceCents,
@@ -294,6 +382,7 @@ export function parseLines(rawLines: unknown): ParseResult {
       push({
         rohtext: name,
         art: kindOf(name, amount.cents),
+        konfidenz: konfidenz(name, anyUncertain(index)),
         menge: null,
         einheit: null,
         // Ohne Mengenzeile ist der Einzelpreis die Zeilensumme. Etwas anderes
@@ -308,6 +397,7 @@ export function parseLines(rawLines: unknown): ParseResult {
 
     // Kein Betrag, keine Menge: Das ist ein Stück Name und wartet.
     pending.push(text)
+    pendingIndexes.push(index)
   }
 
   // Was am Ende noch wartet, gehört zu keiner Position — und wird gezeigt.

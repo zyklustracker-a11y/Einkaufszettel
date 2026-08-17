@@ -59,6 +59,8 @@ export interface ModelItem {
   einzelpreis_cent?: unknown
   zeilensumme_cent?: unknown
   steuer?: unknown
+  /** Die Vorab-Konfidenz aus `lines.ts`, zwischen 0 und 1. */
+  konfidenz?: unknown
 }
 
 /** Eine Zeile aus dem Steuerblock am Fuß des Bons. */
@@ -80,6 +82,13 @@ export interface ModelReceipt {
    * `lines.ts` und nicht mehr das Modell.
    */
   zeilen?: unknown
+  /**
+   * Die Nummern der Zeilen, bei denen das Modell sich nicht sicher war —
+   * 0-basiert, bezogen auf `zeilen`. Grundlage der Konfidenz (`lines.ts`).
+   */
+  unsichere_zeilen?: unknown
+  /** Die auf dem Bon gedruckte Postenzahl, für den Abgleich in Phase 6. */
+  posten?: unknown
   /**
    * Fertige Positionen. Der alte Weg, den das Modell nicht mehr gefragt wird —
    * er bleibt als Rückfallebene, falls eine Antwort doch noch so aussieht.
@@ -161,6 +170,21 @@ export interface ExtractedItem {
    * wenn der Steuerklassen-Abgleich anschlägt.
    */
   sourceLines: string[]
+  /**
+   * Wie sicher diese Position gelesen wurde, zwischen 0 und 1.
+   *
+   * **Nicht vom Modell geschätzt, sondern gerechnet** (`lines.ts`). Ein Modell,
+   * das je Zeile eine Zahl zwischen 0 und 1 nennen soll, bekommt fünfzig
+   * zusätzliche Schätzaufgaben neben dem Abtippen — und genau solche
+   * Nebenaufgaben haben die Erkennung schon zweimal verdorben. Es zeigt
+   * stattdessen nur mit dem Finger auf das, was es nicht entziffern konnte; die
+   * Zahl entsteht daraus und aus der Frage, wie sauber sich die Zeile zerlegen
+   * ließ.
+   *
+   * Der Korrektur-Screen umrandet alles unter `LOW_CONFIDENCE` gelb. Nicht rot:
+   * Es ist kein Fehler, sondern eine Bitte um einen zweiten Blick.
+   */
+  confidence: number
 }
 
 /**
@@ -836,6 +860,23 @@ function resolveItem(
   const price = checkUnitPrice(kind, quantity.base, quantity.unit, rawUnitPriceCents, totalCents, lineNo)
   warnings.push(...price.warnings)
 
+  /*
+   * Die Konfidenz dieser Position.
+   *
+   * Sie beginnt bei dem, was `lines.ts` aus der gedruckten Zeile ablesen konnte
+   * (siehe `konfidenz` dort), und sinkt hier weiter, sobald eine der Prüfungen
+   * angeschlagen hat. Das ist der Punkt: Beide Quellen wissen etwas anderes.
+   * `lines.ts` sieht, ob sich die Zeile sauber zerlegen ließ; hier steht,
+   * ob die Zahlen darin zueinander passen.
+   *
+   * Multiplikativ und nicht additiv, damit zwei Auffälligkeiten zusammen tiefer
+   * ziehen als eine — und der Wert trotzdem nie unter 0 fällt.
+   */
+  let confidence = typeof raw.konfidenz === 'number' ? raw.konfidenz : 1
+  if (rawText === null) confidence *= 0.3
+  if (price.warnings.length > 0) confidence *= 0.6
+  if (quantity.warnings.length > 0) confidence *= 0.8
+
   return {
     lineNo,
     rawText: rawText ?? '(kein Text erkannt)',
@@ -853,6 +894,7 @@ function resolveItem(
     // Rabatt sind keine Produkte und bleiben ohne Zuordnung.
     suggestion: null,
     sourceLines,
+    confidence: Math.round(Math.min(1, Math.max(0, confidence)) * 100) / 100,
   }
 }
 
@@ -883,7 +925,7 @@ export function validateExtraction(model: ModelReceipt): Extraction {
     ? model.zeilen.filter((line): line is string => typeof line === 'string')
     : []
 
-  const parsed = lines.length > 0 ? parseLines(lines) : null
+  const parsed = lines.length > 0 ? parseLines(lines, model.unsichere_zeilen) : null
   const rawItems: Array<{ item: ModelItem; sourceLines: string[] }> = parsed
     ? parsed.items.map((item) => ({ item, sourceLines: item.sourceLines }))
     : (Array.isArray(model.positionen) ? model.positionen : []).map((entry) => ({

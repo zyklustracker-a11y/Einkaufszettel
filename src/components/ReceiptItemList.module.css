@@ -90,3 +90,21 @@
   font-weight: 700;
   color: var(--text);
 }
+
+/*
+ * Eine Zeile, die die Erkennung nur unsicher gelesen hat (Schritt 18).
+ *
+ * Gelb und nicht rot, und das ist der ganze Punkt: Hier ist nichts kaputt. Die
+ * Zeile bittet um einen zweiten Blick — sie meldet keinen Fehler. Rot würde
+ * fünfzehn Zeilen auf einem langen Bon in eine Mängelliste verwandeln, und
+ * danach schaut niemand mehr hin.
+ *
+ * Der linke Balken trägt die Information zusätzlich zur Umrandung: Bei
+ * eingeschaltetem Kontrastmodus verschwinden zarte Rahmen, ein 3-px-Balken
+ * nicht.
+ */
+.row--uncertain {
+  border: 1px solid var(--warn-border, #e0b000);
+  border-left-width: 3px;
+  background: var(--warn-surface, rgba(224, 176, 0, 0.07));
+}

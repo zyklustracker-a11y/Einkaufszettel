@@ -91,6 +91,13 @@ export interface DraftItem {
   edited: boolean
   /** Von Hand ergänzt — es gibt keinen Rohtext, also nichts zu lernen. */
   added: boolean
+  /**
+   * Wie sicher diese Zeile gelesen wurde, zwischen 0 und 1.
+   *
+   * Von Hand ergänzte und bereits gespeicherte Zeilen stehen auf 1: Sie kommen
+   * nicht aus einer Erkennung, es gibt also nichts zu bezweifeln.
+   */
+  confidence: number
 }
 
 /* ======================================================= Erkannt → Entwurf */
@@ -149,6 +156,9 @@ function toDraft(item: ExtractedItem): DraftItem {
     canonicalProductId: suggestion?.canonicalProductId ?? null,
     edited: false,
     added: false,
+    // `?? 1` fängt eine Antwort aus einer Edge Function ab, die das Feld noch
+    // nicht kennt — die App wird getrennt ausgerollt.
+    confidence: item.confidence ?? 1,
   }
 }
 
@@ -225,6 +235,9 @@ export function toDraftsFromSaved(items: SavedItem[]): DraftItem[] {
       canonicalProductId: item.canonicalProductId,
       edited: false,
       added: false,
+      // Ein gespeicherter Bon ist geprüft und abgehakt — an ihm gibt es nichts
+      // mehr zu bezweifeln, auch wenn die Erkennung damals unsicher war.
+      confidence: 1,
     }
   })
 }
@@ -249,6 +262,8 @@ export function emptyDraft(key: string): DraftItem {
     canonicalProductId: null,
     edited: true,
     added: true,
+    // Von Hand getippt: Es gibt keine Erkennung, die unsicher sein könnte.
+    confidence: 1,
   }
 }
 

@@ -244,3 +244,46 @@
   cursor: pointer;
   text-decoration: none;
 }
+
+/*
+ * Die Aufnahme-Tipps auf dem Fehlerbildschirm (Schritt 18).
+ *
+ * Sie sehen bewusst nicht nach Fehlermeldung aus, sondern nach Anleitung: kein
+ * Rot, keine Ausrufezeichen. Der Nutzer hat nichts falsch gemacht — er weiß
+ * nur noch nicht, worauf es bei einem Thermobon ankommt.
+ */
+.tips {
+  width: 100%;
+  margin: 0;
+  padding: 14px 16px 14px 32px;
+  border-radius: 16px;
+  background: var(--surface-2, rgba(127, 127, 127, 0.08));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tip {
+  font-size: 14px;
+  line-height: 1.45;
+  opacity: 0.85;
+}
+
+/*
+ * „Manuell erfassen" — der Weg nach vorn.
+ *
+ * Als Umriss und nicht gefüllt: Er ist die zweite Wahl nach „Genauer erkennen",
+ * aber ausdrücklich keine Randnotiz wie „Neu aufnehmen". Wer hier landet, soll
+ * ihn sehen, ohne dass er vom Hauptknopf ablenkt.
+ */
+.manual {
+  width: 100%;
+  height: 50px;
+  border: 1.5px solid var(--green);
+  border-radius: 16px;
+  background: transparent;
+  color: var(--green);
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+}
