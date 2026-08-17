@@ -257,6 +257,8 @@ export interface ExtractionWarning {
     | 'postenzahl_weicht_ab'
     /** Seit Schritt 18: Das gelesene Datum ist unplausibel (Zukunft, zu alt). */
     | 'datum_unplausibel'
+    /** Seit Schritt 18: Der Händlername kann kein Händlername sein. */
+    | 'haendler_unplausibel'
   /** Bereits auf Deutsch und direkt anzeigbar. */
   message: string
   lineNo?: number
@@ -322,6 +324,21 @@ export const MILK_HOMOGENIZED: MilkHomogenized[] = ['ja', 'nein', 'unbekannt']
  * 2,0048 € und werden als 2,00 € gedruckt.
  */
 const LINE_TOLERANCE_CENTS = 2
+
+/**
+ * Wie weit die Positionssumme von der gedruckten Summe abweichen darf, bevor
+ * gewarnt wird.
+ *
+ * Bis Schritt 18 war jede Abweichung eine Warnung — auch ein einzelner Cent.
+ * Der entsteht aber ganz ohne Fehler: Eine Kasse rundet bei gewichteten Waren
+ * je Zeile, und die Summe der gerundeten Zeilen ist nicht immer die gerundete
+ * Summe. Eine Warnung, die bei jedem zweiten Bon erscheint, liest nach kurzer
+ * Zeit niemand mehr — und dann fällt auch die auf, die etwas bedeutet.
+ *
+ * Zwei Cent, dieselbe Größenordnung wie `LINE_TOLERANCE_CENTS`. Bei einer
+ * fehlenden Zeile geht es immer um deutlich mehr.
+ */
+const TOTAL_TOLERANCE_CENTS = 2
 
 /**
  * Dieselbe Toleranz, aber mitwachsend — und zwar genau um den Betrag, den das
@@ -433,12 +450,37 @@ export function toCents(value: unknown): number | null {
   }
 
   if (typeof value === 'string') {
-    const cleaned = value.replace(/[^\d,.-]/g, '').replace(',', '.')
-    if (cleaned === '' || cleaned === '-') return null
+    const stripped = value.replace(/[^\d,.-]/g, '')
+    if (stripped === '' || stripped === '-') return null
+
+    /*
+     * Deutsche Zahlenschreibweise — der Punkt trennt Tausender, das Komma die
+     * Nachkommastellen. „1.234,56" sind eintausendzweihundertvierunddreißig
+     * Euro und sechsundfünfzig Cent.
+     *
+     * Die alte Fassung ersetzte schlicht das erste Komma durch einen Punkt und
+     * ließ den Tausenderpunkt stehen: Aus „1.234,56" wurde „1.234.56", und
+     * `Number` gibt darauf NaN zurück — der Betrag fiel ersatzlos weg. Auf
+     * einem Baumarktbon mit vierstelliger Summe ist das kein Randfall.
+     *
+     * Die Regel, die beide Fälle abdeckt: **Das letzte Trennzeichen ist das
+     * Dezimaltrennzeichen**, alle davor sind Tausendertrennzeichen. Das gilt
+     * für „1.234,56" ebenso wie für „1,234.56", und es gilt auch für „1,29"
+     * und „1.29" — dort gibt es nur eines.
+     */
+    const lastComma = stripped.lastIndexOf(',')
+    const lastDot = stripped.lastIndexOf('.')
+    const decimal = Math.max(lastComma, lastDot)
+
+    const cleaned =
+      decimal === -1
+        ? stripped
+        : `${stripped.slice(0, decimal).replace(/[.,]/g, '')}.${stripped.slice(decimal + 1)}`
+
     const parsed = Number(cleaned)
     if (!Number.isFinite(parsed)) return null
-    // Ein Komma im Text heißt: da stand ein Euro-Betrag.
-    return cleaned.includes('.') ? Math.round(parsed * 100) : parsed
+    // Ein Trennzeichen im Text heißt: da stand ein Euro-Betrag, keine Cent-Zahl.
+    return decimal === -1 ? parsed : Math.round(parsed * 100)
   }
 
   return null
@@ -912,7 +954,18 @@ function resolveItem(
  * als `Extraction` zurück. Abgelehnt wird nur in `index.ts`, und zwar nur, wenn
  * das Modell selbst sagt, dass es nichts lesen konnte.
  */
-export function validateExtraction(model: ModelReceipt): Extraction {
+export function validateExtraction(
+  model: ModelReceipt,
+  /**
+   * Der heutige Tag als `JJJJ-MM-TT` — nur für die Datumsprüfung.
+   *
+   * Als Parameter und nicht als `new Date()` mitten in der Funktion: Sonst
+   * hinge das Ergebnis am Kalender des Servers, und der Test daneben würde ab
+   * einem bestimmten Datum von selbst rot. Eine reine Funktion bleibt eine
+   * reine Funktion.
+   */
+  today: string = new Date().toISOString().slice(0, 10),
+): Extraction {
   const warnings: ExtractionWarning[] = []
 
   /*
@@ -978,7 +1031,7 @@ export function validateExtraction(model: ModelReceipt): Extraction {
     })
   } else {
     discrepancyCents = printedTotalCents - itemsTotalCents
-    if (discrepancyCents !== 0) {
+    if (Math.abs(discrepancyCents) > TOTAL_TOLERANCE_CENTS) {
       warnings.push({
         code: 'summe_weicht_ab',
         message: `Die Positionen ergeben ${euro(itemsTotalCents)}, gedruckt sind ${euro(printedTotalCents)} — ${euro(Math.abs(discrepancyCents))} Unterschied.`,
@@ -1011,6 +1064,10 @@ export function validateExtraction(model: ModelReceipt): Extraction {
   const tax = checkTaxGroups(items, model.steuerblock, printedTotalCents)
   warnings.push(...tax.warnings)
 
+  warnings.push(...checkPostenCount(model.posten, items))
+  warnings.push(...checkDate(purchasedOn, today))
+  warnings.push(...checkMerchant(merchantName))
+
   return {
     merchantName,
     purchasedOn,
@@ -1026,6 +1083,129 @@ export function validateExtraction(model: ModelReceipt): Extraction {
     unassignedLines,
     warnings,
   }
+}
+
+
+/* ================================================ Plausibilität (Schritt 18) */
+
+/**
+ * Die gedruckte Postenzahl gegen die erkannten Positionen halten.
+ *
+ * Viele Bons nennen sie am Fuß („Posten: 35"). Das ist die einzige Angabe auf
+ * dem Papier, die sagt, wie viele Zeilen es geben **müsste** — und damit die
+ * einzige Möglichkeit, eine fehlende Zeile zu bemerken, deren Betrag zufällig
+ * klein genug ist, um im Summenabgleich unterzugehen.
+ *
+ * **Gewarnt, nicht abgelehnt**, und mit Absicht großzügig: Was eine Kasse als
+ * „Posten" zählt, ist nicht einheitlich — mal zählt eine Pfandzeile mit, mal
+ * nicht, mal zählt „2 Stk" als ein Posten und mal als zwei. Deshalb wird
+ * gemeldet, was gezählt wurde, und die Entscheidung dem Nutzer überlassen.
+ */
+function checkPostenCount(raw: unknown, items: ExtractedItem[]): ExtractionWarning[] {
+  const printed = typeof raw === 'number' && Number.isInteger(raw) && raw > 0 ? raw : null
+  if (printed === null) return []
+
+  // Rabattzeilen sind Abzüge auf einen anderen Posten und keine eigenen.
+  const counted = items.filter((item) => item.kind !== 'rabatt').length
+  if (counted === printed) return []
+
+  return [
+    {
+      code: 'postenzahl_weicht_ab',
+      message:
+        `Der Bon nennt ${printed} ${printed === 1 ? 'Posten' : 'Posten'}, erkannt wurden ` +
+        `${counted}. ${
+          counted < printed
+            ? 'Es fehlt wahrscheinlich mindestens eine Zeile — bitte mit dem Papier abgleichen.'
+            : 'Möglicherweise wurde eine Zeile doppelt gelesen.'
+        }`,
+    },
+  ]
+}
+
+/**
+ * Ist das gelesene Datum plausibel?
+ *
+ * Zwei Fälle, und beide kommen von einer verlesenen Ziffer:
+ *
+ *   * **Zukunft.** Ein Einkauf, der noch nicht stattgefunden hat, ist keiner.
+ *     Aus „16.07.2026" wird schnell „16.07.2028".
+ *   * **Zu lange her.** Aus „25" wird „05", und der Bon landet zwanzig Jahre
+ *     in der Vergangenheit — mitten in den Auswertungen, wo ihn niemand sucht.
+ *
+ * Ein Tag Nachsicht in die Zukunft: Zeitzonen und ein Einkauf um 23:50 Uhr
+ * ergeben sonst Fehlalarm.
+ */
+function checkDate(purchasedOn: string | null, today: string): ExtractionWarning[] {
+  if (purchasedOn === null) return []
+
+  const bon = Date.parse(`${purchasedOn}T12:00:00Z`)
+  const now = Date.parse(`${today}T12:00:00Z`)
+  if (!Number.isFinite(bon) || !Number.isFinite(now)) return []
+
+  const days = (bon - now) / 86_400_000
+
+  if (days > 1) {
+    return [
+      {
+        code: 'datum_unplausibel',
+        message: `Das gelesene Datum (${purchasedOn}) liegt in der Zukunft. Bitte prüfen.`,
+      },
+    ]
+  }
+
+  if (days < -365 * 2) {
+    return [
+      {
+        code: 'datum_unplausibel',
+        message: `Das gelesene Datum (${purchasedOn}) liegt mehr als zwei Jahre zurück. Bitte prüfen.`,
+      },
+    ]
+  }
+
+  return []
+}
+
+/**
+ * Sieht der Händlername nach einem Händlernamen aus?
+ *
+ * Nur zwei sehr grobe Prüfungen, und das ist Absicht: Läden heißen „E center",
+ * „NP", „ALDI SÜD Fil. 4711" und alles dazwischen. Wer hier streng prüft,
+ * verwirft mehr richtige Namen als falsche.
+ *
+ * Gemeldet wird deshalb nur, was gar kein Name sein **kann**: eine reine
+ * Zahlenfolge (fast immer eine verlesene Steuer- oder Filialnummer aus dem
+ * Bonkopf) und ein Text in Satzlänge (dann hat das Modell die Anschrift
+ * mitgenommen).
+ *
+ * **Die Anschrift selbst wird nicht geprüft**, weil sie gar nicht erst erfasst
+ * wird: Der Struktur-Prompt fragt bewusst nur nach dem Namen. Jede zusätzliche
+ * Frage konkurriert mit dem Abschreiben, und die Anschrift trägt zur
+ * Auswertung nichts bei — Händler werden über `merchant_key()` zusammengeführt,
+ * nicht über ihre Straße.
+ */
+function checkMerchant(merchantName: string | null): ExtractionWarning[] {
+  if (merchantName === null) return []
+
+  if (/^[\d\s.\-/]+$/.test(merchantName)) {
+    return [
+      {
+        code: 'haendler_unplausibel',
+        message: `Als Händler wurde „${merchantName}" gelesen — das sieht nach einer Nummer aus dem Bonkopf aus. Bitte prüfen.`,
+      },
+    ]
+  }
+
+  if (merchantName.length > 60) {
+    return [
+      {
+        code: 'haendler_unplausibel',
+        message: 'Der gelesene Händlername ist ungewöhnlich lang — vermutlich ist die Anschrift mit hineingeraten. Bitte prüfen.',
+      },
+    ]
+  }
+
+  return []
 }
 
 /**

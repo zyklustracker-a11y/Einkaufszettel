@@ -290,3 +290,143 @@ test('Tankbeleg', async (t) => {
     assert.equal(items[0].zeilensumme_cent, 198)
   })
 })
+
+/* ============================================================================
+ * SCHRITT 18 — deutsche Bonformate jenseits von Edeka und REWE
+ * ========================================================================== */
+
+test('Ziffern als Steuerkennzeichen (toom, Baumärkte)', async (t) => {
+  await t.test('eine Zeile mit „7" am Ende ist eine Position', () => {
+    /*
+     * DER FEHLER, DER DEN GANZEN toom-BON GEKOSTET HAT: Das Muster für den
+     * Betrag am Zeilenende ließ nur Buchstaben als Kennzeichen zu. Eine „7"
+     * hinter dem Betrag ergab deshalb nicht etwa ein falsches Kennzeichen —
+     * sie verhinderte den Treffer vollständig. Die Zeile wurde zum
+     * Namensfragment, und der Bon hatte am Ende null Positionen.
+     */
+    const [item] = parseLines(['4388950829864 1,000 STK LAVENDEL WEISS 2,99 7']).items
+    assert.equal(item.zeilensumme_cent, 299)
+    assert.equal(item.steuer, '7')
+    assert.equal(item.rohtext, 'LAVENDEL WEISS')
+  })
+
+  await t.test('auch zweistellig: „19"', () => {
+    const [item] = parseLines(['4042448169419 1,000 STK Klett für Fenste 14,99 19']).items
+    assert.equal(item.zeilensumme_cent, 1499)
+    assert.equal(item.steuer, '19')
+  })
+
+  await t.test('Mengenzeile im Format „2,000 STK a 5,99"', () => {
+    const [item] = parseLines(['4250787606599 2,000 STK a 5,99 Calibrachoa-Mix 11,98 7']).items
+    assert.equal(item.rohtext, 'Calibrachoa-Mix')
+    assert.equal(item.menge, 2)
+    assert.equal(item.einheit, 'stk')
+    assert.equal(item.einzelpreis_cent, 599)
+    assert.equal(item.zeilensumme_cent, 1198)
+    assert.equal(item.steuer, '7')
+  })
+
+  await t.test('die Artikelnummer landet nicht im Namen', () => {
+    const [item] = parseLines(['5701952006175 1,000 STK PETERSILIE, KRAU 2,99 7']).items
+    assert.ok(!item.rohtext?.toString().includes('5701952'), `Name: „${item.rohtext}"`)
+  })
+})
+
+test('Menge mitten in der Zeile: „0,99 € x 2"', async (t) => {
+  await t.test('Einzelpreis und Stückzahl werden herausgelöst', () => {
+    // So druckt der Edeka-Bon es. Ohne dieses Muster wäre der Einzelpreis 1,98
+    // statt 0,99 — und der Bestpreisvergleich verglichen Doppelpackungen mit
+    // Einzelstücken.
+    const [item] = parseLines(['BIO ALNA.D.BR 0,99 € x 2 1,98 A']).items
+    assert.equal(item.rohtext, 'BIO ALNA.D.BR')
+    assert.equal(item.menge, 2)
+    assert.equal(item.einheit, 'stk')
+    assert.equal(item.einzelpreis_cent, 99)
+    assert.equal(item.zeilensumme_cent, 198)
+  })
+
+  await t.test('auch ohne Währungszeichen', () => {
+    const [item] = parseLines(['BIO AVOCADOS 2,49 x 2 4,98 A']).items
+    assert.equal(item.menge, 2)
+    assert.equal(item.einzelpreis_cent, 249)
+  })
+
+  await t.test('ein „x" im Artikelnamen wird nicht zur Menge', () => {
+    // Die Bremse: Das Muster verlangt Preis, „x", Zahl und dann Zeilenende.
+    const [item] = parseLines(['XOX ERDNUSS EXTRA 1,99 B']).items
+    assert.equal(item.rohtext, 'XOX ERDNUSS EXTRA')
+    assert.equal(item.menge, null)
+  })
+})
+
+test('Tausenderpunkt', () => {
+  // „1.234,56" sind 1234,56 und nicht 234,56. Der Unterschied wäre ein
+  // plausibel aussehender, um 1000 Euro falscher Betrag.
+  const [item] = parseLines(['KUECHENZEILE 1.234,56 A']).items
+  assert.equal(item.zeilensumme_cent, 123456)
+})
+
+test('Zeilen aus dem Bonfuß werden nicht zu Positionen', async (t) => {
+  const footer = [
+    'SUMME 120,67',
+    'GEGEBEN 150,00',
+    'Netto-Entgelt 23,76',
+    'MwSt-Betrag 4,51',
+    'Rückgeld 29,33',
+    'Mastercard 87,75',
+  ]
+
+  for (const line of footer) {
+    await t.test(`„${line}" zählt nicht als Artikel`, () => {
+      const result = parseLines([line])
+      assert.equal(result.items.length, 0, `„${line}" wurde zur Position`)
+      // Verschwiegen wird sie trotzdem nicht — sie steht bei den nicht
+      // zugeordneten Zeilen und ist im Korrektur-Screen nachlesbar.
+      assert.equal(result.unassigned.length, 1)
+    })
+  }
+
+  await t.test('Pfand und Rabatt bleiben Positionen', () => {
+    // Sie sind Teil des Einkaufs und gehören in die Rechnung — anders als die
+    // Zusammenfassungen oben.
+    const result = parseLines(['PFAND 0,25 A', 'RABATT -0,50 B'])
+    assert.equal(result.items.length, 2)
+    assert.equal(result.items[0].art, 'pfand')
+    assert.equal(result.items[1].art, 'rabatt')
+  })
+
+  await t.test('eine Summenzeile verdirbt die Positionen davor nicht', () => {
+    const result = parseLines(['MILCH 1,29 B', 'BROT 2,49 A', 'SUMME 3,78'])
+    assert.equal(result.items.length, 2)
+    assert.equal(
+      result.items.reduce((sum, item) => sum + (item.zeilensumme_cent as number), 0),
+      378,
+    )
+  })
+})
+
+test('Konfidenz', async (t) => {
+  await t.test('eine saubere Zeile ist sicher', () => {
+    const [item] = parseLines(['MILCH 1,5% 1,29 B']).items
+    assert.equal(item.konfidenz, 1)
+  })
+
+  await t.test('eine vom Modell gemeldete Zeile sinkt', () => {
+    const items = parseLines(['MILCH 1,29 B', 'BR0T 2,49 A'], [1]).items
+    assert.equal(items[0].konfidenz, 1)
+    assert.ok((items[1].konfidenz as number) < 0.8, `Konfidenz ${items[1].konfidenz}`)
+  })
+
+  await t.test('ein Name ganz ohne Buchstaben ist verdächtig', () => {
+    const [item] = parseLines(['### 2,49 A']).items
+    assert.ok((item.konfidenz as number) < 0.8, `Konfidenz ${item.konfidenz}`)
+  })
+
+  await t.test('die Unsicherheit gilt für die ganze Position', () => {
+    // Zwei gedruckte Zeilen, eine Position: Ist eine davon unleserlich, ist die
+    // Position unsicher — auch wenn der zusammengesetzte Name harmlos aussieht.
+    const items = parseLines(['SPRUEHSAHNE 30%', '2 Stk x 0,99 1,98 B'], [0]).items
+    assert.equal(items.length, 1)
+    assert.ok((items[0].konfidenz as number) < 0.8, `Konfidenz ${items[0].konfidenz}`)
+  })
+})

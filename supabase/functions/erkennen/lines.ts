@@ -46,8 +46,30 @@ import type { ItemKind, ModelItem } from './validate.ts'
  *
  * Das Minus darf davor oder dahinter stehen — Kassen drucken „-0,50" und
  * „0,50-" gleichermaßen.
+ *
+ * ---------------------------------------------------------------------------
+ * ERWEITERT MIT SCHRITT 18: ZIFFERN ALS STEUERKENNZEICHEN
+ * ---------------------------------------------------------------------------
+ *
+ * Das Kennzeichen am Zeilenende durfte bisher nur aus **Buchstaben** bestehen
+ * (`A`, `B`, `AW`). Das ist die Edeka- und REWE-Schreibweise. Baumärkte und
+ * viele andere Kassen drucken stattdessen den **Steuersatz als Zahl**:
+ *
+ *     4250787606599 2,000 STK a 5,99 Calibrachoa-Mix   11,98  7
+ *     4042448169419 1,000 STK       Klett für Fenste   14,99 19
+ *
+ * Und weil das Muster bis zum Zeilenende reichen muss, hat die „7" nicht etwa
+ * ein falsches Kennzeichen ergeben — sie hat den **ganzen Treffer verhindert**.
+ * Für jede solche Zeile kam kein Betrag zurück, sie wurde zum Namensfragment,
+ * und der ganze Bon hatte null Positionen. Ein toom-Bon war damit nicht bloß
+ * ungenau erfasst, sondern gar nicht.
+ *
+ * Zusätzlich zugelassen ist jetzt der **Tausenderpunkt**: „1.234,56" kommt auf
+ * einem Baumarktbon durchaus vor, und ohne ihn läse das Muster daraus 234,56 —
+ * ein plausibel aussehender, um 1000 Euro falscher Betrag.
  */
-const TRAILING_AMOUNT = /(-)?\s*(\d{1,4})[.,](\d{2})\s*(-)?\s*(?:eur|€)?\s*([A-Za-z]{1,2})?\s*$/i
+const TRAILING_AMOUNT =
+  /(-)?\s*(\d{1,3}(?:\.\d{3})*|\d{1,4})[.,](\d{2})\s*(-)?\s*(?:eur|€)?\s*([A-Za-z]{1,2}|\d{1,2})?\s*$/i
 
 /**
  * Eine Mengenzeile: „2 Stk x 0,99", „1,120 kg x 1,79 EUR/kg", „3 x 1,29",
@@ -71,7 +93,92 @@ const TRAILING_AMOUNT = /(-)?\s*(\d{1,4})[.,](\d{2})\s*(-)?\s*(?:eur|€)?\s*([A
  * geht, holt die Spritauswertung aus Zeilensumme ÷ Litern zurück.
  */
 const QUANTITY_LINE =
-  /^(\d+(?:[.,]\d+)?)\s*(stk|stck|stück|st|kg|ml|ltr|liter|l|g)?\s*[x*×à@]\s*(\d{1,4}[.,]\d{2,3})/i
+  /^(?:\d{6,14}\s+)?(\d+(?:[.,]\d+)?)\s*(stk|stck|stück|st|kg|ml|ltr|liter|l|g)?\s*(?:[x*×à@]|a(?=\s))\s*(\d{1,4}[.,]\d{2,3})/i
+
+/**
+ * Eine Mengenangabe **mitten** in der Zeile: „0,99 € x 2".
+ *
+ * Der Edeka-Bon druckt sie so, und zwar vor der Zeilensumme:
+ *
+ *     BIO ALNA.D.BR   0,99 € x 2      1,98 A
+ *
+ * `QUANTITY_LINE` oben greift hier nicht, weil es am Zeilenanfang verankert ist
+ * — und das aus gutem Grund: Ohne Anker würde ein Artikelname mit einem „x" in
+ * der Mitte zur Mengenzeile. Deshalb ein zweites, engeres Muster, das
+ * ausdrücklich nur auf dem Textteil **vor** der Zeilensumme sucht und dort am
+ * Ende verankert ist.
+ *
+ * Die Reihenfolge ist gegenüber der Mengenzeile vertauscht: erst der
+ * Einzelpreis, dann die Stückzahl. Ohne dieses Muster wäre der Einzelpreis
+ * dieser Zeile 1,98 statt 0,99 — und der Bestpreisvergleich verglichen dann
+ * Doppelpackungen mit Einzelstücken.
+ */
+const INLINE_QUANTITY = /(\d{1,4}[.,]\d{2})\s*(?:eur|€)?\s*[x*×]\s*(\d{1,3})\s*$/i
+
+/**
+ * Der Vorspann einer Baumarkt-Zeile: Artikelnummer, dann Menge und Einheit.
+ *
+ *     4388950829864 1,000 STK LAVENDEL WEISS   2,99 7
+ *     └──── EAN ───┘ └ Menge ┘
+ *
+ * `QUANTITY_LINE` greift hier nicht, weil dort ein **Einzelpreis** hinter der
+ * Menge stehen muss („a 5,99"). Bei einem Stück druckt die Kasse keinen —
+ * Einzelpreis und Zeilensumme wären dieselbe Zahl.
+ *
+ * Ohne dieses Muster bliebe der ganze Vorspann im Artikelnamen stehen. Das ist
+ * nicht bloß unschön: Der Rohtext ist der **Schlüssel des Lernkreises**
+ * (`product_mappings`). Steht die Artikelnummer darin, wird jede Zeile zu einem
+ * eigenen, nie wieder auftauchenden Schlüssel — und der Haushalt lernt nichts,
+ * weil er denselben Artikel nie zweimal sieht.
+ *
+ * Verlangt sind mindestens sechs Ziffern am Stück. Kein Artikelname beginnt so;
+ * „1,5 % FETT" oder „3 X 0,99" sind kürzer und tragen ein Trennzeichen.
+ */
+const ARTICLE_PREFIX =
+  /^(\d{6,14})\s+(?:(\d+(?:[.,]\d+)?)\s*(stk|stck|stück|st|kg|ml|ltr|liter|l|g)\b\s*)?/i
+
+interface ArticlePrefix {
+  /** Was nach dem Vorspann übrig bleibt. */
+  rest: string
+  amount: number | null
+  unit: string | null
+}
+
+/** Den Vorspann abtrennen, falls es einen gibt. */
+function takeArticlePrefix(text: string): ArticlePrefix {
+  const match = ARTICLE_PREFIX.exec(text)
+  if (!match) return { rest: text, amount: null, unit: null }
+
+  const amount = match[2] === undefined ? null : Number(match[2].replace(',', '.'))
+
+  return {
+    rest: text.slice(match[0].length),
+    amount: amount !== null && Number.isFinite(amount) && amount > 0 ? amount : null,
+    unit: match[3] ?? null,
+  }
+}
+
+/**
+ * Zeilen, die kein Artikel sind, auch wenn ein Betrag darauf steht.
+ *
+ * Der Prompt sagt dem Modell, es solle den Bonfuß weglassen — und meistens hält
+ * es sich daran. „Meistens" genügt hier nicht: Käme „SUMME 120,67" als Position
+ * durch, stünde der Gesamtbetrag ein zweites Mal in der Liste, die
+ * Positionssumme wäre doppelt so hoch, und der Summenabgleich meldete einen
+ * Fehler, den es nicht gibt.
+ *
+ * **Warum diese Zeilen in `unassigned` landen und keine eigene `art` bekommen:**
+ * `art` wird in der Datenbank gespeichert und ist dort auf `artikel`, `pfand`
+ * und `rabatt` geprüft. Ein vierter Wert bräuchte eine Migration — für etwas,
+ * das gar kein Bestandteil des Einkaufs ist. Sie werden stattdessen angezeigt
+ * und nicht mitgezählt: Der Aufklappbereich „Abgetippte Zeilen" führt sie
+ * weiterhin auf, sodass niemand raten muss, wo eine Zeile geblieben ist.
+ *
+ * `PFAND` und `RABATT` stehen hier ausdrücklich **nicht**: Sie sind Teil des
+ * Einkaufs, haben eigene Arten und gehören in die Rechnung.
+ */
+const NICHT_ARTIKEL =
+  /^(summe|zu\s*zahlen|gesamt(betrag|summe)?|total|geg(eben)?|bar|rückgeld|rueckgeld|wechselgeld|netto-?entgelt|mwst|ust|steuer|posten|payback|kundenbeleg|zahlung|karte|ec[- ]?card|mastercard|visa|girocard|trinkgeld|umsatz|netto|brutto)\b/i
 
 /**
  * Wörter, an denen eine Zeile als Pfand oder Rabatt zu erkennen ist.
@@ -191,7 +298,8 @@ function takeAmount(text: string): Amount | null {
 
   const [, minusBefore, whole, fraction, minusAfter, code] = match
   const negative = Boolean(minusBefore || minusAfter)
-  const cents = Number(whole) * 100 + Number(fraction)
+  // Der Tausenderpunkt ist eine Lesehilfe und keine Ziffer: „1.234" sind 1234.
+  const cents = Number(whole.replace(/\./g, '')) * 100 + Number(fraction)
 
   /*
    * Ein Kennzeichen ist ein bis zwei Buchstaben. Steht dort etwas anderes —
@@ -364,7 +472,14 @@ export function parseLines(
       continue
     }
 
-    const amount = takeAmount(text)
+    /*
+     * Erst den Vorspann abtrennen, dann den Betrag suchen. Die Reihenfolge ist
+     * wesentlich: Der Name entsteht aus dem, was vor dem Betrag steht — läge
+     * die Artikelnummer da noch drin, stünde sie im Namen und damit im
+     * Lernschlüssel.
+     */
+    const prefix = takeArticlePrefix(text)
+    const amount = takeAmount(prefix.rest)
 
     if (amount) {
       const name = [...pending, amount.before].filter(Boolean).join(' ').trim()
@@ -379,15 +494,39 @@ export function parseLines(
         continue
       }
 
+      /*
+       * Dasselbe, nur mit Namen: „SUMME 120,67", „GEGEBEN 150,00",
+       * „MwSt-Betrag 4,51". Sie tragen einen Betrag und sehen damit aus wie
+       * Positionen, sind aber keine — sie fassen zusammen, was schon dasteht.
+       */
+      if (NICHT_ARTIKEL.test(name)) {
+        unassigned.push(text)
+        pending = []
+        pendingIndexes = []
+        continue
+      }
+
+      /*
+       * Steht die Menge mitten in der Zeile („0,99 € x 2"), wird sie hier
+       * herausgelöst — vor dem Namen, damit sie nicht darin stehen bleibt.
+       */
+      const inline = INLINE_QUANTITY.exec(name)
+      const count = inline ? Number(inline[2]) : 0
+      const usable = inline !== null && count > 0
+
       push({
-        rohtext: name,
+        rohtext: usable ? name.slice(0, inline.index).trim() : name,
         art: kindOf(name, amount.cents),
         konfidenz: konfidenz(name, anyUncertain(index)),
-        menge: null,
-        einheit: null,
+        menge: usable ? count : prefix.amount,
+        // Ohne gedruckte Einheit ist eine Stückzahl gemeint — etwas anderes
+        // lässt sich „x 2" nicht entnehmen.
+        einheit: usable ? 'stk' : normalizeUnit(prefix.unit),
         // Ohne Mengenzeile ist der Einzelpreis die Zeilensumme. Etwas anderes
         // kann er nicht sein.
-        einzelpreis_cent: amount.cents,
+        einzelpreis_cent: usable
+          ? Math.round(Number(inline[1].replace(',', '.')) * 100)
+          : amount.cents,
         zeilensumme_cent: amount.cents,
         steuer: amount.taxCode,
         sourceLines: [...pending, text],

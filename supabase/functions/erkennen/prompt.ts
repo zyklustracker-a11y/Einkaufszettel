@@ -287,6 +287,8 @@ ANTWORTFORMAT — genau dieses JSON-Objekt, keine zusätzlichen Felder:
   "uhrzeit": "14:25",
   "waehrung": "EUR",
   "summe_cent": 655,
+  "posten": 6,
+  "unsichere_zeilen": [],
   "steuerblock": [
     { "kennzeichen": "A", "brutto_cent": 159 },
     { "kennzeichen": "B", "brutto_cent": 496 }
@@ -309,6 +311,9 @@ Feldregeln:
   Keine Objekte, keine Nummerierung, keine Zusatzfelder.
 - "haendler": der Name des Ladens aus dem Bonkopf.
 - "waehrung": nur, wenn ein Währungszeichen dasteht. Sonst null.
+- "posten": die auf dem Bon gedruckte Postenzahl, sonst null. Nicht zählen.
+- "unsichere_zeilen": die Nummern der Zeilen, die du nicht sicher lesen
+  konntest, ab 0 gezählt. Warst du überall sicher: [].
 
 Es gibt KEIN Feld für Positionen, Produktnamen, Kategorien oder Eigenschaften.
 Wenn du versucht bist, eines hinzuzufügen: nicht tun. Die Zeilen werden auf der
@@ -321,6 +326,109 @@ Zwei Kontrollen, bevor du antwortest:
 
 Und zur Erinnerung, weil es die zwei häufigsten Fehler sind:
 NUR das JSON-Objekt, sonst nichts. Und wörtlich abtippen statt deuten.
+`.trim()
+
+
+/* ----------------------------------------------------------------------------
+ * Deutsche Bonformate jenseits von Edeka und REWE (Schritt 18).
+ *
+ * Anlass waren zwei echte Bons, an denen die Erkennung gescheitert ist: ein
+ * Edeka-Bon mit 35 Positionen und ein toom-Baumarktbon. Der Baumarkt druckt
+ * anders — Artikelnummer vorn, Menge davor statt darunter, Steuersatz als
+ * Ziffer statt als Buchstabe. Nichts davon ist exotisch, es war nur nie
+ * beschrieben.
+ *
+ * WICHTIG: Was hier steht, sind Anweisungen zum ABTIPPEN, nicht zum Umrechnen.
+ * Das Zerlegen in Menge, Einzelpreis und Steuerkennzeichen macht `lines.ts` im
+ * Code — mit Tests daneben. Diese Beispiele sollen nur dafür sorgen, dass die
+ * Zeile vollständig und unverändert ankommt.
+ * -------------------------------------------------------------------------- */
+
+const STRUKTUR_FORMATE = `
+BONFORMATE, DIE DIR BEGEGNEN — tippe sie alle unverändert ab.
+
+MENGENZEILEN. Es gibt drei Schreibweisen, und alle drei bleiben, wie sie sind:
+
+    a) Menge in einer eigenen Zeile darunter:
+           SPRUEHSAHNE 30%
+             2 Stk x   0,99          1,98 B
+
+    b) Menge in derselben Zeile, VOR dem Namen (Baumärkte, Gartencenter):
+           4250787606599 2,000 STK a 5,99 Calibrachoa-Mix    11,98  7
+
+    c) Menge in derselben Zeile, NACH dem Namen (Edeka):
+           BIO ALNA.D.BR      0,99 € x 2                      1,98 A
+
+   Bei b) gehört die lange Zahl am Anfang zur Zeile und wird mitgetippt. Rechne
+   NICHTS aus: Weder 2 × 5,99 noch 0,99 × 2. Die Zeilensumme steht schon da.
+
+ZAHLEN. Sie bleiben in der Schreibweise des Bons:
+- "1,98" bleibt "1,98". Kein Punkt statt Komma, keine Umrechnung in Cent.
+- "1.234,56" bleibt "1.234,56". Der Punkt trennt die Tausender und gehört dazu.
+- "2,000 STK" bleibt "2,000 STK", auch wenn zwei Stück gemeint sind.
+
+DAS ZEICHEN AM ZEILENENDE IST DER STEUERSATZ, NIE EIN PREIS.
+- Als Buchstabe: "A", "B", seltener "AW" (Edeka, REWE, Lidl).
+- Als ZIFFER: "7" oder "19" (toom, Bauhaus, OBI, viele Fachmärkte).
+
+      Klett für Fenste     14,99 19
+                                 └── Steuersatz 19 %, NICHT Teil von 14,99
+
+  Die Ziffer gehört mit in die Zeile, genau wie der Buchstabe. Häng sie nicht
+  an den Betrag an und lass sie nicht weg.
+`.trim()
+
+const STRUKTUR_NICHT_ARTIKEL = `
+ZEILEN, DIE KEINE ARTIKEL SIND.
+
+Der Artikelbereich endet bei der Summenzeile. Alles danach gehört NICHT in
+"zeilen" — auch dann nicht, wenn ein Betrag darauf steht:
+
+    SUMME              120,67          <- nein
+    GEGEBEN            150,00          <- nein
+    Rückgeld            29,33          <- nein
+    Netto-Entgelt       23,76          <- nein
+    MwSt-Betrag          4,51          <- nein
+    Mastercard          87,75          <- nein
+    PAYBACK Punkte         60          <- nein
+    Posten: 35                         <- nein, aber siehe "posten" unten
+
+Diese Zeilen fassen zusammen, was oben schon steht. Kämen sie mit, stünde
+derselbe Betrag zweimal in der Rechnung.
+
+ZWEI AUSNAHMEN, die sehr wohl dazugehören, weil sie Teil des Einkaufs sind:
+
+    PFAND               0,15           <- JA, mit abtippen
+    RABATT             -0,50           <- JA, mit abtippen
+
+Steht auf dem Bon eine Postenzahl ("Posten: 35", "Artikel: 12", "35 Posten"),
+gib die Zahl im Feld "posten" zurück. Nicht selbst zählen — nur abschreiben,
+was dasteht. Steht keine da: null.
+`.trim()
+
+const STRUKTUR_UNSICHER = `
+WAS DU NICHT ENTZIFFERN KANNST.
+
+Thermopapier verblasst, Bons knicken, Fotos sind unscharf. Es ist normal, dass
+ein paar Zeichen nicht lesbar sind — und es ist völlig in Ordnung, das zu sagen.
+
+- Tippe die Zeile trotzdem ab, so gut es geht. Eine halbe Zeile ist mehr wert
+  als keine.
+- Ist ein BETRAG nicht sicher lesbar, rate ihn NICHT. Schreib die Zeile ohne
+  ihn. Ein erfundener Preis ist der teuerste Fehler, den du machen kannst: Er
+  sieht richtig aus und fällt niemandem auf.
+- Merk dir die Nummern der Zeilen, bei denen du unsicher warst — die Zählung
+  beginnt bei 0 — und gib sie in "unsichere_zeilen" zurück.
+
+      "zeilen": ["MILCH 1,29 B", "BR0T ?,49 A", "BUTTER 2,29 A"]
+      "unsichere_zeilen": [1]
+
+  Die App umrandet diese Zeilen dann farbig und bittet den Nutzer, sie zu
+  prüfen. Das ist genau richtig so — du sollst nicht sicherer wirken, als du
+  bist.
+
+Gib KEINE Zahl zwischen 0 und 1 an und schätze keine Prozente. Zeig nur mit dem
+Finger: unsicher oder nicht.
 `.trim()
 
 /**
@@ -415,8 +523,11 @@ export const STRUCTURE_SYSTEM_PROMPT = [
   STRUKTUR_NICHT_RATEN,
   STRUKTUR_ZEILEN,
   STRUKTUR_EIGENHEITEN,
+  STRUKTUR_FORMATE,
+  STRUKTUR_NICHT_ARTIKEL,
   STRUKTUR_TANKBELEG,
   STRUKTUR_ZAHLENFORMAT,
+  STRUKTUR_UNSICHER,
   STRUKTUR_SCHEMA,
 ].join('\n\n---\n\n')
 

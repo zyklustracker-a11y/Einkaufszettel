@@ -20,15 +20,31 @@ import {
  * dafür nicht nötig.
  */
 
+/**
+ * Der „heutige" Tag für die Tests.
+ *
+ * Seit Schritt 18 prüft `validateExtraction` das Bon-Datum auf Plausibilität.
+ * Ohne einen festen Bezugstag würden die Tests hier mit dem Kalender altern:
+ * Der REWE-Beispielbon von 2017 wäre irgendwann „mehr als zwei Jahre her", und
+ * ein Test, der von selbst rot wird, wird abgeschaltet statt gelesen.
+ */
+const HEUTE = '2026-08-17'
+
+/** Derselbe Bezugstag für den alten Beispielbon von 2017. */
+const DAMALS = '2017-07-01'
+
 /** Kürzel für „ein Bon mit genau diesen Positionen". */
 function receipt(positionen: unknown[], rest: Record<string, unknown> = {}) {
-  return validateExtraction({
-    lesbar: true,
-    haendler: 'REWE',
-    datum: '2026-08-14',
-    positionen,
-    ...rest,
-  })
+  return validateExtraction(
+    {
+      lesbar: true,
+      haendler: 'REWE',
+      datum: '2026-08-14',
+      positionen,
+      ...rest,
+    },
+    HEUTE,
+  )
 }
 
 /* ------------------------------------------------------------ JSON schälen */
@@ -254,17 +270,20 @@ test('aus abgetippten Zeilen werden Positionen', async (t) => {
     'TRINKHALME                1,49 A',
   ]
 
-  const bon = validateExtraction({
-    lesbar: true,
-    haendler: 'REWE CITY',
-    datum: '2017-06-23',
-    summe_cent: 655,
-    steuerblock: [
-      { kennzeichen: 'A', brutto_cent: 159 },
-      { kennzeichen: 'B', brutto_cent: 496 },
-    ],
-    zeilen,
-  })
+  const bon = validateExtraction(
+    {
+      lesbar: true,
+      haendler: 'REWE CITY',
+      datum: '2017-06-23',
+      summe_cent: 655,
+      steuerblock: [
+        { kennzeichen: 'A', brutto_cent: 159 },
+        { kennzeichen: 'B', brutto_cent: 496 },
+      ],
+      zeilen,
+    },
+    DAMALS,
+  )
 
   await t.test('fünf Positionen, keine Warnung', () => {
     assert.equal(bon.items.length, 5)
@@ -297,25 +316,31 @@ test('aus abgetippten Zeilen werden Positionen', async (t) => {
   await t.test('eine verschluckte Zeile wird als Lesefehler benannt', () => {
     // Dasselbe ohne die Milchschokostreusel: Die App kann jetzt sagen, dass es
     // am Abtippen liegt und nicht am Deuten — die Aufteilung rechnet sie selbst.
-    const luecke = validateExtraction({
-      lesbar: true,
-      haendler: 'REWE CITY',
-      datum: '2017-06-23',
-      summe_cent: 655,
-      zeilen: zeilen.filter((line) => !line.startsWith('MILCHSCHOKOSTR')),
-    })
+    const luecke = validateExtraction(
+      {
+        lesbar: true,
+        haendler: 'REWE CITY',
+        datum: '2017-06-23',
+        summe_cent: 655,
+        zeilen: zeilen.filter((line) => !line.startsWith('MILCHSCHOKOSTR')),
+      },
+      DAMALS,
+    )
     assert.equal(luecke.discrepancyCents, 99)
     assert.ok(luecke.warnings.some((w) => w.code === 'zeilen_fehlen'))
   })
 
   await t.test('eine Zeile ohne Betrag wird gemeldet statt verschluckt', () => {
-    const rest = validateExtraction({
-      lesbar: true,
-      haendler: 'REWE',
-      datum: '2017-06-23',
-      summe_cent: 249,
-      zeilen: ['BROT 2,49 B', 'VIELEN DANK'],
-    })
+    const rest = validateExtraction(
+      {
+        lesbar: true,
+        haendler: 'REWE',
+        datum: '2017-06-23',
+        summe_cent: 249,
+        zeilen: ['BROT 2,49 B', 'VIELEN DANK'],
+      },
+      DAMALS,
+    )
     assert.equal(rest.items.length, 1)
     assert.deepEqual(rest.unassignedLines, ['VIELEN DANK'])
     assert.ok(rest.warnings.some((w) => w.code === 'zeile_nicht_zugeordnet'))
@@ -621,5 +646,188 @@ test('Toleranz wächst mit der Menge', async (t) => {
       bon.warnings.some((warning) => warning.code === 'einzelpreis_verworfen'),
       true,
     )
+  })
+})
+
+/* ============================================================================
+ * SCHRITT 18 — deutsche Zahlenschreibweise
+ * ========================================================================== */
+
+test('toCents versteht das deutsche Zahlenformat', async (t) => {
+  await t.test('Tausenderpunkt und Dezimalkomma', () => {
+    /*
+     * Die alte Fassung ersetzte nur das erste Komma und ließ den
+     * Tausenderpunkt stehen: „1.234,56" wurde zu „1.234.56", `Number` gab NaN
+     * zurück, und der Betrag fiel ersatzlos weg. Auf einem Baumarktbon mit
+     * vierstelliger Summe ist das kein Randfall.
+     */
+    assert.equal(toCents('1.234,56'), 123456)
+    assert.equal(toCents('12.345,00'), 1234500)
+  })
+
+  await t.test('einfaches Dezimalkomma', () => {
+    assert.equal(toCents('1,29'), 129)
+    assert.equal(toCents('120,67'), 12067)
+  })
+
+  await t.test('englische Schreibweise geht auch', () => {
+    assert.equal(toCents('1,234.56'), 123456)
+    assert.equal(toCents('1.29'), 129)
+  })
+
+  await t.test('mit Währung und Leerzeichen', () => {
+    assert.equal(toCents('1.234,56 EUR'), 123456)
+    assert.equal(toCents(' 87,75 € '), 8775)
+  })
+
+  await t.test('negative Beträge', () => {
+    assert.equal(toCents('-0,50'), -50)
+  })
+
+  await t.test('ohne Trennzeichen sind es schon Cent', () => {
+    // Der Prompt verlangt Cent als ganze Zahl. Steht kein Trennzeichen da,
+    // wurde er befolgt.
+    assert.equal(toCents('12067'), 12067)
+    assert.equal(toCents(655), 655)
+  })
+
+  await t.test('Unsinn bleibt null', () => {
+    assert.equal(toCents('keine Zahl'), null)
+    assert.equal(toCents(''), null)
+    assert.equal(toCents(null), null)
+  })
+})
+
+/* ============================================================================
+ * SCHRITT 18 — Plausibilität: warnen, nicht blockieren
+ * ========================================================================== */
+
+test('Summenabgleich mit Toleranz', async (t) => {
+  await t.test('ein Cent Abweichung ist keine Warnung', () => {
+    /*
+     * Eine Kasse rundet bei gewichteten Waren je Zeile, und die Summe der
+     * gerundeten Zeilen ist nicht immer die gerundete Summe. Eine Warnung, die
+     * bei jedem zweiten Bon erscheint, liest niemand mehr.
+     */
+    const result = receipt([{ rohtext: 'BANANEN', zeilensumme_cent: 199 }], { summe_cent: 200 })
+    assert.equal(result.discrepancyCents, 1)
+    assert.ok(!result.warnings.some((w) => w.code === 'summe_weicht_ab'))
+  })
+
+  await t.test('drei Cent sind eine', () => {
+    const result = receipt([{ rohtext: 'BANANEN', zeilensumme_cent: 199 }], { summe_cent: 202 })
+    assert.ok(result.warnings.some((w) => w.code === 'summe_weicht_ab'))
+  })
+
+  await t.test('eine fehlende Zeile fällt weiterhin auf', () => {
+    const result = receipt([{ rohtext: 'MILCH', zeilensumme_cent: 129 }], { summe_cent: 378 })
+    assert.ok(result.warnings.some((w) => w.code === 'summe_weicht_ab'))
+  })
+})
+
+test('Postenzahl', async (t) => {
+  await t.test('stimmt die Zahl, gibt es keine Warnung', () => {
+    const result = receipt(
+      [
+        { rohtext: 'MILCH', zeilensumme_cent: 129 },
+        { rohtext: 'BROT', zeilensumme_cent: 249 },
+      ],
+      { summe_cent: 378, posten: 2 },
+    )
+    assert.ok(!result.warnings.some((w) => w.code === 'postenzahl_weicht_ab'))
+  })
+
+  await t.test('eine fehlende Zeile wird benannt', () => {
+    /*
+     * Der Zweck: Die gedruckte Postenzahl ist die einzige Angabe auf dem
+     * Papier, die sagt, wie viele Zeilen es geben MÜSSTE. Damit fällt auch eine
+     * fehlende Zeile auf, deren Betrag zu klein ist, um im Summenabgleich
+     * aufzufallen.
+     */
+    const result = receipt([{ rohtext: 'MILCH', zeilensumme_cent: 129 }], {
+      summe_cent: 129,
+      posten: 35,
+    })
+    const warning = result.warnings.find((w) => w.code === 'postenzahl_weicht_ab')
+    assert.ok(warning, 'keine Warnung zur Postenzahl')
+    assert.match(warning.message, /35/)
+    assert.match(warning.message, /fehlt/)
+  })
+
+  await t.test('Rabattzeilen zählen nicht als Posten', () => {
+    const result = receipt(
+      [
+        { rohtext: 'MILCH', zeilensumme_cent: 129 },
+        { rohtext: 'RABATT', art: 'rabatt', zeilensumme_cent: 50 },
+      ],
+      { summe_cent: 79, posten: 1 },
+    )
+    assert.ok(!result.warnings.some((w) => w.code === 'postenzahl_weicht_ab'))
+  })
+
+  await t.test('ohne gedruckte Postenzahl wird nicht geprüft', () => {
+    const result = receipt([{ rohtext: 'MILCH', zeilensumme_cent: 129 }], { summe_cent: 129 })
+    assert.ok(!result.warnings.some((w) => w.code === 'postenzahl_weicht_ab'))
+  })
+})
+
+test('Datum auf Plausibilität', async (t) => {
+  const bon = (datum: string, today: string) =>
+    validateExtraction(
+      { lesbar: true, haendler: 'REWE', datum, summe_cent: 129, zeilen: ['MILCH 1,29 B'] },
+      today,
+    ).warnings.filter((w) => w.code === 'datum_unplausibel')
+
+  await t.test('heute ist in Ordnung', () => {
+    assert.deepEqual(bon('2026-08-17', '2026-08-17'), [])
+  })
+
+  await t.test('gestern auch', () => {
+    assert.deepEqual(bon('2026-08-16', '2026-08-17'), [])
+  })
+
+  await t.test('nächste Woche nicht', () => {
+    // Ein Einkauf, der noch nicht stattgefunden hat, ist keiner. Kommt von
+    // einer verlesenen Ziffer im Jahr.
+    assert.equal(bon('2026-08-24', '2026-08-17').length, 1)
+  })
+
+  await t.test('ein Tag Nachsicht wegen Zeitzonen', () => {
+    assert.deepEqual(bon('2026-08-18', '2026-08-17'), [])
+  })
+
+  await t.test('vor mehr als zwei Jahren nicht', () => {
+    // Aus „25" wird „05", und der Bon landet zwanzig Jahre in der
+    // Vergangenheit — mitten in den Auswertungen, wo ihn niemand sucht.
+    assert.equal(bon('2005-08-17', '2026-08-17').length, 1)
+  })
+
+  await t.test('ein Jahr alt ist erlaubt', () => {
+    // Alte Bons nachzuerfassen ist ein normaler Vorgang.
+    assert.deepEqual(bon('2025-08-17', '2026-08-17'), [])
+  })
+})
+
+test('Händlername auf Plausibilität', async (t) => {
+  const warn = (haendler: unknown) =>
+    validateExtraction(
+      { lesbar: true, haendler, datum: '2026-08-14', summe_cent: 129, zeilen: ['MILCH 1,29 B'] },
+      HEUTE,
+    ).warnings.filter((w) => w.code === 'haendler_unplausibel')
+
+  await t.test('normale Namen gehen durch', () => {
+    for (const name of ['REWE CITY', 'E center', 'toom Baumarkt GmbH', 'ALDI SÜD Fil. 4711']) {
+      assert.deepEqual(warn(name), [], `„${name}" wurde beanstandet`)
+    }
+  })
+
+  await t.test('eine reine Zahlenfolge ist kein Händler', () => {
+    // Fast immer eine verlesene Steuer- oder Filialnummer aus dem Bonkopf.
+    assert.equal(warn('123456789').length, 1)
+    assert.equal(warn('07761-5534110').length, 1)
+  })
+
+  await t.test('ein ganzer Absatz ist kein Händler', () => {
+    assert.equal(warn('x'.repeat(80)).length, 1)
   })
 })
