@@ -213,7 +213,7 @@ test('findReceipt', async (t) => {
     const bitmap = blank(200, 200)
     receipt(bitmap, 60, 30, 60, 140)
 
-    const blob = findReceipt(toGray(bitmap))
+    const blob = findReceipt(toGray(bitmap))?.text ?? null
     assert.notEqual(blob, null)
     // Der gefundene Bereich liegt dort, wo der Block gemalt wurde — mit etwas
     // Luft, weil die Kantenenergie geglättet wird.
@@ -234,7 +234,7 @@ test('findReceipt', async (t) => {
     // Der Bon rechts: klein, aber dicht bedruckt.
     receipt(bitmap, 200, 40, 60, 120)
 
-    const blob = findReceipt(toGray(bitmap))
+    const blob = findReceipt(toGray(bitmap))?.text ?? null
     assert.notEqual(blob, null)
     // Der Schwerpunkt muss auf der rechten Seite liegen, beim Bon.
     assert.ok((blob?.centerX ?? 0) > 180, `Schwerpunkt bei x=${blob?.centerX}, erwartet > 180`)
@@ -252,7 +252,7 @@ test('rotationFor', async (t) => {
     const bitmap = blank(300, 200)
     receipt(bitmap, 40, 70, 220, 60, false)
 
-    const blob = findReceipt(toGray(bitmap))
+    const blob = findReceipt(toGray(bitmap))?.text ?? null
     assert.notEqual(blob, null)
 
     const angle = rotationFor(blob!)
@@ -267,7 +267,7 @@ test('rotationFor', async (t) => {
     const bitmap = blank(200, 300)
     receipt(bitmap, 70, 40, 60, 220)
 
-    const angle = rotationFor(findReceipt(toGray(bitmap))!)
+    const angle = rotationFor(findReceipt(toGray(bitmap))!.text)
     assert.ok(
       Math.abs(angle) < 0.35,
       `Winkel ${((angle * 180) / Math.PI).toFixed(1)}° — es sollte nicht gedreht werden`,
@@ -501,7 +501,7 @@ test('ein Bon auf Beton', async (t) => {
   fill(bitmap, 30, 80, 180, 50, 245)
   receipt(bitmap, 30, 80, 180, 50, false)
 
-  const blob = findReceipt(toGray(bitmap))
+  const blob = findReceipt(toGray(bitmap))?.text ?? null
 
   await t.test('wird gefunden und nicht der Gehweg', () => {
     assert.notEqual(blob, null)
@@ -529,9 +529,19 @@ test('ein füllendes Bild ohne dunklen Hintergrund', () => {
   const bitmap = blank(200, 300)
   receipt(bitmap, 10, 10, 180, 280)
 
-  const blob = findReceipt(toGray(bitmap))
-  assert.notEqual(blob, null)
-  assert.ok((blob?.size ?? 0) > 200 * 300 * 0.3, `nur ${blob?.size} Pixel gefunden`)
+  const region = findReceipt(toGray(bitmap))
+  assert.notEqual(region, null)
+
+  /*
+   * Geprüft wird der **Zuschnitt**, nicht die Pixelzahl des Textblocks. Ohne
+   * dunklen Hintergrund ist das Papier nicht bestimmbar — dann bleibt das Bild
+   * ganz, statt auf die Artikelspalte zusammenzuschrumpfen und die Beträge zu
+   * verlieren.
+   */
+  assert.equal(region?.paper.minX, 0)
+  assert.equal(region?.paper.minY, 0)
+  assert.equal(region?.paper.maxX, 199)
+  assert.equal(region?.paper.maxY, 299)
 })
 
 test('rotatedBounds statt zweiter Suche', async (t) => {
@@ -652,4 +662,86 @@ test('cropToReceipt schneidet nie in den Bon hinein', async (t) => {
     assert.equal(cut.width, 200)
     assert.equal(cut.height, 200)
   })
+})
+
+/* ============================================================================
+ * DER FEHLER AUS DEM ZWEITEN ECHTEN SCAN: ZUSCHNITT MITTEN DURCH DEN BON
+ * ========================================================================== */
+
+/** Ein Bon, wie er wirklich gedruckt ist: Artikelspalte links, Beträge rechts. */
+function twoColumnReceipt(bitmap: Bitmap, x: number, y: number, w: number, h: number) {
+  fill(bitmap, x, y, w, h, 245)
+  for (let row = y + 10; row < y + h - 10; row += 8) {
+    // Links dicht bedruckt, rechts nur ein kurzer Betrag — mit breiter Lücke.
+    fill(bitmap, x + 10, row, Math.round(w * 0.5), 2, 40)
+    fill(bitmap, x + w - 35, row, 25, 2, 40)
+  }
+}
+
+test('der Zuschnitt folgt dem Papier, nicht dem Text', async (t) => {
+  /*
+   * ---------------------------------------------------------------------------
+   * WAS HIER SCHIEFGING — UND WARUM ES SO TEUER WAR
+   * ---------------------------------------------------------------------------
+   *
+   * Zugeschnitten wurde auf den **Textblock**. Der endet aber am Text, und die
+   * Beträge stehen am äußersten Rand des Papiers. Auf dem echten Scan sah das so
+   * aus:
+   *
+   *     BIO SCHROZB.EIS              5,99 A
+   *     └──── Textblock ────┘ ← hier wurde geschnitten
+   *
+   * Das Modell bekam 32 Artikelnamen zu sehen und keinen einzigen Preis. Aus 32
+   * abgetippten Zeilen wurden 0 Positionen — der Bon war damit so wertlos wie
+   * mit einer Fehlermeldung, nur ohne Hinweis darauf, woran es lag.
+   *
+   * Der Zuschnitt folgt jetzt der hellen Fläche: Papier ist heller als Gehweg,
+   * und dieses Merkmal endet nicht am Text.
+   */
+  const bitmap = blank(300, 400)
+  concrete(bitmap)
+  twoColumnReceipt(bitmap, 60, 30, 180, 340)
+
+  const region = findReceipt(toGray(bitmap))
+
+  await t.test('etwas wird gefunden', () => {
+    assert.notEqual(region, null)
+  })
+
+  await t.test('der Textblock ist die Artikelspalte — für die Richtung', () => {
+    // Er endet erwartungsgemäß VOR den Beträgen. Das ist kein Fehler: Für die
+    // Frage „in welche Richtung liegt der Bon?" ist die Spalte genau richtig.
+    assert.ok((region?.text.maxX ?? 999) < 200, `Textblock reicht bis x=${region?.text.maxX}`)
+  })
+
+  await t.test('das Papier umfasst die Betragsspalte', () => {
+    // DAS ist die Zusicherung, an der es hing. Die Beträge stehen bei x 205..230.
+    assert.ok(
+      (region?.paper.maxX ?? 0) >= 230,
+      `Papier endet bei x=${region?.paper.maxX}, die Beträge stehen bis x=230`,
+    )
+    assert.ok((region?.paper.minX ?? 999) <= 62, `Papier beginnt erst bei x=${region?.paper.minX}`)
+  })
+
+  await t.test('und es umfasst den Textblock vollständig', () => {
+    assert.ok((region?.paper.minY ?? 999) <= (region?.text.minY ?? 0))
+    assert.ok((region?.paper.maxY ?? 0) >= (region?.text.maxY ?? 999))
+  })
+})
+
+test('ein formatfüllender Bon', () => {
+  /*
+   * Die Sicherung im Papier-Umriss: Füllt der Bon fast das ganze Bild, gibt es
+   * keinen dunklen Rand, gegen den sich das Papier abheben könnte. Der
+   * Flutfüller liefe dann über das gesamte Bild, und ein Zuschnitt darauf spart
+   * nichts. Dann gilt der Textblock — mit Rand.
+   */
+  const bitmap = blank(200, 300)
+  twoColumnReceipt(bitmap, 2, 2, 196, 296)
+
+  const region = findReceipt(toGray(bitmap))
+  assert.notEqual(region, null)
+  // Der Zuschnitt darf hier nicht plötzlich alles wegwerfen.
+  assert.ok((region?.paper.maxX ?? 0) - (region?.paper.minX ?? 0) > 100)
+  assert.ok((region?.paper.maxY ?? 0) - (region?.paper.minY ?? 0) > 200)
 })

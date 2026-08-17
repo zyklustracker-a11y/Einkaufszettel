@@ -406,14 +406,265 @@ export function largestBlob(mask: Uint8Array, width: number, height: number): Bl
   return best
 }
 
+
 /**
- * Die Textfläche eines Bon-Fotos finden.
+ * Die Maske aufdicken, damit aus einzelnen Zeichen ein Block wird.
+ *
+ * ---------------------------------------------------------------------------
+ * DER FEHLER, DEN DAS BEHEBT
+ * ---------------------------------------------------------------------------
+ *
+ * Ein Bon besteht aus **zwei Spalten**: links die Artikelnamen, rechts die
+ * Beträge, dazwischen eine breite Lücke.
+ *
+ *     BIO SCHROZB.EIS              5,99 A
+ *     BIO ALNA.TOM.SAUCE           3,29 A
+ *     └──── dicht bedruckt ────┘   └ dünn ┘
+ *
+ * Ohne diesen Schritt zerfällt die Maske genau entlang dieser Lücke — und
+ * `largestBlob` nimmt die **Namensspalte**, weil sie die größere ist. Der
+ * Zuschnitt endete danach mitten im Bon, die Beträge waren weg, und das Modell
+ * bekam 32 Artikelnamen ohne einen einzigen Preis zu sehen. Genau so ist es
+ * beim zweiten echten Scan passiert.
+ *
+ * Schlimmer noch: Auch die Namensspalte selbst zerfällt in einzelne Zeilen und
+ * Buchstaben, sobald der Kontrast an einer Stelle nachlässt. Der „größte
+ * Bereich" war im nachgestellten Fall am Ende **ein einzelnes Pixel**.
+ *
+ * ---------------------------------------------------------------------------
+ * WARUM IN BEIDE RICHTUNGEN
+ * ---------------------------------------------------------------------------
+ *
+ * Naheliegend wäre, nur waagerecht aufzudicken — die Lücke zwischen den Spalten
+ * verläuft ja quer. Nur: Zu diesem Zeitpunkt ist das Bild **noch nicht
+ * gedreht**. Ein quer fotografierter Bon hat seine Spaltenlücke senkrecht im
+ * Bild. Die Richtung ist also gerade unbekannt, und deshalb wird in beide
+ * gedickt.
+ *
+ * Der Preis ist ein etwas größerer Rahmen als nötig. Das ist der richtige
+ * Tausch: **Zu viel Rand kostet ein paar Bildpunkte, ein zu enger Rahmen kostet
+ * die Beträge.** Diese Kosten sind nicht symmetrisch, und die Entscheidung
+ * folgt der teureren Seite.
+ *
+ * Getrennt nach den beiden Achsen gerechnet, wie beim Weichzeichner: gleiches
+ * Ergebnis, Aufwand wächst mit dem Radius statt mit seinem Quadrat.
+ */
+export function dilate(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  radius: number,
+): Uint8Array {
+  if (radius < 1) return mask
+
+  const pass1 = new Uint8Array(mask.length)
+  for (let y = 0; y < height; y++) {
+    const row = y * width
+    let count = 0
+    for (let x = -radius; x < width; x++) {
+      if (x + radius < width && mask[row + x + radius] === 1) count++
+      if (x - radius - 1 >= 0 && mask[row + x - radius - 1] === 1) count--
+      if (x >= 0) pass1[row + x] = count > 0 ? 1 : 0
+    }
+  }
+
+  const pass2 = new Uint8Array(mask.length)
+  for (let x = 0; x < width; x++) {
+    let count = 0
+    for (let y = -radius; y < height; y++) {
+      if (y + radius < height && pass1[(y + radius) * width + x] === 1) count++
+      if (y - radius - 1 >= 0 && pass1[(y - radius - 1) * width + x] === 1) count--
+      if (y >= 0) pass2[y * width + x] = count > 0 ? 1 : 0
+    }
+  }
+
+  return pass2
+}
+
+/**
+ * Erste, kleine Aufdickung: Buchstaben zu Zeilen, Zeilen zu einer Spalte.
+ *
+ * Als Anteil der kürzeren Bildkante. Sie muss nur die Lücken **zwischen den
+ * Textzeilen** schließen, und die sind auf jedem Bon klein.
+ */
+const DILATE_SEED = 0.01
+
+/*
+ * HIER STAND EINE ZWEITE, ADAPTIVE AUFDICKUNG — und sie ist ersatzlos
+ * entfallen. Der Gedanke war, die Lücke zwischen Artikel- und Betragsspalte zu
+ * überbrücken, damit der Zuschnitt beide Spalten umfasst.
+ *
+ * Der Gedanke war richtig, die Stelle falsch. Der Zuschnitt soll gar nicht dem
+ * Text folgen, sondern dem **Papier** (siehe `ReceiptRegion`). Sobald das
+ * geklärt war, brauchte der Textblock nur noch gut genug zu sein, um die
+ * *Richtung* zu bestimmen — und dafür genügt die Artikelspalte allein.
+ *
+ * Die aggressive Variante hat dabei aktiv geschadet: Wenn der Papierrand mit im
+ * Textblock landet, ist dessen schmale Seite die ganze Bonbreite, und die
+ * Aufdickung blies den Block auf das gesamte Bild auf. Ein Maßstab, der aus dem
+ * Ergebnis stammt, das er bestimmen soll, kippt leicht.
+ */
+
+/**
+ * Aus einer Maske einzelner Zeichen wird ein zusammenhängender Textblock.
+ *
+ * Eine kleine Aufdickung genügt: Sie schließt die Lücken zwischen den
+ * Textzeilen, und mehr wird nicht gebraucht. Was hier herauskommt, ist meist
+ * die Artikelspalte allein — und für die einzige Frage, die daran hängt
+ * („in welche Richtung liegt der Bon?"), ist das genau richtig. Die Spalte
+ * liegt längs des Bons.
+ */
+function blockOf(mask: Uint8Array, width: number, height: number): Blob | null {
+  const radius = Math.max(2, Math.round(Math.min(width, height) * DILATE_SEED))
+  return largestBlob(dilate(mask, width, height, radius), width, height)
+}
+
+/** Was auf einem Bon-Foto gefunden wurde. */
+export interface ReceiptRegion {
+  /**
+   * Der Textblock — **für die Ausrichtung**.
+   *
+   * Seine lange Achse zeigt entlang des Bons, und genau das braucht die
+   * Drehung. Zum Zuschneiden taugt er dagegen nicht (siehe `paper`).
+   */
+  text: Blob
+  /**
+   * Der Papierumriss — **für den Zuschnitt**.
+   *
+   * ---------------------------------------------------------------------------
+   * WARUM DAS ZWEI VERSCHIEDENE DINGE SIND
+   * ---------------------------------------------------------------------------
+   *
+   * Weil der Textblock am Text endet — und die Beträge stehen am äußersten Rand
+   * des Papiers. Auf den Textblock zuzuschneiden hieß beim zweiten echten Scan:
+   *
+   *     BIO SCHROZB.EIS              5,99 A
+   *     └──── Textblock ────┘ ← hier wurde geschnitten
+   *
+   * Das Modell bekam 32 Artikelnamen zu sehen und keinen einzigen Preis. Alle
+   * 32 Zeilen wurden zu 0 Positionen, und der Bon war so wertlos wie mit einer
+   * Fehlermeldung — nur ohne Hinweis darauf, woran es lag.
+   *
+   * Der Zuschnitt folgt deshalb dem **Papier**: einer großen, hellen,
+   * zusammenhängenden Fläche, die den Textblock enthält. Papier ist heller als
+   * Gehweg, und das ist ein Merkmal, das nicht am Text endet.
+   */
+  paper: Bounds
+}
+
+/**
+ * Die Grenzen der hellen Fläche, in der ein Punkt liegt.
+ *
+ * Ein Flutfüller vom Schwerpunkt des Textes aus. Iterativ mit eigenem Stapel,
+ * aus demselben Grund wie bei `largestBlob`: Ein Blatt Papier auf einem
+ * Telefonfoto hat Millionen Pixel.
+ */
+function floodBounds(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  seed: number,
+): Bounds | null {
+  if (mask[seed] !== 1) return null
+
+  const seen = new Uint8Array(mask.length)
+  const stack = [seed]
+  seen[seed] = 1
+
+  let minX = width
+  let minY = height
+  let maxX = 0
+  let maxY = 0
+
+  while (stack.length > 0) {
+    const p = stack.pop() as number
+    const x = p % width
+    const y = (p - x) / width
+
+    if (x < minX) minX = x
+    if (x > maxX) maxX = x
+    if (y < minY) minY = y
+    if (y > maxY) maxY = y
+
+    if (x > 0 && mask[p - 1] === 1 && seen[p - 1] === 0) {
+      seen[p - 1] = 1
+      stack.push(p - 1)
+    }
+    if (x + 1 < width && mask[p + 1] === 1 && seen[p + 1] === 0) {
+      seen[p + 1] = 1
+      stack.push(p + 1)
+    }
+    if (y > 0 && mask[p - width] === 1 && seen[p - width] === 0) {
+      seen[p - width] = 1
+      stack.push(p - width)
+    }
+    if (y + 1 < height && mask[p + width] === 1 && seen[p + width] === 0) {
+      seen[p + width] = 1
+      stack.push(p + width)
+    }
+  }
+
+  return { minX, minY, maxX, maxY }
+}
+
+/**
+ * Der Papierumriss um einen Textblock herum.
+ *
+ * Zwei Sicherungen, und beide enden im selben Rückfall: **gar nicht
+ * zuschneiden**.
+ *
+ *   * **Die helle Fläche ist nicht auffindbar.** Der Schwerpunkt des Textes
+ *     liegt nicht in ihr.
+ *   * **Sie ist fast das ganze Bild.** Dann ist das Papier vom Hintergrund
+ *     nicht zu trennen — Bon auf hellem Tisch, oder ein formatfüllender Bon.
+ *
+ * ---------------------------------------------------------------------------
+ * WARUM DER RÜCKFALL NICHT DER TEXTBLOCK IST
+ * ---------------------------------------------------------------------------
+ *
+ * Genau das stand hier zuerst, und es war derselbe Fehler noch einmal: Der
+ * Textblock ist die Artikelspalte, und auf sie zuzuschneiden schneidet die
+ * Beträge ab. Ein Rückfall, der in die Katastrophe führt, ist kein Rückfall.
+ *
+ * Das Bild unverändert zu lassen kostet dagegen nichts als etwas Auflösung —
+ * und in beiden Fällen oben ist ohnehin fast nur Bon im Bild. Es ist derselbe
+ * Grundsatz wie überall in dieser Datei: **Ein Zuschnitt auf Verdacht ist
+ * schlimmer als keiner.**
+ */
+function paperAround(
+  bright: Uint8Array,
+  width: number,
+  height: number,
+  text: Blob,
+): Bounds {
+  const x = Math.round(text.centerX)
+  const y = Math.round(text.centerY)
+  const whole: Bounds = { minX: 0, minY: 0, maxX: width - 1, maxY: height - 1 }
+  const found = floodBounds(bright, width, height, y * width + x)
+
+  if (found === null) return whole
+
+  const area = (found.maxX - found.minX + 1) * (found.maxY - found.minY + 1)
+  if (area > width * height * 0.92) return whole
+
+  // Die Vereinigung, nicht der Umriss allein: Ragt der Text an einer Stelle
+  // über die helle Fläche hinaus, gehört er trotzdem dazu.
+  return {
+    minX: Math.min(found.minX, text.minX),
+    minY: Math.min(found.minY, text.minY),
+    maxX: Math.max(found.maxX, text.maxX),
+    maxY: Math.max(found.maxY, text.maxY),
+  }
+}
+
+/**
+ * Den Bon auf einem Foto finden.
  *
  * Zurück kommt null, wenn nichts Brauchbares gefunden wurde — etwa bei einem
  * Foto ohne Text. Dann bleibt das Bild unverändert: Ein Zuschnitt auf Verdacht
  * wäre schlimmer als keiner.
  */
-export function findReceipt(gray: GrayMap, blurRadius = 6): Blob | null {
+export function findReceipt(gray: GrayMap, blurRadius = 6): ReceiptRegion | null {
   const energy = textEnergy(gray, blurRadius)
   const energyThreshold = otsuThreshold(energy)
 
@@ -453,15 +704,22 @@ export function findReceipt(gray: GrayMap, blurRadius = 6): Blob | null {
     both[i] = hasEdges && brightness.data[i] > brightThreshold ? 1 : 0
   }
 
+  const brightMask = new Uint8Array(brightness.data.length)
+  for (let i = 0; i < brightMask.length; i++) {
+    brightMask[i] = brightness.data[i] > brightThreshold ? 1 : 0
+  }
+
   const minimum = gray.width * gray.height * 0.01
-  const blob = largestBlob(both, gray.width, gray.height)
+  const blob = blockOf(both, gray.width, gray.height)
 
   /*
    * Eine Fläche unter einem Prozent des Bildes ist kein Bon, sondern ein
    * Grashalm, eine Münze oder ein Fleck auf dem Beton. Darauf zuzuschneiden
    * würde den Bon vollständig verwerfen.
    */
-  if (blob !== null && blob.size >= minimum) return blob
+  if (blob !== null && blob.size >= minimum) {
+    return { text: blob, paper: paperAround(brightMask, gray.width, gray.height, blob) }
+  }
 
   /*
    * Rückfall auf die Kantendichte allein. Nötig für den Bon, der das ganze Bild
@@ -469,9 +727,9 @@ export function findReceipt(gray: GrayMap, blurRadius = 6): Blob | null {
    * abheben könnte, und die Helligkeitsschwelle trennt stattdessen Text von
    * Papier — womit sie das halbe Papier verwirft.
    */
-  const fallback = largestBlob(energyOnly, gray.width, gray.height)
+  const fallback = blockOf(energyOnly, gray.width, gray.height)
   if (fallback === null || fallback.size < minimum) return null
-  return fallback
+  return { text: fallback, paper: paperAround(brightMask, gray.width, gray.height, fallback) }
 }
 
 /* ------------------------------------------- Der Rahmen nach dem Drehen */

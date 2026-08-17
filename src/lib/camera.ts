@@ -271,13 +271,15 @@ async function prepare(
   }
 
   /* 1. Analysieren — auf einer kleinen Kopie, um Speicher zu sparen. */
-  let blob = null
+  let region = null
   let rotation = 0
 
   const small = fitWithinBox(sourceWidth, sourceHeight, ANALYSIS_MAX_EDGE)
   if (flags.autoRotate || flags.autoCrop) {
-    blob = findReceipt(toGray(toBitmap(draw(source, small.width, small.height))))
-    if (blob && flags.autoRotate) rotation = rotationFor(blob)
+    region = findReceipt(toGray(toBitmap(draw(source, small.width, small.height))))
+    // Ausrichten am Textblock, zuschneiden am Papier — zwei verschiedene Dinge,
+    // siehe `ReceiptRegion`.
+    if (region && flags.autoRotate) rotation = rotationFor(region.text)
   }
 
   /*
@@ -303,10 +305,10 @@ async function prepare(
    * Gerechnet statt gesucht: Wo der Bon liegt, ist bekannt, und um wie viel
    * gedreht wurde, auch.
    */
-  if (flags.autoCrop && blob) {
+  if (flags.autoCrop && region) {
     bitmap = cropToReceipt(
       bitmap,
-      rotatedBounds(blob, work.width / small.width, upright, bitmap, rotation),
+      rotatedBounds(region.paper, work.width / small.width, upright, bitmap, rotation),
     )
   }
 
