@@ -7,6 +7,7 @@
  * steht in `prompt.ts`; was mit der Antwort passiert, in `validate.ts`.
  */
 
+import { isTruncated } from './debug.ts'
 import type { ResponseDiagnostics } from './debug.ts'
 
 const ENDPOINT = 'https://api.mistral.ai/v1/chat/completions'
@@ -70,8 +71,46 @@ const TIMEOUT_MS = 60_000
 const MAX_ATTEMPTS = 3
 const BACKOFF_MS = [1_000, 2_500, 5_000]
 
-/** Obergrenze für die Antwort. Ein sehr langer Bon braucht Platz. */
-const MAX_TOKENS = 4_000
+/**
+ * Obergrenze für die Antwort.
+ *
+ * ---------------------------------------------------------------------------
+ * ANGEHOBEN MIT SCHRITT 18: 4.000 → 8.000
+ * ---------------------------------------------------------------------------
+ *
+ * Nachgerechnet für einen Bon mit 35 Positionen: Die erwartete Antwort ist rund
+ * 1.400 Zeichen kompakt, also je nach Zerlegung 400–800 Ausgabe-Token. Mit 4.000
+ * war das fünf- bis achtfach gedeckt — die alte Grenze war also **nicht** knapp
+ * bemessen, und ein langer Bon sprengt sie nicht durch seine Länge allein.
+ *
+ * Sprengen kann sie etwas anderes: Wenn das Modell auf einem schwer lesbaren
+ * Foto in eine Wiederholung gerät und dieselbe Zeile immer weiter schreibt.
+ * Dann läuft es bis zur Grenze, egal wie hoch sie steht.
+ *
+ * 8.000 ist deshalb kein Heilmittel, sondern Reserve — für den Bon mit siebzig
+ * Positionen, den es auch gibt. Der eigentliche Fortschritt ist, dass ein
+ * Erreichen der Grenze jetzt **bemerkt** wird (`finish_reason`) und nicht mehr
+ * in einer Fehlermeldung endet: Erst wird weitergeschrieben (siehe
+ * `MAX_CONTINUATIONS`), und was dann noch fehlt, wird als Teilergebnis
+ * geschlossen (`repair.ts`).
+ */
+const MAX_TOKENS = 8_000
+
+/**
+ * Wie oft weitergeschrieben wird, wenn die Antwort an der Grenze endet.
+ *
+ * Mistral kann eine begonnene Assistenten-Nachricht fortsetzen (`prefix: true`).
+ * Der bisherige Text geht dabei unverändert zurück, und das Modell schreibt
+ * daran weiter — es fängt also nicht von vorn an und tippt den Bon nicht ein
+ * zweites Mal ab.
+ *
+ * Zwei Runden, nicht mehr. Mit 8.000 Token je Runde sind das bis zu 24.000
+ * Token für einen einzigen Bon; wer die auch noch sprengt, hat kein
+ * Platzproblem, sondern eine Wiederholungsschleife — und die wird durch eine
+ * dritte Runde nur teurer. Danach gilt, was da ist: `repair.ts` schließt es zu
+ * einem Teilergebnis, und der Nutzer sieht im Korrektur-Screen, was fehlt.
+ */
+const MAX_CONTINUATIONS = 2
 
 export type MistralFailure =
   | 'kontingent'
@@ -119,7 +158,45 @@ export interface MistralRequest {
    * und ohne Bild ist der Aufruf ein Bruchteil so teuer und deutlich schneller.
    */
   imageDataUrl?: string
+  /**
+   * Weitere Bilder desselben Bons — die überlappenden Kacheln aus Schritt 18.
+   *
+   * Ein sehr langer Bon wird im Browser in zwei bis drei senkrecht
+   * überlappende Ausschnitte geschnitten, damit die Schrift groß genug
+   * ankommt. Sie gehen **zusammen in einem Aufruf** hin, in gedruckter
+   * Reihenfolge: Nur so kann das Modell die Überlappung erkennen und die
+   * doppelt sichtbaren Zeilen zusammenführen. Zwei getrennte Aufrufe wüssten
+   * nichts voneinander.
+   */
+  extraImageDataUrls?: string[]
+  /**
+   * Ein JSON-Schema für die Antwort — Mistrals „structured output".
+   *
+   * Ist es gesetzt, wird es als erstes probiert. Die Schnittstelle erzwingt
+   * dann die Form, statt sie nur zu erbitten, und der Prompt muss sie nicht
+   * mehr allein durchsetzen. Lehnt das Modell den Modus ab (Antwort 400),
+   * fällt `callMistral` von selbst auf den einfachen JSON-Modus zurück und von
+   * dort auf gar keinen. Siehe `FORMAT_LADDER`.
+   */
+  jsonSchema?: { name: string; schema: unknown }
 }
+
+/**
+ * Die Stufenleiter der Antwortformate, von streng nach nachgiebig.
+ *
+ * **Warum eine Leiter und keine feste Wahl:** Welches Modell welchen Modus
+ * kennt, ändert sich — `MISTRAL_MODEL` ist ein Secret, und die Voreinstellung
+ * zeigt bewusst auf `-latest`. Ein fest verdrahteter Modus wäre genau die Sorte
+ * Annahme, die in einem Jahr still bricht. Lehnt die Schnittstelle eine Stufe
+ * ab, wird die nächste probiert; abgelehnt wird dabei nur der Modus, nicht die
+ * Anfrage.
+ *
+ * Die unterste Stufe ist immer erreichbar: kein Format, dafür `repair.ts`
+ * dahinter. Besser eine Antwort, die geradegerückt werden muss, als gar keine.
+ */
+const FORMAT_LADDER = ['json_schema', 'json_object', 'none'] as const
+
+type ResponseFormatRung = (typeof FORMAT_LADDER)[number]
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -172,7 +249,7 @@ function readContent(payload: unknown): string | null {
 function readDiagnostics(
   payload: unknown,
   textLength: number,
-  jsonMode: boolean,
+  rung: ResponseFormatRung,
 ): ResponseDiagnostics {
   const choices = (payload as { choices?: unknown }).choices
   const first = Array.isArray(choices) ? (choices[0] as { finish_reason?: unknown }) : null
@@ -187,7 +264,9 @@ function readDiagnostics(
     inputTokens: count(usage?.prompt_tokens),
     outputTokens: count(usage?.completion_tokens),
     textLength,
-    jsonMode,
+    responseFormat: rung,
+    // Wird von `callMistral` hochgezählt; ein einzelner Aufruf weiß davon nichts.
+    continuations: 0,
   }
 }
 
@@ -202,29 +281,48 @@ function readDiagnostics(
 async function attempt(
   request: MistralRequest,
   model: string,
-  jsonMode: boolean,
+  rung: ResponseFormatRung,
+  /**
+   * Der bisher geschriebene Text, wenn dies eine Fortsetzung ist.
+   *
+   * Er geht als begonnene Assistenten-Nachricht mit `prefix: true` zurück.
+   * Mistral schreibt dann daran weiter, statt neu anzufangen — der Bon wird
+   * also nicht ein zweites Mal abgetippt und bezahlt.
+   */
+  prefill: string | null,
 ): Promise<Response> {
+  const images = [
+    ...(request.imageDataUrl ? [request.imageDataUrl] : []),
+    ...(request.extraImageDataUrls ?? []),
+  ]
+
   const body = {
     model,
     // 0 = so wenig Fantasie wie möglich. Bei einem Kassenzettel gibt es nichts
     // zu erfinden, es gibt genau eine richtige Antwort.
     temperature: 0,
     max_tokens: MAX_TOKENS,
-    ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
+    ...responseFormat(rung, request, prefill),
     messages: [
       { role: 'system', content: request.systemPrompt },
       {
         role: 'user',
         // Ohne Bild ein einfacher Text — die Blockform ist nur nötig, wenn
         // neben dem Text noch etwas anderes mitkommt.
-        content: request.imageDataUrl
-          ? [
-              { type: 'text', text: request.userPrompt },
-              // Mistral nimmt die Data-URL direkt als `image_url` entgegen.
-              { type: 'image_url', image_url: request.imageDataUrl },
-            ]
-          : request.userPrompt,
+        content:
+          images.length > 0
+            ? [
+                { type: 'text', text: request.userPrompt },
+                // Mistral nimmt die Data-URL direkt als `image_url` entgegen.
+                // Mehrere Kacheln kommen in gedruckter Reihenfolge, damit die
+                // Überlappung für das Modell nachvollziehbar bleibt.
+                ...images.map((url) => ({ type: 'image_url', image_url: url })),
+              ]
+            : request.userPrompt,
       },
+      ...(prefill === null
+        ? []
+        : [{ role: 'assistant', content: prefill, prefix: true }]),
     ],
   }
 
@@ -241,23 +339,95 @@ async function attempt(
 }
 
 /**
- * Ruft das Modell auf und gibt seinen rohen Antworttext zurück.
+ * Der `response_format`-Teil des Anfragekörpers für eine Stufe der Leiter.
  *
- * Geprüft wird hier nichts Inhaltliches — auch eine Antwort, die offensichtlich
- * Unsinn ist, kommt durch. Das ist Absicht: Der Rohtext soll unverändert im
- * Korrektur-Screen sichtbar werden, sonst lässt sich der Prompt nicht
- * nachschärfen.
+ * **Bei einer Fortsetzung bleibt er weg.** Das ist kein Versehen: Ein
+ * erzwungenes Format und ein vorgegebener Anfang widersprechen sich — die
+ * Schnittstelle müsste ein vollständiges JSON-Objekt erzeugen und zugleich
+ * mitten in einem weiterschreiben. Die Form wird bei der Fortsetzung ohnehin
+ * durch den mitgeschickten Anfang vorgegeben, und was am Ende trotzdem nicht
+ * aufgeht, schließt `repair.ts`.
  */
-export async function callMistral(request: MistralRequest): Promise<MistralOutcome> {
-  const model = request.model ?? DEFAULT_MODEL
+function responseFormat(
+  rung: ResponseFormatRung,
+  request: MistralRequest,
+  prefill: string | null,
+): Record<string, unknown> {
+  if (prefill !== null || rung === 'none') return {}
+
+  if (rung === 'json_schema') {
+    if (!request.jsonSchema) return {}
+    return {
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: request.jsonSchema.name,
+          schema: request.jsonSchema.schema,
+          strict: true,
+        },
+      },
+    }
+  }
+
+  return { response_format: { type: 'json_object' } }
+}
+
+/** Die erste Stufe, die für diese Anfrage überhaupt in Frage kommt. */
+function firstRung(request: MistralRequest): ResponseFormatRung {
+  return request.jsonSchema ? 'json_schema' : 'json_object'
+}
+
+/** Die nächstniedrigere Stufe, oder null, wenn es keine mehr gibt. */
+function nextRung(rung: ResponseFormatRung): ResponseFormatRung | null {
+  const index = FORMAT_LADDER.indexOf(rung)
+  return FORMAT_LADDER[index + 1] ?? null
+}
+
+/** Das Ergebnis eines Aufrufs samt der Stufe, auf der er zustande kam. */
+interface OnceResult {
+  outcome: MistralOutcome
+  rung: ResponseFormatRung
+}
+
+/**
+ * Ein Aufruf mit allen Wiederholungen — aber ohne Fortsetzung.
+ *
+ * Hier steckt das Netz-Handwerk: Zeitlimit, 429 mit wachsender Wartezeit, 5xx
+ * noch einmal, und das Herabsteigen auf der Format-Leiter. Die Fortsetzung
+ * einer abgeschnittenen Antwort ist eine Ebene darüber (`callMistral`) — sie
+ * ist kein Netzproblem, sondern eine inhaltliche Entscheidung.
+ */
+async function callOnce(
+  request: MistralRequest,
+  model: string,
+  startRung: ResponseFormatRung,
+  prefill: string | null,
+): Promise<OnceResult> {
+  /*
+   * Die Stufe steht in einem Halter und nicht als schlichte Variable, weil sie
+   * zwei Leser hat: die Schleife unten, die auf ihr herabsteigt, und der
+   * Aufrufer, der wissen muss, auf welcher Stufe es am Ende geklappt hat —
+   * sonst begänne die Fortsetzung wieder ganz oben und liefe in dieselbe
+   * Ablehnung.
+   */
+  const state = { rung: startRung }
+  const outcome = await withRetries(request, model, state, prefill)
+  return { outcome, rung: state.rung }
+}
+
+async function withRetries(
+  request: MistralRequest,
+  model: string,
+  state: { rung: ResponseFormatRung },
+  prefill: string | null,
+): Promise<MistralOutcome> {
   const started = Date.now()
-  let jsonMode = true
   let lastDetail = 'Unbekannter Fehler beim Modell-Aufruf.'
 
   for (let i = 0; i < MAX_ATTEMPTS; i++) {
     let response: Response
     try {
-      response = await attempt(request, model, jsonMode)
+      response = await attempt(request, model, state.rung, prefill)
     } catch (cause) {
       // AbortSignal.timeout wirft einen TimeoutError; alles andere ist Netz.
       const name = (cause as { name?: string }).name
@@ -291,7 +461,7 @@ export async function callMistral(request: MistralRequest): Promise<MistralOutco
         text,
         model,
         durationMs: Date.now() - started,
-        diagnostics: readDiagnostics(payload, text.length, jsonMode),
+        diagnostics: readDiagnostics(payload, text.length, state.rung),
       }
     }
 
@@ -308,14 +478,24 @@ export async function callMistral(request: MistralRequest): Promise<MistralOutco
     }
 
     /*
-     * Kennt das Modell den JSON-Modus nicht, antwortet die Schnittstelle mit
-     * 400. Statt aufzugeben wird derselbe Aufruf einmal ohne den Modus
-     * wiederholt — kaputtes JSON fängt `validate.ts` ab, gar keine Antwort
-     * fängt niemand ab.
+     * Kennt das Modell das verlangte Antwortformat nicht, antwortet die
+     * Schnittstelle mit 400. Statt aufzugeben wird eine Stufe hinabgestiegen:
+     * erst `json_schema`, dann `json_object`, dann gar keins. Kaputtes JSON
+     * fängt `repair.ts` ab, gar keine Antwort fängt niemand ab.
+     *
+     * Der Versuchszähler läuft dabei **nicht** weiter (`i--`): Ein abgelehntes
+     * Format ist kein Fehlversuch, sondern eine Feststellung über das Modell.
+     * Sonst verbrauchte eine zweistufige Leiter zwei der drei Versuche, bevor
+     * überhaupt einmal ernsthaft gefragt wurde.
      */
-    if (response.status === 400 && jsonMode && detail.includes('response_format')) {
-      jsonMode = false
-      continue
+    if (response.status === 400 && detail.includes('response_format')) {
+      const lower = nextRung(state.rung)
+      if (lower) {
+        console.error(`Antwortformat „${state.rung}" abgelehnt, weiter mit „${lower}".`)
+        state.rung = lower
+        i--
+        continue
+      }
     }
 
     // 5xx sind vorübergehend, 4xx nicht — nur die einen lohnen einen zweiten Versuch.
@@ -339,6 +519,87 @@ export async function callMistral(request: MistralRequest): Promise<MistralOutco
   }
 
   return { ok: false, reason: 'modell_fehler', detail: lastDetail, model }
+}
+
+/**
+ * Ruft das Modell auf und gibt seinen rohen Antworttext zurück.
+ *
+ * Geprüft wird hier nichts Inhaltliches — auch eine Antwort, die offensichtlich
+ * Unsinn ist, kommt durch. Das ist Absicht: Der Rohtext soll unverändert im
+ * Korrektur-Screen sichtbar werden, sonst lässt sich der Prompt nicht
+ * nachschärfen.
+ *
+ * ---------------------------------------------------------------------------
+ * NEU MIT SCHRITT 18: DIE ANTWORT DARF ZU ENDE GESCHRIEBEN WERDEN
+ * ---------------------------------------------------------------------------
+ *
+ * Endet eine Antwort an `max_tokens` (`finish_reason: "length"`), war sie
+ * bisher verloren: Der abgeschnittene Text ging als „fertig" zurück, das JSON
+ * ließ sich nicht lesen, und der Nutzer bekam „Die Antwort der Erkennung war
+ * unbrauchbar" — für einen Bon, der zu neunzig Prozent gelesen war.
+ *
+ * Jetzt wird stattdessen weitergeschrieben: Der bisherige Text geht als
+ * begonnene Assistenten-Nachricht (`prefix: true`) zurück, und das Modell setzt
+ * ihn fort. Der Bon wird dabei **nicht** ein zweites Mal abgetippt — das
+ * Abgeschriebene steht ja schon da.
+ *
+ * Höchstens zwei Runden (`MAX_CONTINUATIONS`). Danach gilt, was da ist: Ein
+ * Modell, das auch nach 24.000 Token nicht fertig ist, hat kein Platzproblem,
+ * sondern eine Wiederholungsschleife. `repair.ts` schließt den Text dann zu
+ * einem Teilergebnis, und der Korrektur-Screen zeigt, was fehlt.
+ *
+ * **Scheitert eine Fortsetzungsrunde, gilt das Bisherige.** Das ist der Kern:
+ * Ein Netzfehler in Runde zwei darf nicht das kosten, was Runde eins gelesen
+ * hat. Der teure Teil ist da, und er wird nicht wegen des billigen weggeworfen.
+ */
+export async function callMistral(request: MistralRequest): Promise<MistralOutcome> {
+  const model = request.model ?? DEFAULT_MODEL
+  const started = Date.now()
+
+  const first = await callOnce(request, model, firstRung(request), null)
+  if (!first.outcome.ok) return first.outcome
+
+  let text = first.outcome.text
+  let diagnostics = first.outcome.diagnostics
+  let outputTokens = diagnostics.outputTokens ?? 0
+  let rounds = 0
+
+  while (isTruncated(diagnostics.finishReason) && rounds < MAX_CONTINUATIONS) {
+    rounds++
+    console.error(
+      `Antwort an der Token-Grenze abgeschnitten, Fortsetzung ${rounds}/${MAX_CONTINUATIONS}.`,
+    )
+
+    const next = await callOnce(request, model, first.rung, text)
+    if (!next.outcome.ok) {
+      // Bewusst kein Abbruch: Das Bisherige ist mehr wert als ein Fehler.
+      console.error('Fortsetzung fehlgeschlagen, weiter mit dem Teilergebnis:', next.outcome.detail)
+      break
+    }
+
+    /*
+     * Aneinandersetzen ohne Trennzeichen. Das Modell schreibt an derselben
+     * Zeichenkette weiter — ein Leerzeichen oder Zeilenumbruch dazwischen
+     * könnte mitten in einem Wort landen und aus „MILCH" ein „MIL CH" machen.
+     */
+    text += next.outcome.text
+    diagnostics = next.outcome.diagnostics
+    outputTokens += diagnostics.outputTokens ?? 0
+  }
+
+  return {
+    ok: true,
+    text,
+    model,
+    durationMs: Date.now() - started,
+    diagnostics: {
+      ...diagnostics,
+      // Die Zahlen gelten für das Ganze, nicht für die letzte Runde.
+      outputTokens: outputTokens === 0 ? null : outputTokens,
+      textLength: text.length,
+      continuations: rounds,
+    },
+  }
 }
 
 /**

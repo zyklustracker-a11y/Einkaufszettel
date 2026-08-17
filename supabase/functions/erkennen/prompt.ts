@@ -324,6 +324,85 @@ NUR das JSON-Objekt, sonst nichts. Und wörtlich abtippen statt deuten.
 `.trim()
 
 /**
+ * Dasselbe Schema noch einmal — diesmal für die Schnittstelle statt für das
+ * Modell.
+ *
+ * ---------------------------------------------------------------------------
+ * WARUM ZWEIMAL?
+ * ---------------------------------------------------------------------------
+ *
+ * Der Text oben (`STRUKTUR_SCHEMA`) **bittet** um eine Form. Dieses Schema
+ * **erzwingt** sie: Mistral nimmt es als `response_format: json_schema` entgegen
+ * und lässt das Modell gar nichts anderes erzeugen. Damit fällt die häufigste
+ * Fehlerquelle weg — Fließtext um das JSON herum, Markdown-Zäune, erfundene
+ * Zusatzfelder.
+ *
+ * Der Text bleibt trotzdem stehen, aus zwei Gründen: Nicht jedes Modell kennt
+ * den Modus (dann steigt `mistral.ts` auf `json_object` herab, und die Form muss
+ * wieder der Prompt durchsetzen), und das Schema kann nur die *Form* erzwingen,
+ * nicht die Regeln. Dass eine gedruckte Zeile ein Eintrag ist, steht in keinem
+ * JSON-Schema der Welt.
+ *
+ * **Wer hier etwas ändert, ändert es oben mit.** Zwei Beschreibungen derselben
+ * Antwort sind zwei Stellen, die auseinanderlaufen können.
+ */
+export const STRUCTURE_JSON_SCHEMA = {
+  name: 'kassenzettel',
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'lesbar',
+      'haendler',
+      'datum',
+      'uhrzeit',
+      'waehrung',
+      'summe_cent',
+      'steuerblock',
+      'zeilen',
+    ],
+    properties: {
+      lesbar: { type: 'boolean' },
+      // Überall `['string', 'null']` statt `string`: „nicht lesbar" ist ein
+      // gültiges Ergebnis und muss ausdrückbar bleiben, sonst rät das Modell.
+      haendler: { type: ['string', 'null'] },
+      datum: { type: ['string', 'null'] },
+      uhrzeit: { type: ['string', 'null'] },
+      waehrung: { type: ['string', 'null'] },
+      summe_cent: { type: ['integer', 'null'] },
+      /** Die Postenzahl vom Bonfuß, für den Abgleich in `validate.ts`. */
+      posten: { type: ['integer', 'null'] },
+      steuerblock: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['kennzeichen', 'brutto_cent'],
+          properties: {
+            kennzeichen: { type: 'string' },
+            brutto_cent: { type: 'integer' },
+          },
+        },
+      },
+      zeilen: { type: 'array', items: { type: 'string' } },
+      /**
+       * Die Nummern der Zeilen, bei denen das Modell sich nicht sicher war —
+       * 0-basiert, bezogen auf `zeilen`.
+       *
+       * Bewusst eine Liste von Nummern und **keine** Konfidenz je Zeile: Eine
+       * Zahl zwischen 0 und 1 je Zeile wäre eine zusätzliche Schätzaufgabe für
+       * jede einzelne Zeile, und genau solche Nebenaufgaben haben das
+       * Abschreiben schon zweimal verdorben (siehe Kopf dieser Datei). „Zeig
+       * mit dem Finger auf das, was du nicht entziffern konntest" ist eine
+       * Aufgabe, keine fünfzig. Die eigentliche Konfidenz rechnet `lines.ts`
+       * daraus und aus der Lesbarkeit der Zeile selbst.
+       */
+      unsichere_zeilen: { type: 'array', items: { type: 'integer' } },
+    },
+  },
+} as const
+
+/**
  * Der System-Prompt für Durchgang 1.
  *
  * Er ist eine **Konstante**: Struktur hat mit den Merkmalen des Haushalts nichts
@@ -346,6 +425,51 @@ export const STRUCTURE_USER_PROMPT =
   'Tippe die Zeilen dieses Kassenzettels ab und gib das JSON-Objekt nach dem ' +
   'beschriebenen Schema zurück. Eine gedruckte Zeile ist ein Eintrag in „zeilen". ' +
   'Antworte ausschließlich mit dem JSON-Objekt.'
+
+/**
+ * Dieselbe Aufforderung, wenn der Bon in Kacheln zerlegt ankommt.
+ *
+ * ---------------------------------------------------------------------------
+ * WARUM ES DIESEN ZWEITEN TEXT BRAUCHT
+ * ---------------------------------------------------------------------------
+ *
+ * Ein Bon mit vierzig Positionen ist bei 2000 px langer Kante so weit
+ * herunterskaliert, dass eine Textzeile fünf bis sieben Pixel hoch ist. Das ist
+ * an der Grenze des Lesbaren, und genau dort fängt ein Modell an zu raten oder
+ * sich zu wiederholen. Deshalb wird ein sehr langer Bon im Browser in zwei bis
+ * drei senkrecht überlappende Ausschnitte geschnitten — jeder für sich mit
+ * voller Auflösung.
+ *
+ * Sie gehen **zusammen in einem Aufruf** hin. Der Preis dafür ist dieser Text:
+ * Das Modell muss wissen, dass es denselben Bon dreimal sieht, sonst tippt es
+ * die Überlappung doppelt ab und jeder Betrag darin zählt zweimal.
+ *
+ * **Die Überlappung ist Absicht und kein Fehler.** Ohne sie könnte eine Zeile
+ * genau auf der Schnittkante liegen und in beiden Kacheln nur halb zu sehen
+ * sein — dann fehlt sie ganz. Mit 15 % Überlappung ist jede Zeile in
+ * mindestens einer Kachel vollständig.
+ */
+export const STRUCTURE_TILED_USER_PROMPT = `
+Du bekommst MEHRERE Bilder. Es ist EIN EINZIGER Kassenzettel, der für dich in
+überlappende Ausschnitte zerschnitten wurde — von oben nach unten, in dieser
+Reihenfolge.
+
+So gehst du damit um:
+
+1. Lies die Ausschnitte der Reihe nach, von oben nach unten.
+2. Die Ausschnitte ÜBERLAPPEN sich am Rand. Die letzten Zeilen eines
+   Ausschnitts sind dieselben wie die ersten des nächsten. Das ist Absicht.
+3. Schreibe jede gedruckte Zeile GENAU EINMAL in "zeilen". Eine Zeile, die du
+   in zwei Ausschnitten siehst, ist EINE Zeile — nicht zwei.
+4. Woran du eine Wiederholung erkennst: gleicher Text UND gleicher Betrag.
+   Zwei Zeilen mit gleichem Text, aber verschiedenem Betrag sind zwei
+   verschiedene Zeilen und gehören beide hinein.
+5. Kopf (Händler, Datum) steht im ersten Ausschnitt, Summe und Steuerblock im
+   letzten. Nimm sie von dort.
+
+Ansonsten gilt alles wie sonst: Eine gedruckte Zeile ist ein Eintrag in
+„zeilen", wörtlich abgetippt. Antworte ausschließlich mit dem JSON-Objekt.
+`.trim()
 
 /* ############################################################################
  *

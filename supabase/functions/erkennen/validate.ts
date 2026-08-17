@@ -24,6 +24,7 @@
  */
 
 import { parseLines } from './lines.ts'
+import { recoverJson } from './repair.ts'
 
 /* ============================================================================
  * DIE FORMEN
@@ -219,6 +220,19 @@ export interface ExtractionWarning {
     // Aus Durchgang 1, seit Schritt 4d: Das Abtippen selbst war lückenhaft.
     | 'zeile_nicht_zugeordnet'
     | 'zeilen_fehlen'
+    /**
+     * Seit Schritt 18: Die Antwort des Modells endete an der Token-Grenze und
+     * wurde zu einem Teilergebnis geschlossen (`repair.ts`).
+     *
+     * Die wichtigste Warnung der Liste, weil sie als Einzige sagt, dass etwas
+     * **fehlen könnte, ohne dass man es sieht**. Ein falscher Betrag fällt beim
+     * Summenabgleich auf; eine Zeile, die nie ankam, nur hier.
+     */
+    | 'antwort_abgeschnitten'
+    /** Seit Schritt 18: Der Bon nennt eine Postenzahl, und sie passt nicht. */
+    | 'postenzahl_weicht_ab'
+    /** Seit Schritt 18: Das gelesene Datum ist unplausibel (Zukunft, zu alt). */
+    | 'datum_unplausibel'
   /** Bereits auf Deutsch und direkt anzeigbar. */
   message: string
   lineNo?: number
@@ -313,31 +327,60 @@ function lineTolerance(base: number | null, unit: ExtractedUnit | null): number 
 /* ========================================================== JSON herausholen */
 
 /**
- * Das JSON aus der Modellantwort schälen.
+ * Das JSON aus der Modellantwort holen — und, wenn nötig, schließen.
  *
- * Trotz aller Anweisungen schreiben Modelle gern noch „Hier ist das Ergebnis:"
- * davor oder packen alles in einen ```json-Block. Beides wird hier entfernt.
- * Bewusst wird nur *geschält*, nicht repariert: Fehlt eine Klammer, ist die
- * Antwort kaputt und soll das auch bleiben — der Nutzer sieht dann den Rohtext
- * im Aufklappbereich und kann den Prompt nachschärfen.
+ * ---------------------------------------------------------------------------
+ * GEÄNDERT MIT SCHRITT 18
+ * ---------------------------------------------------------------------------
+ *
+ * Hier stand: „Bewusst wird nur *geschält*, nicht repariert: Fehlt eine
+ * Klammer, ist die Antwort kaputt und soll das auch bleiben." Das war als
+ * Strenge gemeint und war in der Praxis das Gegenteil.
+ *
+ * Denn es gibt zwei Arten von fehlender Klammer, und sie haben nichts
+ * miteinander zu tun. Die eine ist ein Modell, das Unsinn geschrieben hat. Die
+ * andere ist eine Antwort, die an `max_tokens` **abgeschnitten** wurde — und
+ * die ist nicht kaputt, sondern unfertig: Die dreißig Zeilen davor sind
+ * vollständig, richtig und teuer bezahlt. Der alte Code warf beide gleich weg,
+ * und ein Bon mit 35 Positionen endete deshalb in „Die Antwort der Erkennung
+ * war unbrauchbar", obwohl fast alles davon gelesen war.
+ *
+ * Das Schließen macht `repair.ts`, und es erfindet dabei nichts: Ergänzt werden
+ * ausschließlich `}` und `]`, ein angebrochener Wert fällt vollständig weg.
+ * Dass etwas fehlt, sieht der Nutzer am Summenabgleich — der zeigt genau
+ * darauf.
+ */
+export function recoverModelJson(raw: string): {
+  receipt: ModelReceipt | null
+  /** War die Antwort unfertig und musste geschlossen werden? */
+  repaired: boolean
+  /** Wie viele Zeichen dabei verworfen wurden. */
+  droppedChars: number
+} {
+  const recovered = recoverJson(raw)
+  const value = recovered.value
+
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return { receipt: null, repaired: false, droppedChars: 0 }
+  }
+
+  return {
+    receipt: value as ModelReceipt,
+    repaired: recovered.repaired,
+    droppedChars: recovered.droppedChars,
+  }
+}
+
+/**
+ * Nur das Ergebnis, ohne die Begleitangaben.
+ *
+ * Für `assign.ts`, das Durchgang 2 prüft: Dort ist eine abgeschnittene Antwort
+ * nicht schlimm — fehlt eine Zuordnung, bleibt der Rohtext stehen, und der
+ * Nutzer tippt einen Namen ein. Nur bei der Struktur hängen Geldbeträge daran,
+ * und nur dort wird deshalb unterschieden.
  */
 export function parseModelJson(raw: string): ModelReceipt | null {
-  const withoutFences = raw
-    .replace(/^\s*```(?:json)?/i, '')
-    .replace(/```\s*$/, '')
-    .trim()
-
-  const start = withoutFences.indexOf('{')
-  const end = withoutFences.lastIndexOf('}')
-  if (start === -1 || end <= start) return null
-
-  try {
-    const parsed = JSON.parse(withoutFences.slice(start, end + 1))
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null
-    return parsed as ModelReceipt
-  } catch {
-    return null
-  }
+  return recoverModelJson(raw).receipt
 }
 
 /* ============================================================ kleine Helfer */

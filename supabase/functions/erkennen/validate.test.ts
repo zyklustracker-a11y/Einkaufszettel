@@ -1,6 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { isUnreadable, parseModelJson, toCents, validateExtraction } from './validate.ts'
+import {
+  isUnreadable,
+  parseModelJson,
+  recoverModelJson,
+  toCents,
+  validateExtraction,
+} from './validate.ts'
 
 /**
  * Tests für die Prüfung der Modellantwort.
@@ -41,10 +47,33 @@ test('parseModelJson', async (t) => {
     assert.equal(parseModelJson('Das kann ich leider nicht lesen.'), null)
   })
 
-  await t.test('repariert kaputtes JSON nicht', () => {
-    // Eine fehlende Klammer darf nicht stillschweigend geradegebogen werden —
-    // sonst entsteht aus einer halben Antwort ein scheinbar vollständiger Bon.
-    assert.equal(parseModelJson('{"lesbar":true, "positionen":[{'), null)
+  await t.test('schließt eine abgeschnittene Antwort, statt sie wegzuwerfen', () => {
+    /*
+     * GEÄNDERT MIT SCHRITT 18. Hier stand vorher „repariert kaputtes JSON
+     * nicht" und erwartete null — mit der Begründung, aus einer halben Antwort
+     * dürfe kein scheinbar vollständiger Bon werden.
+     *
+     * Die Begründung stimmt, die Schlussfolgerung nicht. Eine an `max_tokens`
+     * abgeschnittene Antwort ist nicht kaputt, sondern unfertig, und die Zeilen
+     * davor sind heil. Sie wegzuwerfen, hat die Erkennung bei jedem langen Bon
+     * scheitern lassen. Der Schutz vor dem „scheinbar vollständigen Bon" liegt
+     * jetzt woanders, und zwar an zwei Stellen: `repaired` markiert das
+     * Teilergebnis bis in die Oberfläche, und der Summenabgleich zeigt genau
+     * auf das, was fehlt.
+     */
+    const result = recoverModelJson('{"lesbar":true, "positionen":[{')
+    assert.deepEqual(result.receipt, { lesbar: true })
+    assert.equal(result.repaired, true)
+  })
+
+  await t.test('meldet eine heile Antwort als nicht repariert', () => {
+    const result = recoverModelJson('{"lesbar":true}')
+    assert.equal(result.repaired, false)
+    assert.equal(result.droppedChars, 0)
+  })
+
+  await t.test('gibt null zurück, wenn sich gar nichts retten lässt', () => {
+    assert.equal(recoverModelJson('völlig ohne JSON').receipt, null)
   })
 
   await t.test('erkennt „nicht lesbar"', () => {

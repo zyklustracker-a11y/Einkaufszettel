@@ -58,7 +58,9 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
+  STRUCTURE_JSON_SCHEMA,
   STRUCTURE_SYSTEM_PROMPT,
+  STRUCTURE_TILED_USER_PROMPT,
   STRUCTURE_USER_PROMPT,
   buildAssignmentPrompt,
   buildAssignmentUserPrompt,
@@ -66,7 +68,7 @@ import {
 import { DEFAULT_TEXT_MODEL, callMistral } from './mistral.ts'
 import type { MistralFailure } from './mistral.ts'
 import { isTruncated, logModelResponse, tail } from './debug.ts'
-import { isUnreadable, parseModelJson, validateExtraction } from './validate.ts'
+import { isUnreadable, recoverModelJson, validateExtraction } from './validate.ts'
 import type {
   ExtractedSuggestion,
   Extraction,
@@ -540,6 +542,14 @@ async function resolveRate(
 interface RequestBody {
   /** Das JPEG als Base64, ohne den `data:`-Vorspann. Durchgang 1. */
   image?: unknown
+  /**
+   * Weitere Ausschnitte desselben Bons, ebenfalls als Base64 ohne Vorspann.
+   *
+   * Nur bei einem sehr langen Bon gesetzt (Seitenverhältnis über 1:4). Fehlt
+   * das Feld, läuft alles wie vorher — eine ältere App, die es nicht kennt,
+   * funktioniert unverändert weiter.
+   */
+  kacheln?: unknown
   /** Standardmäßig `image/jpeg`; der Kamera-Screen liefert nichts anderes. */
   mimeType?: unknown
   /** Die zuzuordnenden Rohtexte. Ihre Anwesenheit macht daraus Durchgang 2. */
@@ -572,6 +582,14 @@ async function handleStructure(
   householdId: string,
   apiKey: string,
   image: string,
+  /**
+   * Weitere Ausschnitte desselben Bons, in gedruckter Reihenfolge.
+   *
+   * Leer im Normalfall. Gefüllt nur bei einem sehr langen Bon, den der Browser
+   * in überlappende Kacheln geschnitten hat (Schritt 18) — dann ist `image` die
+   * oberste Kachel und hier stehen die darunter.
+   */
+  tiles: string[],
   mimeType: string,
   /** Der Rettungsweg aus Schritt 6. Null: Die App hat keinen Job angelegt. */
   jobId: string | null,
@@ -600,8 +618,12 @@ async function handleStructure(
     model: Deno.env.get('MISTRAL_MODEL') ?? undefined,
     // Statisch: Struktur hat mit den Merkmalen des Haushalts nichts zu tun.
     systemPrompt: STRUCTURE_SYSTEM_PROMPT,
-    userPrompt: STRUCTURE_USER_PROMPT,
+    userPrompt: tiles.length > 0 ? STRUCTURE_TILED_USER_PROMPT : STRUCTURE_USER_PROMPT,
     imageDataUrl: `data:${mimeType};base64,${image}`,
+    extraImageDataUrls: tiles.map((tile) => `data:${mimeType};base64,${tile}`),
+    // Die Form erzwingen statt sie zu erbitten. Kennt das Modell den Modus
+    // nicht, steigt `mistral.ts` von selbst auf `json_object` herab.
+    jsonSchema: STRUCTURE_JSON_SCHEMA,
   })
 
   if (!outcome.ok) {
@@ -620,7 +642,8 @@ async function handleStructure(
    */
   logModelResponse('struktur', outcome.model, outcome.durationMs, outcome.diagnostics, outcome.text)
 
-  const parsed = parseModelJson(outcome.text)
+  const recovered = recoverModelJson(outcome.text)
+  const parsed = recovered.receipt
   if (parsed === null) {
     /*
      * Die Unterscheidung, um die es geht: An `max_tokens` abgeschnitten ist
@@ -660,7 +683,32 @@ async function handleStructure(
 
   // Ein Rohtext, den der Haushalt schon kennt, übernimmt Name, Kategorie und
   // Merkmale aus der Datenbank (PROJEKT.md, Kernprinzip).
-  const extraction = applyKnownProducts(validateExtraction(parsed), await knownProducts)
+  const base = applyKnownProducts(validateExtraction(parsed), await knownProducts)
+
+  /*
+   * War die Antwort unfertig, muss das bis in die Oberfläche sichtbar bleiben.
+   *
+   * Das ist die einzige Warnung, die sagt: Hier fehlt vielleicht etwas, **ohne
+   * dass man es sehen kann**. Ein falsch gelesener Betrag fällt beim
+   * Summenabgleich auf; eine Zeile, die nie angekommen ist, fällt nirgends auf
+   * — außer hier. Ein stillschweigend geschlossenes Teilergebnis wäre die
+   * gefährlichste Art von Fehler: eine, die aussieht wie ein Ergebnis.
+   */
+  const extraction: Extraction = recovered.repaired
+    ? {
+        ...base,
+        warnings: [
+          {
+            code: 'antwort_abgeschnitten',
+            message:
+              'Die Erkennung wurde abgeschnitten, bevor der Bon zu Ende gelesen war. Die ' +
+              'Positionen unten sind vollständig gelesen — es können aber welche fehlen. ' +
+              'Bitte mit dem Papier abgleichen.',
+          },
+          ...base.warnings,
+        ],
+      }
+    : base
 
   /*
    * Was jetzt noch offen ist, geht in Durchgang 2. Doppelte Rohtexte werden
@@ -903,5 +951,22 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
   const mimeType = typeof body.mimeType === 'string' ? body.mimeType : 'image/jpeg'
 
-  return await handleStructure(supabase, householdId, apiKey, image, mimeType, jobId)
+  /*
+   * Die weiteren Kacheln. Ihre Gesamtgröße zählt gegen dieselbe Obergrenze wie
+   * das erste Bild — sonst ließe sich die Prüfung oben durch Aufteilen einfach
+   * umgehen.
+   */
+  const tiles = Array.isArray(body.kacheln)
+    ? body.kacheln.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+    : []
+
+  const totalChars = image.length + tiles.reduce((sum, tile) => sum + tile.length, 0)
+  if (totalChars > MAX_IMAGE_CHARS) {
+    const message =
+      'Das Bild ist zu groß. Bitte den Bon noch einmal mit der Kamera in der App aufnehmen.'
+    await failJob(supabase, jobId, 'bild_zu_gross', message)
+    return fail('bild_zu_gross', message, 413)
+  }
+
+  return await handleStructure(supabase, householdId, apiKey, image, tiles, mimeType, jobId)
 })
