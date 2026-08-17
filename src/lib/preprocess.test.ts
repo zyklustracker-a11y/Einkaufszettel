@@ -4,6 +4,7 @@ import {
   boxBlur,
   clahe,
   crop,
+  cropToReceipt,
   fitWithin,
   findReceipt,
   grayToBitmap,
@@ -618,5 +619,37 @@ test('rotatedBounds statt zweiter Suche', async (t) => {
     // Und knapp außerhalb darf er nicht mehr liegen.
     const outside = ((bounds.minY > 4 ? bounds.minY - 4 : 0) * turned.width + cx) * 4
     assert.ok(turned.data[outside] > 150, 'der Rahmen ist zu groß geraten')
+  })
+})
+
+test('cropToReceipt schneidet nie in den Bon hinein', async (t) => {
+  /*
+   * Die ungleichen Kosten: Etwas Gehweg zu viel kostet Bildpunkte, eine
+   * abgeschnittene Zeile kostet einen Betrag — und wenn es die unterste ist,
+   * die Gesamtsumme.
+   */
+  await t.test('der gefundene Rahmen bleibt vollständig erhalten', () => {
+    const bitmap = blank(400, 600)
+    const bounds = { minX: 100, minY: 150, maxX: 300, maxY: 500 }
+    const cut = cropToReceipt(bitmap, bounds)
+
+    // Breiter und höher als der Rahmen — also mit Luft ringsum.
+    assert.ok(cut.width > bounds.maxX - bounds.minX, `Breite ${cut.width} zu knapp`)
+    assert.ok(cut.height > bounds.maxY - bounds.minY, `Höhe ${cut.height} zu knapp`)
+  })
+
+  await t.test('bei einem langen Bon ist der Rand großzügig', () => {
+    // 400 × 2000: Der Rand richtet sich nach der langen Kante, weil oben und
+    // unten Kopf- und Summenzeile stehen.
+    const bitmap = blank(1000, 3000)
+    const cut = cropToReceipt(bitmap, { minX: 300, minY: 400, maxX: 700, maxY: 2400 })
+    assert.ok(cut.width >= 400 + 100, `Breite ${cut.width}, erwartet mindestens 500`)
+    assert.ok(cut.height >= 2000 + 100, `Höhe ${cut.height}, erwartet mindestens 2100`)
+  })
+
+  await t.test('ein Rahmen am Bildrand wird gekürzt statt abgelehnt', () => {
+    const cut = cropToReceipt(blank(200, 200), { minX: 0, minY: 0, maxX: 199, maxY: 199 })
+    assert.equal(cut.width, 200)
+    assert.equal(cut.height, 200)
   })
 })

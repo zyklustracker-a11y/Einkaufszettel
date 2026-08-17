@@ -712,13 +712,31 @@ export function crop(
  * genau auf sie würde die erste und letzte Zeile am Rand anschneiden, und
  * angeschnittene Zeilen liest kein Modell.
  */
-const CROP_MARGIN = 0.06
+const CROP_MARGIN = 0.03
 
-/** Den Bon aus dem Bild schneiden — Textfläche plus Rand. */
+/** Mindestrand in Pixeln, damit auch ein kleiner Ausschnitt Luft bekommt. */
+const CROP_MARGIN_MIN = 12
+
+/**
+ * Den Bon aus dem Bild schneiden — Textfläche plus Rand.
+ *
+ * **Der Rand ist bewusst großzügig, und zwar wegen der ungleichen Kosten.**
+ * Etwas Gehweg mehr im Bild kostet ein paar Bildpunkte Auflösung; das Modell
+ * überliest ihn. Eine abgeschnittene Zeile kostet einen Betrag — und wenn es
+ * die unterste ist, ist es die Gesamtsumme, also genau die Zahl, gegen die
+ * alles andere geprüft wird.
+ *
+ * Deshalb richtet sich der Rand nach der **langen** Kante, nicht nach der
+ * kurzen: Bei einem Bon von 400 × 2000 Punkten sind das 60 Punkte statt 12 —
+ * dort, wo oben und unten die Kopf- und Summenzeilen stehen.
+ */
 export function cropToReceipt(bitmap: Bitmap, bounds: Bounds): Bitmap {
   const width = bounds.maxX - bounds.minX + 1
   const height = bounds.maxY - bounds.minY + 1
-  const margin = Math.round(Math.max(width, height * 0.15) * CROP_MARGIN)
+  const margin = Math.max(
+    CROP_MARGIN_MIN,
+    Math.round(Math.max(width, height) * CROP_MARGIN),
+  )
 
   return crop(
     bitmap,
