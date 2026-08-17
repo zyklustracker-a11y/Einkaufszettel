@@ -10,6 +10,7 @@ import {
   largestBlob,
   otsuThreshold,
   rotateBitmap,
+  rotatedBounds,
   rotationFor,
   textEnergy,
   tileRanges,
@@ -449,4 +450,173 @@ test('textEnergy zeigt dort etwas, wo Text ist', () => {
   const outside = energy.data[10 * 120 + 100]
 
   assert.ok(inText > outside, `im Text ${inText}, außerhalb ${outside}`)
+})
+
+/* ============================================================================
+ * DIE BEIDEN FEHLER AUS DEM ERSTEN ECHTEN SCAN
+ * ========================================================================== */
+
+/**
+ * Feinkörnige Struktur, wie Asphalt sie hat — deterministisch statt zufällig,
+ * damit ein Fehlschlag reproduzierbar bleibt.
+ */
+function concrete(bitmap: Bitmap, base = 110, amplitude = 45) {
+  for (let y = 0; y < bitmap.height; y++) {
+    for (let x = 0; x < bitmap.width; x++) {
+      // Ein billiger, aber gut durchmischter Hash über die Koordinaten.
+      const hash = ((x * 73856093) ^ (y * 19349663) ^ ((x + y) * 83492791)) >>> 0
+      const value = base + ((hash % 1000) / 1000) * amplitude - amplitude / 2
+      const p = (y * bitmap.width + x) * 4
+      bitmap.data[p] = value
+      bitmap.data[p + 1] = value
+      bitmap.data[p + 2] = value
+      bitmap.data[p + 3] = 255
+    }
+  }
+}
+
+test('ein Bon auf Beton', async (t) => {
+  /*
+   * ---------------------------------------------------------------------------
+   * WAS DIESER TEST LEISTET — UND WAS NICHT
+   * ---------------------------------------------------------------------------
+   *
+   * Er sichert, dass ein strukturierter dunkler Hintergrund den Bon nicht
+   * verdrängt. Das ist die Lage auf dem echten Foto: Bon auf Gehwegplatte.
+   *
+   * **Er belegt aber nicht, dass die Helligkeitsschwelle in `findReceipt` nötig
+   * ist.** Ich habe es nachgemessen: Auch die Fassung ohne sie besteht diesen
+   * Test — synthetisches Korn ist richtungslos und zieht die Hauptachse nicht,
+   * egal wie grob es ist. Die Helligkeit ist damit eine begründete Vorsichts-
+   * maßnahme gegen echten Asphalt und keine nachgewiesene Reparatur.
+   *
+   * Wer sie später entfernen will, hat von diesem Test keinen Widerspruch zu
+   * erwarten. Der Fehler, der auf dem echten Foto nachweislich zugeschlagen hat,
+   * war ein anderer — siehe `rotatedBounds` weiter unten.
+   */
+  const bitmap = blank(240, 200)
+  concrete(bitmap)
+  // Der Bon: helles Papier, quer liegend, mit Textzeilen darauf.
+  fill(bitmap, 30, 80, 180, 50, 245)
+  receipt(bitmap, 30, 80, 180, 50, false)
+
+  const blob = findReceipt(toGray(bitmap))
+
+  await t.test('wird gefunden und nicht der Gehweg', () => {
+    assert.notEqual(blob, null)
+    // Der Schwerpunkt muss im Bon liegen, nicht in der Bildmitte des Betons.
+    assert.ok((blob?.centerY ?? 0) > 70, `Schwerpunkt y=${blob?.centerY}, erwartet > 70`)
+    assert.ok((blob?.centerY ?? 999) < 140, `Schwerpunkt y=${blob?.centerY}, erwartet < 140`)
+  })
+
+  await t.test('und wird aufgerichtet', () => {
+    const angle = rotationFor(blob!)
+    assert.ok(
+      Math.abs(Math.abs(angle) - Math.PI / 2) < 0.35,
+      `Winkel ${((angle * 180) / Math.PI).toFixed(1)}° — der Bon liegt quer und müsste aufgerichtet werden`,
+    )
+  })
+})
+
+test('ein füllendes Bild ohne dunklen Hintergrund', () => {
+  /*
+   * Die Gegenprobe zur Helligkeitsschwelle: Füllt der Bon das ganze Bild, gibt
+   * es keinen dunklen Hintergrund, gegen den er sich abheben könnte. Dann darf
+   * die Helligkeit nicht plötzlich Text von Papier trennen und das halbe Papier
+   * verwerfen — dafür ist der Rückfall auf die Kantendichte da.
+   */
+  const bitmap = blank(200, 300)
+  receipt(bitmap, 10, 10, 180, 280)
+
+  const blob = findReceipt(toGray(bitmap))
+  assert.notEqual(blob, null)
+  assert.ok((blob?.size ?? 0) > 200 * 300 * 0.3, `nur ${blob?.size} Pixel gefunden`)
+})
+
+test('rotatedBounds statt zweiter Suche', async (t) => {
+  /*
+   * DER ZWEITE FEHLER AUS DEM ERSTEN ECHTEN SCAN. Nach dem Drehen wurde noch
+   * einmal gesucht — aber das Drehen erzeugt selbst die stärkste Kante im Bild:
+   * die Grenze zwischen der weißen Eckenfüllung und dem Foto. Sie umläuft das
+   * ganze Bild, gewinnt jeden Flächenvergleich, und der Rahmen war danach das
+   * gesamte Bild. Zugeschnitten wurde also gar nicht.
+   */
+  await t.test('ohne Drehung bleibt der Rahmen, wo er war', () => {
+    const bounds = rotatedBounds(
+      { minX: 10, minY: 20, maxX: 30, maxY: 40 },
+      1,
+      { width: 100, height: 100 },
+      { width: 100, height: 100 },
+      0,
+    )
+    assert.deepEqual(bounds, { minX: 10, minY: 20, maxX: 30, maxY: 40 })
+  })
+
+  await t.test('eine Vierteldrehung dreht auch den Rahmen mit', () => {
+    // Ein breiter, flacher Rahmen wird zu einem schmalen, hohen.
+    const bounds = rotatedBounds(
+      { minX: 10, minY: 40, maxX: 90, maxY: 60 },
+      1,
+      { width: 100, height: 100 },
+      { width: 100, height: 100 },
+      Math.PI / 2,
+    )
+    assert.ok(
+      bounds.maxY - bounds.minY > bounds.maxX - bounds.minX,
+      `Rahmen ist ${bounds.maxX - bounds.minX}×${bounds.maxY - bounds.minY}, erwartet hochkant`,
+    )
+  })
+
+  await t.test('der Maßstab von der Analyse auf die Arbeitskopie', () => {
+    const bounds = rotatedBounds(
+      { minX: 10, minY: 10, maxX: 20, maxY: 20 },
+      2,
+      { width: 200, height: 200 },
+      { width: 200, height: 200 },
+      0,
+    )
+    assert.deepEqual(bounds, { minX: 20, minY: 20, maxX: 40, maxY: 40 })
+  })
+
+  await t.test('der Rahmen bleibt im Bild', () => {
+    const bounds = rotatedBounds(
+      { minX: 0, minY: 0, maxX: 99, maxY: 99 },
+      1,
+      { width: 100, height: 100 },
+      { width: 142, height: 142 },
+      Math.PI / 4,
+    )
+    assert.ok(bounds.minX >= 0 && bounds.minY >= 0)
+    assert.ok(bounds.maxX <= 141 && bounds.maxY <= 141)
+  })
+
+  await t.test('der Bon liegt nach dem Drehen wirklich in diesem Rahmen', () => {
+    /*
+     * Die eigentliche Zusicherung, und sie prüft Rechnung gegen Wirklichkeit:
+     * Der berechnete Rahmen wird gegen das tatsächlich gedrehte Bild gehalten.
+     * Läge er daneben, würde der Zuschnitt den Bon anschneiden.
+     */
+    const bitmap = blank(200, 140)
+    fill(bitmap, 20, 50, 160, 40, 30)
+
+    const angle = Math.PI / 2
+    const turned = rotateBitmap(bitmap, angle)
+    const bounds = rotatedBounds(
+      { minX: 20, minY: 50, maxX: 179, maxY: 89 },
+      1,
+      bitmap,
+      turned,
+      angle,
+    )
+
+    // In der Mitte des berechneten Rahmens muss der dunkle Inhalt liegen.
+    const cx = Math.round((bounds.minX + bounds.maxX) / 2)
+    const cy = Math.round((bounds.minY + bounds.maxY) / 2)
+    const p = (cy * turned.width + cx) * 4
+    assert.ok(turned.data[p] < 100, `Rahmenmitte ist ${turned.data[p]}, erwartet dunkel`)
+
+    // Und knapp außerhalb darf er nicht mehr liegen.
+    const outside = ((bounds.minY > 4 ? bounds.minY - 4 : 0) * turned.width + cx) * 4
+    assert.ok(turned.data[outside] > 150, 'der Rahmen ist zu groß geraten')
+  })
 })

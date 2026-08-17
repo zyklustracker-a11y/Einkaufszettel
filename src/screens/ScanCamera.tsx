@@ -383,6 +383,20 @@ export function ScanCamera() {
           <p className={styles.hint}>
             Ist der Bon vollständig und scharf? Unscharfe Bilder werden nicht besser erkannt.
           </p>
+          {/*
+            Was die Vorschau zeigt, ist das **aufbereitete** Bild — also genau
+            das, was die Erkennung zu sehen bekommt, und nicht das Foto aus der
+            Galerie. Ohne diesen Satz sieht das nach Fehler aus: Der Bon ist
+            plötzlich grau und gedreht.
+
+            Grau ist Absicht. Farbe trägt auf einem Thermobon nichts bei, und
+            der Kontrastausgleich arbeitet auf Helligkeit — er macht die dünnen
+            grauen Striche lesbar, aus denen die Ziffern bestehen.
+          */}
+          <p className={styles.hint}>
+            Grau und gedreht ist richtig so: Das ist der aufbereitete Bon, wie die Erkennung ihn
+            sieht.
+          </p>
           <div className={styles.decision}>
             <button type="button" className={styles.secondary} onClick={retake}>
               Neu aufnehmen

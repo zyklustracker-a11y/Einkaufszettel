@@ -19,6 +19,7 @@ import {
   fitWithin as fitWithinBox,
   grayToBitmap,
   rotateBitmap,
+  rotatedBounds,
   rotationFor,
   tileRanges,
   toGray,
@@ -273,8 +274,8 @@ async function prepare(
   let blob = null
   let rotation = 0
 
+  const small = fitWithinBox(sourceWidth, sourceHeight, ANALYSIS_MAX_EDGE)
   if (flags.autoRotate || flags.autoCrop) {
-    const small = fitWithinBox(sourceWidth, sourceHeight, ANALYSIS_MAX_EDGE)
     blob = findReceipt(toGray(toBitmap(draw(source, small.width, small.height))))
     if (blob && flags.autoRotate) rotation = rotationFor(blob)
   }
@@ -286,13 +287,27 @@ async function prepare(
    * ist, wird dabei nicht angefasst.
    */
   const work = fitWithinBox(sourceWidth, sourceHeight, WORK_MAX_EDGE)
+  const upright = { width: work.width, height: work.height }
   let bitmap = toBitmap(draw(source, work.width, work.height))
   if (rotation !== 0) bitmap = rotateBitmap(bitmap, rotation)
 
-  /* 3./4. Auf dem gedrehten Bild neu suchen und zuschneiden. */
+  /*
+   * 3./4. Zuschneiden — auf den **mitgedrehten** Rahmen von vorhin.
+   *
+   * Hier stand ein zweites `findReceipt` auf dem gedrehten Bild, und das war
+   * falsch: Das Drehen füllt die freien Ecken weiß, und diese Füllkante ist die
+   * längste und kontrastreichste Linie im ganzen Bild. Sie hat jede Suche
+   * gewonnen, der Rahmen war danach das gesamte Bild, und zugeschnitten wurde
+   * gar nicht. Genau so sah das erste echte Ergebnis auch aus.
+   *
+   * Gerechnet statt gesucht: Wo der Bon liegt, ist bekannt, und um wie viel
+   * gedreht wurde, auch.
+   */
   if (flags.autoCrop && blob) {
-    const found = findReceipt(toGray(bitmap))
-    if (found) bitmap = cropToReceipt(bitmap, found)
+    bitmap = cropToReceipt(
+      bitmap,
+      rotatedBounds(blob, work.width / small.width, upright, bitmap, rotation),
+    )
   }
 
   if (flags.contrast) {

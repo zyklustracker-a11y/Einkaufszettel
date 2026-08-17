@@ -413,26 +413,149 @@ export function largestBlob(mask: Uint8Array, width: number, height: number): Bl
  * Foto ohne Text. Dann bleibt das Bild unverändert: Ein Zuschnitt auf Verdacht
  * wäre schlimmer als keiner.
  */
-export function findReceipt(gray: GrayMap): Blob | null {
-  const energy = textEnergy(gray)
-  const threshold = otsuThreshold(energy)
+export function findReceipt(gray: GrayMap, blurRadius = 6): Blob | null {
+  const energy = textEnergy(gray, blurRadius)
+  const energyThreshold = otsuThreshold(energy)
 
-  const mask = new Uint8Array(energy.data.length)
-  for (let i = 0; i < mask.length; i++) {
-    mask[i] = energy.data[i] > threshold ? 1 : 0
+  /*
+   * ---------------------------------------------------------------------------
+   * ZWEI MERKMALE STATT EINEM (nachgeschärft nach dem ersten echten Test)
+   * ---------------------------------------------------------------------------
+   *
+   * Die erste Fassung suchte allein nach Kantendichte. Auf dem ersten echten
+   * Foto ist sie damit voll auf den **Gehweg** hereingefallen: Asphalt ist über
+   * das ganze Bild hinweg feinkörnig strukturiert und liefert damit fast überall
+   * hohe Kantenenergie. Der gefundene „Bon" war der halbe Beton, und der Bon
+   * stand danach schief im Bild.
+   *
+   * Kantendichte allein reicht also nicht. Was einen Bon zusätzlich auszeichnet:
+   * Er ist **hell**. Papier ist weiß, Asphalt ist grau.
+   *
+   * Beide Merkmale zusammen decken beide echten Fehlerfälle ab, und zwar jedes
+   * für sich einen:
+   *
+   *   * **Gehweg** — strukturiert, aber dunkel. Fällt über die Helligkeit weg.
+   *   * **Zweites Dokument** daneben — hell, aber kaum bedruckt. Fällt über die
+   *     Kantendichte weg.
+   *
+   * Gemessen wird die *örtlich gemittelte* Helligkeit, nicht die des einzelnen
+   * Pixels: Ein Buchstabe ist schwarz, das Papier darum herum nicht. Über das
+   * geglättete Bild ist eine bedruckte Papierfläche trotzdem hell.
+   */
+  const brightness = boxBlur(gray, blurRadius)
+  const brightThreshold = otsuThreshold(brightness)
+
+  const both = new Uint8Array(energy.data.length)
+  const energyOnly = new Uint8Array(energy.data.length)
+  for (let i = 0; i < both.length; i++) {
+    const hasEdges = energy.data[i] > energyThreshold
+    energyOnly[i] = hasEdges ? 1 : 0
+    both[i] = hasEdges && brightness.data[i] > brightThreshold ? 1 : 0
   }
 
-  const blob = largestBlob(mask, gray.width, gray.height)
-  if (blob === null) return null
+  const minimum = gray.width * gray.height * 0.01
+  const blob = largestBlob(both, gray.width, gray.height)
 
   /*
    * Eine Fläche unter einem Prozent des Bildes ist kein Bon, sondern ein
    * Grashalm, eine Münze oder ein Fleck auf dem Beton. Darauf zuzuschneiden
    * würde den Bon vollständig verwerfen.
    */
-  if (blob.size < gray.width * gray.height * 0.01) return null
+  if (blob !== null && blob.size >= minimum) return blob
 
-  return blob
+  /*
+   * Rückfall auf die Kantendichte allein. Nötig für den Bon, der das ganze Bild
+   * ausfüllt: Dann gibt es keinen dunklen Hintergrund, gegen den sich das Papier
+   * abheben könnte, und die Helligkeitsschwelle trennt stattdessen Text von
+   * Papier — womit sie das halbe Papier verwirft.
+   */
+  const fallback = largestBlob(energyOnly, gray.width, gray.height)
+  if (fallback === null || fallback.size < minimum) return null
+  return fallback
+}
+
+/* ------------------------------------------- Der Rahmen nach dem Drehen */
+
+/** Ein achsenparalleles Rechteck, wie `Blob` es aufspannt. */
+export interface Bounds {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+}
+
+/**
+ * Wo der gefundene Rahmen nach dem Drehen liegt.
+ *
+ * ---------------------------------------------------------------------------
+ * WARUM GERECHNET UND NICHT NEU GESUCHT
+ * ---------------------------------------------------------------------------
+ *
+ * Die erste Fassung hat nach dem Drehen einfach noch einmal `findReceipt`
+ * aufgerufen. Das ging auf dem ersten echten Foto gründlich schief, und der
+ * Grund ist bitter: **Das Drehen erzeugt selbst die stärkste Kante im Bild.**
+ * Die freien Ecken werden weiß gefüllt, und die Grenze zwischen dieser weißen
+ * Füllung und dem Foto ist eine kerzengerade, bildlange, maximal kontrastreiche
+ * Diagonale. Sie ist zusammenhängend, sie umläuft das ganze Foto, und sie
+ * gewinnt jeden Vergleich um die größte Fläche. Der Rahmen war danach das ganze
+ * Bild — also wurde gar nicht zugeschnitten.
+ *
+ * Neu zu suchen war ohnehin unnötig: Wo der Bon liegt, ist bereits bekannt, und
+ * um wie viel gedreht wurde, auch. Die vier Ecken des Rahmens durch dieselbe
+ * Drehung zu schicken ist exakt, kostet nichts und kann gar nicht auf eine
+ * Kante hereinfallen, die es vorher nicht gab.
+ */
+export function rotatedBounds(
+  bounds: Bounds,
+  /** Faktor von der Analysegröße auf die Arbeitsgröße. */
+  scale: number,
+  source: { width: number; height: number },
+  out: { width: number; height: number },
+  angle: number,
+): Bounds {
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+
+  const sourceCenterX = source.width / 2
+  const sourceCenterY = source.height / 2
+  const outCenterX = out.width / 2
+  const outCenterY = out.height / 2
+
+  const corners: Array<[number, number]> = [
+    [bounds.minX * scale, bounds.minY * scale],
+    [bounds.maxX * scale, bounds.minY * scale],
+    [bounds.minX * scale, bounds.maxY * scale],
+    [bounds.maxX * scale, bounds.maxY * scale],
+  ]
+
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+
+  for (const [sx, sy] of corners) {
+    const ux = sx - sourceCenterX
+    const uy = sy - sourceCenterY
+    /*
+     * Die Umkehrung der Abbildung in `rotateBitmap`. Dort wird rückwärts
+     * abgetastet (Ziel → Quelle); hier wird vorwärts gerechnet (Quelle → Ziel),
+     * also mit der transponierten Drehmatrix.
+     */
+    const x = cos * ux - sin * uy + outCenterX
+    const y = sin * ux + cos * uy + outCenterY
+
+    if (x < minX) minX = x
+    if (x > maxX) maxX = x
+    if (y < minY) minY = y
+    if (y > maxY) maxY = y
+  }
+
+  return {
+    minX: Math.max(0, Math.round(minX)),
+    minY: Math.max(0, Math.round(minY)),
+    maxX: Math.min(out.width - 1, Math.round(maxX)),
+    maxY: Math.min(out.height - 1, Math.round(maxY)),
+  }
 }
 
 /* ================================================================== Drehen */
@@ -592,15 +715,15 @@ export function crop(
 const CROP_MARGIN = 0.06
 
 /** Den Bon aus dem Bild schneiden — Textfläche plus Rand. */
-export function cropToReceipt(bitmap: Bitmap, blob: Blob): Bitmap {
-  const width = blob.maxX - blob.minX + 1
-  const height = blob.maxY - blob.minY + 1
+export function cropToReceipt(bitmap: Bitmap, bounds: Bounds): Bitmap {
+  const width = bounds.maxX - bounds.minX + 1
+  const height = bounds.maxY - bounds.minY + 1
   const margin = Math.round(Math.max(width, height * 0.15) * CROP_MARGIN)
 
   return crop(
     bitmap,
-    blob.minX - margin,
-    blob.minY - margin,
+    bounds.minX - margin,
+    bounds.minY - margin,
     width + margin * 2,
     height + margin * 2,
   )
