@@ -248,8 +248,25 @@ GESAMTSUMME "summe_cent" als GANZE ZAHL IN CENT.
   NICHT verwechseln mit "GEGEBEN", "BAR", "EC-CARD", "RÜCKGELD", "MwSt".
 - Nicht selbst addieren.
 
-DATUM als "JJJJ-MM-TT", UHRZEIT als "HH:MM" (24 Stunden). Steht auf dem Bon
-"23.06.17", ist das der 23. Juni 2017. Nicht lesbar -> null.
+DATUM als "JJJJ-MM-TT", UHRZEIT als "HH:MM" (24 Stunden). Nicht lesbar -> null.
+
+- WO ES STEHT: fast immer in der LETZTEN Zeile des Bons, unter dem Strichcode
+  und hinter dem Wort "Datum" oder "Datum Uhrzeit". Nicht im Bonkopf, und
+  NICHT in den langen Ziffernfolgen dazwischen — eine Beleg- oder
+  Kundennummer sieht einem Datum zum Verwechseln ähnlich und ist keines.
+
+- ZWEISTELLIGE JAHRESZAHLEN gehören ins 21. Jahrhundert:
+
+      "23.06.17"  ->  2017-06-23
+      "16.07.25"  ->  2025-07-16
+      "04.08.26"  ->  2026-08-04
+
+  Aus "25" wird 2025 und niemals 1925. Und die Zahl direkt vor der Uhrzeit ist
+  das Jahr, nicht der Tag.
+
+- BIST DU UNSICHER, gib null zurück. Ein falsches Datum ist teurer als gar
+  keines: Der Einkauf landet dann im falschen Monat, und in der Auswertung
+  sucht ihn dort niemand. Ein fehlendes Datum fragt die App beim Nutzer nach.
 
 WÄHRUNG "waehrung" als Drei-Buchstaben-Code, zum Beispiel "EUR" oder "CHF".
 - Das ist ebenfalls Abschreiben und kein Deuten: Du gibst zurück, welches

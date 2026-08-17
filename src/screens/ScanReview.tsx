@@ -274,6 +274,16 @@ function toReceiptItem(draft: DraftItem): ReceiptItem {
 const UNUSUAL_AGE_DAYS = 60
 
 /**
+ * Ab wann ein Datum nicht mehr ungewöhnlich, sondern **falsch gelesen** ist.
+ *
+ * Gleichlaufend mit `checkDate` in der Edge Function. Ein Bon von letztem
+ * Sommer ist ein normaler Nachtrag; einer von vor zwölf Jahren ist eine
+ * verlesene Ziffer — und darf nicht mit „das ist in Ordnung" beantwortet
+ * werden.
+ */
+const IMPLAUSIBLE_AGE_DAYS = 730
+
+/**
  * Der Hinweis zu einem ungewöhnlichen Bon-Datum — oder `null`, wenn alles
  * unauffällig ist.
  *
@@ -292,6 +302,25 @@ function dateNotice(iso: string, today: string): string | null {
     return (
       `Das Bon-Datum liegt in der Zukunft (${formatDate(iso)}). Der Einkauf würde zu ` +
       `${month} zählen. Stimmt das nicht, kannst du das Datum oben ändern.`
+    )
+  }
+
+  /*
+   * Zuerst der unplausible Fall, dann der bloß ungewöhnliche. Die Reihenfolge
+   * ist der ganze Punkt: Auf dem echten Edeka-Bon las das Modell „25.08.2014",
+   * und die App antwortete darauf mit „Das ist in Ordnung". Sie hat einen
+   * offensichtlichen Lesefehler beruhigt statt ihn zu benennen — die
+   * schlechteste Auskunft, die sie geben konnte.
+   *
+   * Zwei Jahre als Grenze, gleichlaufend mit der Prüfung in der Edge Function
+   * (`checkDate` in `validate.ts`). Ein Bon von letztem Sommer ist ein normaler
+   * Nachtrag; einer von vor zwölf Jahren ist eine verlesene Ziffer.
+   */
+  if (age > IMPLAUSIBLE_AGE_DAYS) {
+    return (
+      `Als Datum wurde ${formatDate(iso)} gelesen — das liegt über zwei Jahre zurück und ist ` +
+      'vermutlich verlesen (eine Jahreszahl auf Thermopapier ist klein). Bitte oben korrigieren, ' +
+      `sonst zählt der Einkauf zu ${month}.`
     )
   }
 

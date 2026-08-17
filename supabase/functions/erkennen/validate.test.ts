@@ -831,3 +831,63 @@ test('Händlername auf Plausibilität', async (t) => {
     assert.equal(warn('x'.repeat(80)).length, 1)
   })
 })
+
+/* ============================================================================
+ * SCHRITT 18 — das Kennzeichen „AW"
+ * ========================================================================== */
+
+test('ein Kennzeichen mit Zusatzbuchstaben zählt zur Grundklasse', async (t) => {
+  const bon = (steuer: string) =>
+    validateExtraction(
+      {
+        lesbar: true,
+        haendler: 'REWE',
+        datum: '2026-08-14',
+        summe_cent: 300,
+        steuerblock: [
+          { kennzeichen: 'A', brutto_cent: 200 },
+          { kennzeichen: 'B', brutto_cent: 100 },
+        ],
+        zeilen: [`WASSERMELONE 2,00 ${steuer}`, 'PACKBAND 1,00 B'],
+      },
+      HEUTE,
+    )
+
+  await t.test('„AW" wird zu „A"', () => {
+    /*
+     * DER FALL VOM ECHTEN EDEKA-BON. Zwei Positionen mit „AW" (Joghurt und
+     * Wassermelone, zusammen 13,79 €) fielen aus jeder Klasse heraus, obwohl
+     * sie richtig gelesen waren. Die App meldete daraufhin „16,94 € fehlen in
+     * A" und schickte den Nutzer auf die Suche nach einem Fehler, den es nicht
+     * gab.
+     *
+     * „AW" ist kein eigener Steuersatz — der Satz ist das „A", das „W" ist ein
+     * Vermerk der Kasse.
+     */
+    const result = bon('AW')
+    const klasseA = result.taxGroups.find((group) => group.code === 'A')
+
+    assert.ok(klasseA, 'keine Klasse A im Abgleich')
+    assert.equal(klasseA.itemsTotalCents, 200)
+    assert.equal(klasseA.differenceCents, 0)
+    assert.ok(!result.warnings.some((w) => w.code === 'steuerklasse_unbekannt'))
+  })
+
+  await t.test('ein schlichtes „A" natürlich auch', () => {
+    assert.equal(bon('A').taxGroups.find((group) => group.code === 'A')?.differenceCents, 0)
+  })
+
+  await t.test('ein Kennzeichen ohne Bezug bleibt eine Warnung', () => {
+    // „ZW" fängt mit „Z" an, und „Z" steht nicht im Block. Hier soll nichts
+    // zurechtgebogen werden — die Warnung ist die richtige Antwort.
+    const result = bon('ZW')
+    assert.ok(result.warnings.some((w) => w.code === 'steuerklasse_unbekannt'))
+  })
+
+  await t.test('aus B wird nie A', () => {
+    // Nur nach vorn gekürzt, nie quer zugeordnet: Sonst würde aus einem
+    // verlesenen Kennzeichen ein falscher Steuersatz.
+    const result = bon('B')
+    assert.equal(result.taxGroups.find((group) => group.code === 'B')?.itemsTotalCents, 300)
+  })
+})

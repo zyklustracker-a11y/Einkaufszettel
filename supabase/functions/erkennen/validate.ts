@@ -764,6 +764,41 @@ function checkUnitPrice(
  * Ohne Steuerblock passiert hier gar nichts — dann bleibt es beim
  * Gesamtabgleich, so wie bisher.
  */
+
+/**
+ * Ein Kennzeichen an einer Position auf eine gedruckte Steuerklasse abbilden.
+ *
+ * ---------------------------------------------------------------------------
+ * DER FALL „AW"
+ * ---------------------------------------------------------------------------
+ *
+ * Auf dem Edeka-Bon stehen zwei Positionen mit dem Kennzeichen `AW`:
+ *
+ *     BIO ALNA.JOGHURT           1,77 AW
+ *     WASSERMEL. KERNARM        12,02 AW
+ *
+ * Der gedruckte Steuerblock kennt aber nur `A` und `B`. Die beiden Positionen
+ * fielen deshalb aus jeder Klasse heraus — zusammen 13,79 €, die im Abgleich
+ * einfach fehlten, obwohl sie richtig gelesen waren. Die App meldete „16,94 €
+ * fehlen in A" und schickte den Nutzer auf die Suche nach einem Fehler, den es
+ * nicht gab.
+ *
+ * `AW` ist kein eigener Steuersatz. Der Steuersatz ist das `A`; der zweite
+ * Buchstabe ist ein Vermerk der Kasse (bei Edeka an gewogener Ware und an
+ * Payback-fähigen Positionen). Deshalb: Ist das Kennzeichen selbst nicht im
+ * Block, gilt sein **erster Buchstabe**, sofern der dort steht.
+ *
+ * Bewusst nur ein Zeichen und nur nach vorn. Aus `B` wird nie `A`, und aus
+ * einem Kennzeichen, dessen Anfangsbuchstabe auch nicht im Block steht, wird
+ * gar nichts — dann bleibt die Warnung, und das ist richtig so.
+ */
+function resolveTaxCode(code: string, gross: Map<string, number>): string {
+  if (gross.has(code)) return code
+
+  const first = code.slice(0, 1)
+  return first.length > 0 && gross.has(first) ? first : code
+}
+
 function checkTaxGroups(
   items: ExtractedItem[],
   rawBlock: unknown,
@@ -814,7 +849,7 @@ function checkTaxGroups(
 
   const sums = new Map<string, number>()
   for (const item of items) {
-    const code = item.taxCode as string
+    const code = resolveTaxCode(item.taxCode as string, gross)
     sums.set(code, (sums.get(code) ?? 0) + item.totalCents)
   }
 
