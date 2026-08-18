@@ -17,11 +17,10 @@
  * überhaupt geht. Die Zeilen unten sind deshalb eine **Abschrift nach bestem
  * Lesen** und ausdrücklich keine Wahrheit:
  *
- *     Edeka:  abgetippt 117,87 €  ·  gedruckt 120,67 €  ·  2,80 € Unterschied
- *     toom:   abgetippt  80,75 €  ·  gedruckt  87,75 €  ·  7,00 € Unterschied
+ *     Edeka:  gelesen 120,57 €  ·  gedruckt 120,67 €  ·  0,10 € Unterschied
+ *     toom:   gelesen  80,75 €  ·  gedruckt  87,75 €  ·  7,00 € Unterschied
  *
- * Beim Edeka-Bon kommen zu den falsch gelesenen Beträgen noch fehlende Zeilen:
- * Der Bon nennt 35 Posten, abgetippt sind 32.
+ * Beim Edeka-Bon nennt der Bon außerdem 35 Posten, gelesen sind 32.
  *
  * ---------------------------------------------------------------------------
  * WAS DER STEUERBLOCK VERRÄT — und was noch zu klären ist
@@ -34,12 +33,20 @@
  *     toom    7 %:  abgetippt 52,48  ·  gedruckt 59,48  →  7,00 € fehlen
  *     toom   19 %:  abgetippt 28,27  ·  gedruckt 28,27  →  stimmt genau ✓
  *
- *     Edeka   A (7 %):  abgetippt 96,81  ·  gedruckt 96,22  →  0,59 € zu viel
- *     Edeka   B (19 %): abgetippt 21,06  ·  gedruckt 24,45  →  3,39 € fehlen
+ *     Edeka   A (7 %):  gelesen 94,22  ·  gedruckt 96,22  →  2,00 € fehlen
+ *     Edeka   B (19 %): gelesen 26,35  ·  gedruckt 24,45  →  1,90 € zu viel
  *
  * Beim toom-Bon ist damit **eine einzige Zeile** offen: In der 7-%-Klasse fehlen
- * genau 7,00 €. Beim Edeka-Bon liegt zusätzlich mindestens eine Zeile in der
- * falschen Klasse — sonst könnte A nicht zu hoch und B zugleich zu niedrig sein.
+ * genau 7,00 €.
+ *
+ * Beim Edeka-Bon sagen die beiden Zahlen zusammen etwas Genaueres, als eine
+ * Gesamtdifferenz je könnte: **In der 19-%-Klasse steht 1,90 € zu viel, in der
+ * 7-%-Klasse fehlen 2,00 €.** Verschöbe man einen Betrag von 1,90 € von B nach
+ * A, ginge B genau auf und A wäre noch 0,10 € kurz — also genau die
+ * Gesamtdifferenz. Es fehlt damit **keine Zeile**; eine Nicht-Lebensmittel-Zeile
+ * ist um 1,90 € zu hoch gelesen, und irgendwo stecken 0,10 € Lesefehler.
+ * Kandidaten sind `E.MUELLSACK 5,99` und `COTT.TOILETTENPAP. 3,55` — in einer
+ * früheren Lesung standen dort 2,79 und 5,99.
  *
  * ---------------------------------------------------------------------------
  * WARUM DAS TROTZDEM BRAUCHBARE FIXTURES SIND
@@ -118,39 +125,60 @@ export const EDEKA: Fixture = {
       { kennzeichen: 'A', brutto_cent: 9622 },
       { kennzeichen: 'B', brutto_cent: 2445 },
     ],
+    /*
+     * ---------------------------------------------------------------------
+     * DIESE ZEILEN SIND DIE ECHTE MODELLANTWORT — nicht meine Abschrift.
+     * ---------------------------------------------------------------------
+     *
+     * Bis hierher stand hier, was sich vom Foto ablesen ließ. Seit dem vierten
+     * echten Scan gibt es etwas Besseres: die tatsächliche Antwort des Modells
+     * auf das aufbereitete Bild, wörtlich übernommen.
+     *
+     * Der Unterschied ist die **Herkunft**. Eine Abschrift vom gedrehten Foto
+     * ist meine Vermutung darüber, was dasteht; diese Zeilen sind das, was die
+     * Kette wirklich liefert. Damit prüft das Fixture den Parser gegen echte
+     * Eingaben statt gegen nachgebaute — und die beiden Zeilen, an denen der
+     * Parser zuletzt gescheitert ist (`PFAND 0,15*A` mit Sternchen, `AN` als
+     * Kennzeichen), stehen so drin, wie sie ankamen.
+     *
+     * Fehlerfrei ist auch diese Fassung nicht — siehe den Dateikopf. Aber sie
+     * ist nachvollziehbar falsch statt vermutet falsch.
+     */
     zeilen: [
-      'BIO SCHROZB.EIS            5,99 A',
-      'BIO ALNA.TOM.SAUCE         3,29 A',
-      'BIO ALNA SAUCE             3,79 A',
-      'CAREFR.SLIPEINL.           2,95 B',
-      'DANKE TOIL-PAPIER          3,99 B',
-      'G&G FARB.SCH.TUE           3,99 A',
-      'BIO SWM SCHL.SAHNE         3,99 A',
-      'PFAND                      0,15 A',
-      'BIO ALNA.D.BR   0,99 € x 2 1,98 A',
-      'G&G PACKBAND               2,79 B',
-      'ALTENB.ZIEG.KAESE          2,79 A',
-      'BIO ALNA FETA              3,29 A',
-      'HERZ.MOZZARELLA            1,99 A',
-      'UHU SEKUNDENKLEBER         3,79 B',
-      'HERZ.WILDHEIDELB.          1,99 A',
-      'NIERST.SCHAFSMILCH         6,99 A',
-      'DEMETER BANANEN            3,79 A',
-      'BIO ALNA.JOGHURT           1,77 AW',
-      'E.MUELLSACK                2,79 A',
-      'COTT.TOILETTENPAP.         5,99 B',
-      'BIOD.NEKTARINEN            1,55 B',
-      'BIO AND.CAMENBERT          3,79 A',
-      'BIO UHB ZWIEBELN           4,99 A',
-      'BIO TRAUBEN                2,99 A',
-      'BIO ALN.SCHAFQUARK         2,29 A',
-      'BIO E.SCHMAND              1,78 A',
-      'BIO AVOCADOS    2,49 € x 2 4,98 A',
-      'G&G MACADAMIAS             3,49 A',
-      'CH APPENZELL.EXTRA         5,42 A',
-      'APRIKOSEN                  2,99 A',
-      'WASSERMEL. KERNARM        12,02 AW',
-      'PAPAYA                     3,49 A',
+      'BIO SCHROZB.EIS               5,99 A',
+      'BIO ALNA.TOM.SAUCE            3,29 A',
+      'BIO ALNA.SAUCE                3,79 A',
+      'CAREFR.SLIPEINL.              2,95 B',
+      'DANKE TOIL-PAPIER             3,99 B',
+      'G&G FARB.SCH.TUE              3,29 B',
+      'BIO SWM SCHL.SAHNE            3,99 A',
+      // Das Sternchen ist ein Vermerk der Kasse. Es hat den Parser zerlegt.
+      'PFAND                        0,15*A',
+      'BIO ALNA.D.BR 0,99 € x 2     1,98 A',
+      'G&G PACKBAND                  2,79 B',
+      'BIO ALNA.FETA                2,99 A',
+      'ALTERN.B.ZIEG.KAESE          3,99 A',
+      'HERT.MOZZARELLA              1,99 A',
+      'UHU SEKUNDENKLEBER           3,79 B',
+      'HERZ.WILDHEIDELBE            6,99 A',
+      'NIERST.SCHAFSMILCH           3,99 A',
+      // „AN" ist kein Steuersatz — der Satz ist das „A".
+      'DEMETER BANANEN               1,77 AN',
+      'BIO ALNA.JOGHURT             2,79 A',
+      'E.MUELLSACK                  5,99 B',
+      'COTT.TOILETTENPAP.           3,55 B',
+      'BIO AND.CAMENBERT            3,79 A',
+      'BIOD NEKTARINEN              4,99 A',
+      'BIO TRAUBEN                  2,99 A',
+      'BIO UHB ZWIEBELN             2,29 A',
+      'BIO ALN.SCHAFQUARK           2,29 A',
+      'BIO E.SCHMAND 0,89 € x 2     1,78 A',
+      'BIO AVOCADOS 2,49 € x 2      4,98 A',
+      'G&G MACADAMIAS               3,49 A',
+      'CH APPENZELL.EXTRA           5,42 A',
+      'APRIKOSEN                    2,99 A',
+      'WASSERMEL.KERNARM           12,02 AN',
+      'PAPAYA                       3,49 A',
     ],
     unsichere_zeilen: [],
   },

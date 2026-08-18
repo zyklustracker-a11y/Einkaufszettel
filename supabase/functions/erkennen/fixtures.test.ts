@@ -48,10 +48,42 @@ test('Edeka-Bon (Schmidts Märkte)', async (t) => {
     assert.equal(brot.rawText, 'BIO ALNA.D.BR')
   })
 
-  await t.test('das zweistellige Kennzeichen „AW"', () => {
+  await t.test('das zweistellige Kennzeichen „AN"', () => {
+    /*
+     * Das Modell liest hier mal „AW", mal „AN" — auf Thermopapier ist der
+     * zweite Buchstabe kaum zu unterscheiden. Für den Abgleich ist das egal:
+     * Beide sind kein eigener Steuersatz, der Satz ist das „A". Genau deshalb
+     * kürzt `resolveTaxCode` auf den ersten Buchstaben, statt einen der beiden
+     * Schreibweisen zu kennen.
+     */
     const melone = bon.items.find((item) => item.rawText.includes('WASSERMEL'))
-    assert.equal(melone?.taxCode, 'AW')
+    assert.equal(melone?.taxCode, 'AN')
     assert.equal(melone?.totalCents, 1202)
+  })
+
+  await t.test('und es zählt trotzdem zur Klasse A', () => {
+    // 13,79 € (Bananen 1,77 + Wassermelone 12,02) fielen sonst aus jeder
+    // Klasse heraus und wurden als „fehlend" gemeldet, obwohl sie da sind.
+    const klasseA = bon.taxGroups.find((group) => group.code === 'A')
+    assert.ok(klasseA, 'keine Klasse A im Abgleich')
+    assert.equal(klasseA.itemsTotalCents, 9422)
+    assert.ok(!bon.warnings.some((w) => w.code === 'steuerklasse_unbekannt'))
+  })
+
+  await t.test('die Pfandzeile mit Sternchen bleibt eigenständig', () => {
+    /*
+     * „PFAND 0,15*A": Das Sternchen brach das Muster, die Zeile verschmolz mit
+     * der folgenden, und aus einem Brot für 1,98 € wurde eine Pfandzeile.
+     */
+    assert.equal(bon.items.length, 32)
+
+    const pfand = bon.items.find((item) => item.kind === 'pfand')
+    assert.equal(pfand?.rawText, 'PFAND')
+    assert.equal(pfand?.depositCents, 15)
+
+    const brot = bon.items.find((item) => item.rawText === 'BIO ALNA.D.BR')
+    assert.equal(brot?.kind, 'artikel')
+    assert.equal(brot?.totalCents, 198)
   })
 
   await t.test('Pfand wird als Pfand geführt', () => {
@@ -71,7 +103,7 @@ test('Edeka-Bon (Schmidts Märkte)', async (t) => {
   })
 
   await t.test('die Postenzahl wird abgeglichen', () => {
-    // Der Bon nennt 35 Posten, die Abschrift hat 32. Genau dafür ist die
+    // Der Bon nennt 35 Posten, gelesen wurden 32. Genau dafür ist die
     // Prüfung da: Sie bemerkt eine fehlende Zeile auch dann, wenn ihr Betrag
     // klein genug wäre, um im Summenabgleich unterzugehen.
     const warning = bon.warnings.find((w) => w.code === 'postenzahl_weicht_ab')

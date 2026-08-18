@@ -430,3 +430,54 @@ test('Konfidenz', async (t) => {
     assert.ok((items[0].konfidenz as number) < 0.8, `Konfidenz ${items[0].konfidenz}`)
   })
 })
+
+test('Vermerke zwischen Betrag und Kennzeichen', async (t) => {
+  await t.test('das Sternchen der Edeka-Pfandzeile', () => {
+    /*
+     * DER FEHLER AUS DEM VIERTEN ECHTEN SCAN, und er war doppelt teuer.
+     *
+     * Edeka druckt „PFAND  0,15*A". Das Sternchen stand zwischen Betrag und
+     * Kennzeichen, wo das Muster nur Leerzeichen erlaubte — also kein Treffer.
+     * Die Zeile wurde zum Namensfragment und verschmolz mit der FOLGENDEN:
+     *
+     *     „PFAND 0,15*A BIO ALNA.D.BR"   1,98 ct   art=pfand
+     *
+     * Die 0,15 € gingen verloren, und weil „PFAND" jetzt im Namen der nächsten
+     * Zeile stand, wurde aus einem Brot für 1,98 € eine Pfandzeile. Ein
+     * einzelnes Sternchen hat zwei Positionen zugleich verdorben.
+     */
+    const result = parseLines([
+      'BIO SWM SCHL.SAHNE 3,99 A',
+      'PFAND 0,15*A',
+      'BIO ALNA.D.BR 0,99 € x 2 1,98 A',
+    ])
+
+    assert.equal(result.items.length, 3, 'die Pfandzeile ist verschluckt worden')
+
+    const pfand = result.items[1]
+    assert.equal(pfand.rohtext, 'PFAND')
+    assert.equal(pfand.zeilensumme_cent, 15)
+    assert.equal(pfand.art, 'pfand')
+    assert.equal(pfand.steuer, 'A')
+
+    // Und die Zeile danach bleibt, was sie ist: ein Artikel, kein Pfand.
+    assert.equal(result.items[2].rohtext, 'BIO ALNA.D.BR')
+    assert.equal(result.items[2].art, 'artikel')
+    assert.equal(result.items[2].zeilensumme_cent, 198)
+  })
+
+  await t.test('auch # und +', () => {
+    // Die drei Vermerke, die auf deutschen Bons an dieser Stelle vorkommen.
+    for (const marker of ['*', '#', '+']) {
+      const [item] = parseLines([`MILCH 1,29${marker}B`]).items
+      assert.equal(item?.zeilensumme_cent, 129, `Vermerk „${marker}"`)
+      assert.equal(item?.steuer, 'B', `Vermerk „${marker}"`)
+    }
+  })
+
+  await t.test('ohne Vermerk bleibt alles wie bisher', () => {
+    const [item] = parseLines(['MILCH 1,29 B']).items
+    assert.equal(item.zeilensumme_cent, 129)
+    assert.equal(item.steuer, 'B')
+  })
+})

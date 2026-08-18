@@ -67,9 +67,32 @@ import type { ItemKind, ModelItem } from './validate.ts'
  * Zusätzlich zugelassen ist jetzt der **Tausenderpunkt**: „1.234,56" kommt auf
  * einem Baumarktbon durchaus vor, und ohne ihn läse das Muster daraus 234,56 —
  * ein plausibel aussehender, um 1000 Euro falscher Betrag.
+ *
+ * ---------------------------------------------------------------------------
+ * UND DAS STERNCHEN VOR DEM KENNZEICHEN
+ * ---------------------------------------------------------------------------
+ *
+ * Edeka druckt Pfandzeilen so:
+ *
+ *     PFAND                        0,15*A
+ *                                      ^
+ *
+ * Das Sternchen ist ein Vermerk der Kasse und stand zwischen Betrag und
+ * Kennzeichen — wo das Muster nur Leerzeichen erlaubte. Ergebnis: kein Treffer,
+ * und der Schaden war doppelt. Die Zeile wurde zum Namensfragment und
+ * **verschmolz mit der folgenden**:
+ *
+ *     „PFAND 0,15*A BIO ALNA.D.BR"   1,98 ct   art=pfand
+ *
+ * Die 0,15 € gingen verloren, und weil „PFAND" nun im Namen der nächsten Zeile
+ * stand, wurde aus einem Brot für 1,98 € eine Pfandzeile. Ein einzelnes
+ * Sternchen hat so zwei Positionen zugleich verdorben.
+ *
+ * Zugelassen sind `*`, `#` und `+` — die drei Vermerke, die auf deutschen Bons
+ * an dieser Stelle vorkommen. Sie tragen keine Bedeutung für die Rechnung.
  */
 const TRAILING_AMOUNT =
-  /(-)?\s*(\d{1,3}(?:\.\d{3})*|\d{1,4})[.,](\d{2})\s*(-)?\s*(?:eur|€)?\s*([A-Za-z]{1,2}|\d{1,2})?\s*$/i
+  /(-)?\s*(\d{1,3}(?:\.\d{3})*|\d{1,4})[.,](\d{2})\s*(-)?\s*(?:eur|€)?\s*[*#+]?\s*([A-Za-z]{1,2}|\d{1,2})?\s*$/i
 
 /**
  * Eine Mengenzeile: „2 Stk x 0,99", „1,120 kg x 1,79 EUR/kg", „3 x 1,29",
